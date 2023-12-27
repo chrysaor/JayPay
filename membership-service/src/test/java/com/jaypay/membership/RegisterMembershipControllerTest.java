@@ -39,7 +39,7 @@ public class RegisterMembershipControllerTest {
                 new Membership.MembershipIsCorp(false)
         );
         mockMvc.perform(
-                        MockMvcRequestBuilders.post("/membership/register")
+                        MockMvcRequestBuilders.post("/memberships/register")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(mapper.writeValueAsString(request))
                 )

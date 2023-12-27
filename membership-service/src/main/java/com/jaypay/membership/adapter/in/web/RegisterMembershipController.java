@@ -1,9 +1,9 @@
 package com.jaypay.membership.adapter.in.web;
 
+import com.jaypay.common.WebAdapter;
 import com.jaypay.membership.application.port.in.RegisterMembershipCommand;
 import com.jaypay.membership.application.port.in.RegisterMembershipUseCase;
 import com.jaypay.membership.domain.Membership;
-import common.WebAdapter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,7 +16,7 @@ public class RegisterMembershipController {
 
     private final RegisterMembershipUseCase registerMembershipUseCase;
 
-    @PostMapping(path = "/membership/register")
+    @PostMapping(path = "/memberships")
     Membership registerMembership(@RequestBody RegisterMembershipRequest request) {
         RegisterMembershipCommand command = RegisterMembershipCommand.builder()
                 .name(request.getName())

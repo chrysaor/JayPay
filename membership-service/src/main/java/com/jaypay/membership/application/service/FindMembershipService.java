@@ -1,13 +1,14 @@
 package com.jaypay.membership.application.service;
 
 
+import com.jaypay.common.UseCase;
 import com.jaypay.membership.adapter.out.persistence.MembershipJpaEntity;
 import com.jaypay.membership.adapter.out.persistence.MembershipMapper;
 import com.jaypay.membership.application.port.in.FindMembershipCommand;
 import com.jaypay.membership.application.port.in.FindMembershipUseCase;
 import com.jaypay.membership.application.port.out.FindMembershipPort;
 import com.jaypay.membership.domain.Membership;
-import common.UseCase;
+
 import lombok.RequiredArgsConstructor;
 
 
