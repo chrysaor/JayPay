@@ -20,7 +20,7 @@ apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
 
 group = 'com.jaypay.membership'
-version = '1.0-SNAPSHOT'
+version = '1.0.0'
 
 repositories {
     mavenCentral()
@@ -41,8 +41,9 @@ dependencies {
     implementation group: 'javax.persistence', name: 'javax.persistence-api', version: '2.2'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.jetbrains:annotations:23.0.0'
-    testImplementation 'junit:junit:4.13.1'
+    implementation project(path: ':common')
 
+    testImplementation 'junit:junit:4.13.1'
     runtimeOnly 'com.h2database:h2'
 }
 

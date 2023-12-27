@@ -1,6 +1,6 @@
 package com.jaypay.membership.application.port.in;
 
-import common.SelfValidating;
+import com.jaypay.common.SelfValidating;
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
