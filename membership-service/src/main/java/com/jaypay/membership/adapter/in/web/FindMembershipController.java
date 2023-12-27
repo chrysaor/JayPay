@@ -27,5 +27,4 @@ public class FindMembershipController {
         return ResponseEntity.ok(findMembershipUseCase.findMembership(command));
     }
 
-
 }
