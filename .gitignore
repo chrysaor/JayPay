@@ -44,4 +44,4 @@ bin/
 
 ### Resource ###
 application.properties
-db/
+db/data
