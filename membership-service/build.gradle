@@ -7,6 +7,7 @@ buildscript {
 plugins {
     id 'org.springframework.boot' version '2.5.2'
     id 'java'
+    id 'com.palantir.docker' version '0.25.0'
 }
 
 compileJava {
@@ -44,9 +45,19 @@ dependencies {
     implementation project(path: ':common')
 
     testImplementation 'junit:junit:4.13.1'
-    runtimeOnly 'com.h2database:h2'
+//    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'mysql:mysql-connector-java'
 }
+
 
 test {
     useJUnitPlatform()
+}
+
+docker {
+    println(tasks.bootJar.outputs.files)
+    name rootProject.name+'-'+project.name + ":" + version
+    dockerfile file('./Dockerfile')
+    files tasks.bootJar.outputs.files
+    buildArgs(['JAR_FILE': tasks.bootJar.outputs.files.singleFile.name])
 }
