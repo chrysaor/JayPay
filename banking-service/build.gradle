@@ -20,7 +20,7 @@ apply plugin: 'java-library'
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
 
-group = 'com.jaypay.membership'
+group = 'com.jaypay.banking'
 version = '1.0.0'
 
 repositories {
@@ -45,7 +45,7 @@ dependencies {
     implementation project(path: ':common')
 
     testImplementation 'junit:junit:4.13.1'
-//    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'com.h2database:h2'
     runtimeOnly 'mysql:mysql-connector-java'
 }
 
