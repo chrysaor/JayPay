@@ -26,7 +26,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase {
     @Override
     public RegisteredBankAccount registerBankAccount(RegisterBankAccountCommand command) {
 
-        // 은행 계좌를 등록해야하는 서비스 (비즈니스 로직)
+        // 은행 계좌를 등록해야하는 서비스 (비즈니스 로직) -> 멤버십 서비스 호출 필요
         // command.getMembershipId()
 
         // (멤버 서비스도 확인?) 여기서는 skip
@@ -35,17 +35,17 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase {
         // 외부의 은행에 이 계좌 정상인지? 확인을 해야해요.
         // Biz Logic -> External System
         // Port -> Adapter -> External System
-        // Port
         // 실제 외부의 은행계좌 정보를 Get
-        BankAccount accountInfo = requestBankAccountInfoPort.getBankAccountInfo(new GetBankAccountRequest(command.getBankName(), command.getBankAccountNumber()));
-        boolean accountIsValid =  accountInfo.isValid();
+        BankAccount accountInfo = requestBankAccountInfoPort.getBankAccountInfo(new GetBankAccountRequest(
+                command.getBankName(), command.getBankAccountNumber())
+        );
 
         // 2. 등록가능한 계좌라면, 등록한다. 성공하면, 등록에 성공한 등록 정보를 리턴
         // 2-1. 등록가능하지 않은 계좌라면. 에러를 리턴
-        if(accountIsValid) {
+        if(accountInfo.isValid()) {
             // 등록 정보 저장
             RegisteredBankAccountJpaEntity savedAccountInfo = registerBankAccountPort.createRegisteredBankAccount(
-                    new RegisteredBankAccount.MembershipId(command.getMembershipId()+""),
+                    new RegisteredBankAccount.MembershipId(String.format("%s", command.getMembershipId())),
                     new RegisteredBankAccount.BankName(command.getBankName()),
                     new RegisteredBankAccount.BankAccountNumber(command.getBankAccountNumber()),
                     new RegisteredBankAccount.LinkedStatusIsValid(command.isValid())

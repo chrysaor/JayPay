@@ -26,34 +26,34 @@ services:
     depends_on:
       - mysql
     environment:
-#      - AXON_AXONSERVER_SERVERS=axon-server:8124
-#      - AXON_SERIALIZER_EVENTS=jackson
-#      - AXON_SERIALIZER_MESSAGES=jackson
-#      - AXON_SERIALIZER_GENERAL=xstream
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=mysqluser
       - SPRING_DATASOURCE_PASSWORD=mysqlpw
       - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-#
-#  banking-service:
-#    image: jaypay-pay-banking-service:1.0.0
-#    networks:
-#      - jaypay_network
-#    ports:
-#      - "8082:8080"
-#    depends_on:
-#      - mysql
-#    environment:
-#      - AXON_AXONSERVER_SERVERS=axon-server:8124
-#      - AXON_SERIALIZER_EVENTS=jackson
-#      - AXON_SERIALIZER_MESSAGES=jackson
-#      - AXON_SERIALIZER_GENERAL=xstream
-#      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-#      - SPRING_DATASOURCE_USERNAME=mysqluser
-#      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-#      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
-#      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+
+  banking-service:
+    image: jaypay-banking-service:1.0.0
+    networks:
+      - jaypay_network
+    ports:
+      - "8082:8080"
+    depends_on:
+      - mysql
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=mysqluser
+      - SPRING_DATASOURCE_PASSWORD=mysqlpw
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
 
 networks:
   jaypay_network:
