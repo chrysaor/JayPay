@@ -85,6 +85,18 @@ services:
       - TASK_RESULT_TOPIC=jaypay.task.result.topic
       - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
 
+  logging-consumer:
+    image: jaypay-logging-consumer:1.0.0
+    networks:
+      - jaypay_network
+    restart: always
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+
   zookeeper:
     image: 'arm64v8/zookeeper:3.8'
     networks:
