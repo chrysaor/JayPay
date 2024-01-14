@@ -1,16 +1,24 @@
 package com.jaypay.money.application.service;
 
+import com.jaypay.common.CountDownLatchManager;
+import com.jaypay.common.RechargingMoneyTask;
+import com.jaypay.common.SubTask;
 import com.jaypay.common.UseCase;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
 import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestMapper;
 import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
 import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
+import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.IncreaseMoneyPort;
+import com.jaypay.money.application.port.out.MembershipStatus;
+import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import lombok.RequiredArgsConstructor;
 
 import javax.transaction.Transactional;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @UseCase
@@ -18,6 +26,9 @@ import java.util.UUID;
 @Transactional
 public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase {
 
+    private final CountDownLatchManager countDownLatchManager;
+    private final SendRechargingMoneyTaskPort sendRechargingMoneyTaskPort;
+    private final GetMembershipPort getMembershipPort;
     private final IncreaseMoneyPort increaseMoneyPort;
     private final MoneyChangingRequestMapper mapper;
 
@@ -33,6 +44,12 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase 
           6-1. 결과가 정상이면 MoneyChangingRequest 상태값 변동 후 리턴
           6-2. 결과가 실패라면 MoneyChangingRequest 상태값 변동 후 리턴
          */
+
+        // 1. Check the customer information
+        MembershipStatus membershipStatus = getMembershipPort.getMembership(command.getTargetMembershipId());
+        if (!membershipStatus.isValid()) {
+            return null;
+        }
 
         // 6-1 성공시 멤버의 MemberMoney 값 증액 필요
         MemberMoneyJpaEntity memberMoneyJpaEntity = increaseMoneyPort.increaseMoney(
@@ -52,6 +69,96 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase 
 
         // 6-2. 결과가 실패라면 MoneyChangingRequest 상태값 변동 후 리턴
 
+        return null;
+    }
+
+    @Override
+    public MoneyChangingRequest increaseMoneyRequestAsync(IncreaseMoneyRequestCommand command) {
+        /*
+         * 1. Subtask, Task
+         * 2. Kafka cluster produce
+         * 3. Wait
+         * 3-1. Task-consumer
+         *      Process sub-task and result ok -> task result produce
+         * 4. Task Result Consume
+         * 5. Consume ok, Logic
+         */
+
+        // Subtask
+        // 각 서비스별 특정 membershipId로 validation 하기 위한 태스크로 정의
+
+        // 1. Subtask, Task
+        SubTask validMemberTask = SubTask.builder()
+                .subTaskName("validMemberTask : " + "Validation of the membership")
+                .membershipID(command.getTargetMembershipId())
+                .taskType("membership")
+                .status("ready")
+                .build();
+
+        // Banking Sub task
+        // Banking Account Validation
+        SubTask validBankingAccountTask = SubTask.builder()
+                .subTaskName("validBankingAccountTask : " + "check validation of account")
+                .membershipID(command.getTargetMembershipId())
+                .taskType("banking")
+                .status("ready")
+                .build();
+
+        // Amount Money Firmbanking -> Ok (가정)
+
+        List<SubTask> subTaskList = new ArrayList<>();
+        subTaskList.add(validMemberTask);
+        subTaskList.add(validBankingAccountTask);
+
+        RechargingMoneyTask task = RechargingMoneyTask.builder()
+                .taskID(UUID.randomUUID().toString())
+                .taskName("Increase Money Task")
+                .subTaskList(subTaskList)
+                .moneyAmount(command.getAmount())
+                .membershipID(command.getTargetMembershipId())
+                .toBankName("jay")
+                .build();
+
+        // 2. Kafka Cluster Produce
+        // Task Produce
+        sendRechargingMoneyTaskPort.sendRechargingMoneyTaskPort(task);
+        countDownLatchManager.addCountDownLatch(task.getTaskID());
+
+        // 3. Wait
+        try {
+            countDownLatchManager.getCountDownLatch(task.getTaskID()).await();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        // 3-1. task-consumer
+        // 등록된 sub-task, status ok -> task result Produce
+
+        // 4. Task Result Consume
+        // 받은 응답을 다시 countDownLatchManager 를 통해서 결과 데이터 받음
+        String result = countDownLatchManager.getDataForKey(task.getTaskID());
+        if (result.equals("success")) {
+            // 4-1. Consume ok case
+            MemberMoneyJpaEntity memberMoneyJpaEntity = increaseMoneyPort.increaseMoney(
+                    new MemberMoney.MembershipId(command.getTargetMembershipId()),
+                    command.getAmount()
+            );
+
+            if (memberMoneyJpaEntity != null) {
+                return mapper.mapToDomainEntity(increaseMoneyPort.createMoneyChangingRequest(
+                        new MoneyChangingRequest.TargetMembershipId(command.getTargetMembershipId()),
+                        new MoneyChangingRequest.MoneyChangingType(1),
+                        new MoneyChangingRequest.ChangingMoneyAmount(command.getAmount()),
+                        new MoneyChangingRequest.MoneyChangingStatus(1),
+                        new MoneyChangingRequest.Uuid(UUID.randomUUID().toString()))
+                );
+            }
+        } else {
+            // 4-2. Consume fail case
+            return null;
+        }
+
+        // 5. Consume ok, Logic
         return null;
     }
 }
