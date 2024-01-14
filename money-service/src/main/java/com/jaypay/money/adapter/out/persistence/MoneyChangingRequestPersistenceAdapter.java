@@ -43,7 +43,7 @@ public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort
             return memberMoneyRepository.save(entity);
         } catch (Exception e) {
             entity = new MemberMoneyJpaEntity(
-                    membershipId.getMembershipId(),
+                    Long.parseLong(membershipId.getMembershipId()),
                     increaseMoneyAmount
             );
             entity = memberMoneyRepository.save(entity);

@@ -21,11 +21,11 @@ public class MemberMoneyJpaEntity {
     @GeneratedValue
     private Long memberMoneyId;
 
-    private String membershipId;
+    private Long membershipId;
 
     private int balance;
 
-    public MemberMoneyJpaEntity(String membershipId, int balance) {
+    public MemberMoneyJpaEntity(Long membershipId, int balance) {
         this.membershipId = membershipId;
         this.balance = balance;
     }
