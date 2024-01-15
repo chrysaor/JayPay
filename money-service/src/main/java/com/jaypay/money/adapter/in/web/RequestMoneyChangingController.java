@@ -30,14 +30,15 @@ public class RequestMoneyChangingController {
 
         return new MoneyChangingResultDetail(
                 moneyChangingRequest.getMoneyChangingRequestId(),
-                0,
-                0,
-                moneyChangingRequest.getMoneyChangingStatus()
+                1,
+                moneyChangingRequest.getMoneyChangingStatus(),
+                moneyChangingRequest.getChangingMoneyAmount()
         );
     }
 
     @PostMapping(path = "/money/decrease")
     MoneyChangingResultDetail decreaseMoneyChangingRequest(@RequestBody DecreaseMoneyChangingRequest request) {
+        System.out.println(request.toString());
         return null;
     }
 
@@ -55,9 +56,9 @@ public class RequestMoneyChangingController {
 
         return new MoneyChangingResultDetail(
                 moneyChangingRequest.getMoneyChangingRequestId(),
-                0,
-                0,
-                moneyChangingRequest.getMoneyChangingStatus()
+                1,
+                moneyChangingRequest.getMoneyChangingStatus(),
+                moneyChangingRequest.getChangingMoneyAmount()
         );
     }
 

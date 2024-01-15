@@ -27,7 +27,7 @@ public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort
                         changingMoneyAmount.getChangingMoneyAmount(),
                         new Timestamp(System.currentTimeMillis()),
                         moneyChangingStatus.getChangingMoneyStatus(),
-                        UUID.randomUUID().toString()
+                        UUID.randomUUID()
                 )
         );
     }
