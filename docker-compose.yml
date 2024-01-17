@@ -24,6 +24,7 @@ services:
     ports:
       - "8081:8080"
     depends_on:
+      - kafka
       - mysql
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
@@ -46,6 +47,7 @@ services:
     ports:
       - "8082:8080"
     depends_on:
+      - kafka
       - mysql
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
@@ -61,6 +63,7 @@ services:
       - LOGGING_TOPIC=jaypay.logging.out.stdout
       - TASK_TOPIC=jaypay.task.topic
       - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+
   money-service:
     image: jaypay-money-service:1.0.0
     networks:
@@ -68,6 +71,7 @@ services:
     ports:
       - "8083:8080"
     depends_on:
+      - kafka
       - mysql
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
@@ -84,6 +88,33 @@ services:
       - TASK_TOPIC=jaypay.task.topic
       - TASK_RESULT_TOPIC=jaypay.task.result.topic
       - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+
+  remittance-service:
+    image: jaypay-remittance-service:1.0.0
+    networks:
+      - jaypay_network
+    ports:
+      - "8084:8080"
+    depends_on:
+      - kafka
+      - mysql
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=mysqluser
+      - SPRING_DATASOURCE_PASSWORD=mysqlpw
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - TASK_TOPIC=jaypay.task.topic
+      - TASK_RESULT_TOPIC=jaypay.task.result.topic
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+      - SERVICE_MONEY_URL=http://money-service:8080
 
   logging-consumer:
     image: jaypay-logging-consumer:1.0.0
