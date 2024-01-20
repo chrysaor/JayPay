@@ -24,7 +24,6 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase {
     private final RequestFirmBankingPort requestFirmBankingPort;
     private final RequestExternalFirmBankingPort requestExternalFirmBankingPort;
 
-
     @Override
     public FirmBankingRequest requestFirmBanking(RequestFirmBankingCommand command) {
         // Business logic
