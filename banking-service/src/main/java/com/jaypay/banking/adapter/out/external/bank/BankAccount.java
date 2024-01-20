@@ -4,9 +4,9 @@ import lombok.Data;
 
 @Data
 public class BankAccount {
+
     private String bankName;
     private String bankAccountNumber;
-
     private boolean isValid;
 
     public BankAccount(String bankName, String bankAccountNumber, boolean isValid) {
@@ -14,4 +14,5 @@ public class BankAccount {
         this.bankAccountNumber = bankAccountNumber;
         this.isValid = isValid;
     }
+
 }
