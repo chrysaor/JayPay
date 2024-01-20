@@ -31,7 +31,7 @@ public class RequestBankingInfoService implements RequestBankingInfoUseCase {
         return ExternalBankingInfo.generatedExternalBankingInfo(
                 new ExternalBankingInfo.BankName(bankAccount.getBankName()),
                 new ExternalBankingInfo.BankAccountNumber(bankAccount.getBankAccountNumber()),
-                new ExternalBankingInfo.IsValid(bankAccount.isValid())
+                new ExternalBankingInfo.IsValid(true) // Bank account is temporary true
         );
     }
 }
