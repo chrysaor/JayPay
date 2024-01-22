@@ -45,3 +45,8 @@ bin/
 ### Resource ###
 application.properties
 db/data
+
+# AXON server
+axon-server-se/config/**
+axon-server-se/data/**
+axon-server-se/events/**
