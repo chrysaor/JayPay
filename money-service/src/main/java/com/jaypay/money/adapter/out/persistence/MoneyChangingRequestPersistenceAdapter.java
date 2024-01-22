@@ -1,6 +1,7 @@
 package com.jaypay.money.adapter.out.persistence;
 
 import com.jaypay.common.PersistenceAdapter;
+import com.jaypay.money.application.port.in.CreateMemberMoneyPort;
 import com.jaypay.money.application.port.out.IncreaseMoneyPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
@@ -13,7 +14,7 @@ import java.util.UUID;
 
 @PersistenceAdapter
 @RequiredArgsConstructor
-public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort {
+public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort, CreateMemberMoneyPort {
 
     private final SpringDataMoneyChangingRequestRepository moneyChangingRequestRepository;
     private final SpringDataMemberMoneyRepository memberMoneyRepository;
@@ -44,10 +45,21 @@ public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort
         } catch (Exception e) {
             entity = new MemberMoneyJpaEntity(
                     Long.parseLong(membershipId.getMembershipId()),
-                    increaseMoneyAmount
+                    increaseMoneyAmount,
+                    ""
             );
             entity = memberMoneyRepository.save(entity);
             return entity;
         }
+    }
+
+    @Override
+    public void createMemberMoney(MemberMoney.MembershipId membershipId, MemberMoney.MoneyAggregateIdentifier moneyAggregateIdentifier) {
+        MemberMoneyJpaEntity entity = new MemberMoneyJpaEntity(
+                Long.parseLong(membershipId.getMembershipId()),
+                0,
+                moneyAggregateIdentifier.getAggregateIdentifier()
+        );
+        memberMoneyRepository.save(entity);
     }
 }

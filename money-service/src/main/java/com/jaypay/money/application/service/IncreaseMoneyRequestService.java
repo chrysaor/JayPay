@@ -4,10 +4,10 @@ import com.jaypay.common.CountDownLatchManager;
 import com.jaypay.common.RechargingMoneyTask;
 import com.jaypay.common.SubTask;
 import com.jaypay.common.UseCase;
+import com.jaypay.money.adapter.axon.command.MemberMoneyCreatedCommand;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
 import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestMapper;
-import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
-import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
+import com.jaypay.money.application.port.in.*;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.IncreaseMoneyPort;
 import com.jaypay.money.application.port.out.MembershipStatus;
@@ -15,6 +15,7 @@ import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import lombok.RequiredArgsConstructor;
+import org.axonframework.commandhandling.gateway.CommandGateway;
 
 import javax.transaction.Transactional;
 import java.util.ArrayList;
@@ -24,13 +25,15 @@ import java.util.UUID;
 @UseCase
 @RequiredArgsConstructor
 @Transactional
-public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase {
+public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase, CreateMemberMoneyUseCase {
 
     private final CountDownLatchManager countDownLatchManager;
     private final SendRechargingMoneyTaskPort sendRechargingMoneyTaskPort;
     private final GetMembershipPort getMembershipPort;
     private final IncreaseMoneyPort increaseMoneyPort;
+    private final CreateMemberMoneyPort createMemberMoneyPort;
     private final MoneyChangingRequestMapper mapper;
+    private final CommandGateway commandGateway;
 
     @Override
     public MoneyChangingRequest increaseMoneyRequest(IncreaseMoneyRequestCommand command) {
@@ -161,4 +164,21 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase 
         // 5. Consume ok, Logic
         return null;
     }
+
+    @Override
+    public void createMemberMoney(CreateMemberMoneyCommand command) {
+        MemberMoneyCreatedCommand axonCommand = new MemberMoneyCreatedCommand(command.getMembershipId());
+        commandGateway.send(axonCommand).whenComplete((result, throwable) -> {
+            if (throwable != null) {
+                System.out.println("throwable: " + throwable);
+                throw new RuntimeException(throwable);
+            }
+            System.out.println("result: " + result);
+            createMemberMoneyPort.createMemberMoney(
+                    new MemberMoney.MembershipId(command.getMembershipId()),
+                    new MemberMoney.MoneyAggregateIdentifier(result.toString())
+            );
+        });
+    }
+
 }

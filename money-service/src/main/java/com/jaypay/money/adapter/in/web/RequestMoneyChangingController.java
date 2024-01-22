@@ -2,6 +2,8 @@ package com.jaypay.money.adapter.in.web;
 
 
 import com.jaypay.common.WebAdapter;
+import com.jaypay.money.application.port.in.CreateMemberMoneyCommand;
+import com.jaypay.money.application.port.in.CreateMemberMoneyUseCase;
 import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
 import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
 import com.jaypay.money.domain.MoneyChangingRequest;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class RequestMoneyChangingController {
 
     private final IncreaseMoneyRequestUseCase increaseMoneyRequestUseCase;
+    private final CreateMemberMoneyUseCase createMemberMoneyUseCase;
 
     @PostMapping(path = "/money/increase")
     MoneyChangingResultDetail increaseMoneyChangingRequest(@RequestBody IncreaseMoneyChangingRequest request) {
@@ -36,13 +39,6 @@ public class RequestMoneyChangingController {
         );
     }
 
-    @PostMapping(path = "/money/decrease")
-    MoneyChangingResultDetail decreaseMoneyChangingRequest(@RequestBody DecreaseMoneyChangingRequest request) {
-        System.out.println(request.toString());
-        return null;
-    }
-
-
     @PostMapping(path = "/money/increase-async")
     MoneyChangingResultDetail increaseMoneyChangingRequestAsync(@RequestBody IncreaseMoneyChangingRequest request) {
         IncreaseMoneyRequestCommand command = IncreaseMoneyRequestCommand.builder()
@@ -59,6 +55,20 @@ public class RequestMoneyChangingController {
                 1,
                 moneyChangingRequest.getMoneyChangingStatus(),
                 moneyChangingRequest.getChangingMoneyAmount()
+        );
+    }
+
+    @PostMapping(path = "/money/decrease")
+    MoneyChangingResultDetail decreaseMoneyChangingRequest(@RequestBody DecreaseMoneyChangingRequest request) {
+        System.out.println(request.toString());
+        return null;
+    }
+
+    @PostMapping(path = "/money/create-member-money")
+    void createMemberMoney(@RequestBody CreateMemberMoneyRequest request) {
+        createMemberMoneyUseCase.createMemberMoney(CreateMemberMoneyCommand.builder()
+                .membershipId(request.getMembershipId())
+                .build()
         );
     }
 
