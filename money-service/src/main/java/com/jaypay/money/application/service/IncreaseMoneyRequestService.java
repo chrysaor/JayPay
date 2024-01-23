@@ -4,6 +4,7 @@ import com.jaypay.common.CountDownLatchManager;
 import com.jaypay.common.RechargingMoneyTask;
 import com.jaypay.common.SubTask;
 import com.jaypay.common.UseCase;
+import com.jaypay.money.adapter.axon.command.IncreaseMemberMoneyCommand;
 import com.jaypay.money.adapter.axon.command.MemberMoneyCreatedCommand;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
 import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestMapper;
@@ -32,6 +33,7 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
     private final GetMembershipPort getMembershipPort;
     private final IncreaseMoneyPort increaseMoneyPort;
     private final CreateMemberMoneyPort createMemberMoneyPort;
+    private final GetMemberMoneyPort getMemberMoneyPort;
     private final MoneyChangingRequestMapper mapper;
     private final CommandGateway commandGateway;
 
@@ -179,6 +181,36 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
                     new MemberMoney.MoneyAggregateIdentifier(result.toString())
             );
         });
+    }
+
+    @Override
+    public void increaseMoneyRequestByEvent(IncreaseMoneyRequestCommand command) {
+        MemberMoneyJpaEntity memberMoneyJpaEntity = getMemberMoneyPort.getMemberMoney(
+                new MemberMoney.MembershipId(command.getTargetMembershipId())
+        );
+
+        String aggregateIdentifier = memberMoneyJpaEntity.getAggregateIdentifier();
+
+        commandGateway.send(IncreaseMemberMoneyCommand.builder()
+                        .aggregateIdentifier(aggregateIdentifier)
+                        .membershipId(command.getTargetMembershipId())
+                        .amount(command.getAmount()).build())
+                .whenComplete(
+                        (result, throwable) -> {
+                            if (throwable != null) {
+                                System.out.println("throwable: " + throwable);
+                                throw new RuntimeException(throwable);
+                            } else {
+                                // Increase money -> money increase
+                                System.out.println("increaseMoney result: " + result);
+
+                                increaseMoneyPort.increaseMoney(
+                                        new MemberMoney.MembershipId(command.getTargetMembershipId()),
+                                        command.getAmount()
+                                );
+                            }
+                        }
+                );
     }
 
 }
