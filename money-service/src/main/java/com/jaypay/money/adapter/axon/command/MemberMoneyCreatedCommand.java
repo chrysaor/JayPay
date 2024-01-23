@@ -20,7 +20,6 @@ public class MemberMoneyCreatedCommand extends SelfValidating<MemberMoneyCreated
         this.validateSelf();
     }
 
-    public MemberMoneyCreatedCommand() {
-    }
+    public MemberMoneyCreatedCommand() {}
 
 }
