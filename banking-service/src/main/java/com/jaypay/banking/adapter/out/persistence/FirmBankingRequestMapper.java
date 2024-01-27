@@ -3,9 +3,11 @@ package com.jaypay.banking.adapter.out.persistence;
 import com.jaypay.banking.domain.FirmBankingRequest;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 public class FirmBankingRequestMapper {
-    public FirmBankingRequest mapToDomainEntity(FirmBankingRequestJpaEntity requestFirmBankingJpaEntity) {
+    public FirmBankingRequest mapToDomainEntity(FirmBankingRequestJpaEntity requestFirmBankingJpaEntity, UUID uuid) {
         return FirmBankingRequest.generateFirmBankingRequest(
                 new FirmBankingRequest.FirmBankingRequestId(requestFirmBankingJpaEntity.getRequestFirmBankingId()+""),
                 new FirmBankingRequest.FromBankName(requestFirmBankingJpaEntity.getFromBankName()),
@@ -14,7 +16,8 @@ public class FirmBankingRequestMapper {
                 new FirmBankingRequest.ToBankAccountNumber(requestFirmBankingJpaEntity.getToBankAccountNumber()),
                 new FirmBankingRequest.MoneyAmount(requestFirmBankingJpaEntity.getMoneyAmount()),
                 new FirmBankingRequest.FirmBankingStatus(requestFirmBankingJpaEntity.getFirmBankingStatus()),
-                requestFirmBankingJpaEntity.getUuid()
+                uuid,
+                new FirmBankingRequest.FirmBankingAggregateIdentifier(requestFirmBankingJpaEntity.getAggregateIdentifier())
         );
     }
 }
