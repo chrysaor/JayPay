@@ -36,7 +36,8 @@ public class RegisterBankAccountControllerTest {
                 new RegisteredBankAccount.MembershipId("1"),
                 new RegisteredBankAccount.BankName("Shinhan bank"),
                 new RegisteredBankAccount.BankAccountNumber("12345"),
-                new RegisteredBankAccount.LinkedStatusIsValid(true)
+                new RegisteredBankAccount.LinkedStatusIsValid(true),
+                new RegisteredBankAccount.AggregateIdentifier("")
         );
 
         mockMvc.perform(
