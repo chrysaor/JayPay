@@ -51,7 +51,8 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                 command.getFromBankName(),
                 command.getFromBankAccountNumber(),
                 command.getToBankName(),
-                command.getToBankAccountNumber()
+                command.getToBankAccountNumber(),
+                command.getMoneyAmount()
         ));
 
         // Transactional UUID
@@ -106,7 +107,8 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                                 command.getFromBankName(),
                                 command.getFromBankAccountNumber(),
                                 command.getToBankName(),
-                                command.getToBankAccountNumber()
+                                command.getToBankAccountNumber(),
+                                command.getMoneyAmount()
                         ));
 
                         // 3. 결과에 따라서 1번에서 작성했던 FirmBankingRequest 정보를 업데이트

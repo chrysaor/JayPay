@@ -2,8 +2,12 @@ package com.jaypay.money.adapter.axon.aggregate;
 
 import com.jaypay.money.adapter.axon.command.IncreaseMemberMoneyCommand;
 import com.jaypay.money.adapter.axon.command.MemberMoneyCreatedCommand;
+import com.jaypay.money.adapter.axon.command.RechargingMoneyRequestCreateCommand;
 import com.jaypay.money.adapter.axon.event.IncreaseMemberMoneyEvent;
 import com.jaypay.money.adapter.axon.event.MemberMoneyCreatedEvent;
+import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
+import com.jaypay.money.application.port.in.GetRegisteredBankAccountPort;
+import com.jaypay.money.application.port.in.RegisteredBankAccountAggregateIdentifier;
 import lombok.Data;
 import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.eventsourcing.EventSourcingHandler;
@@ -26,13 +30,13 @@ public class MemberMoneyAggregate {
 
     @CommandHandler
     public MemberMoneyAggregate(MemberMoneyCreatedCommand command) {
-        System.out.println("MemberMoneyCreateCommand Handler");
+        System.out.println("MemberMoneyCreatedCommand Handler");
 
         apply(new MemberMoneyCreatedEvent(command.getMembershipId()));
     }
 
     @CommandHandler
-    public String handle(@NotNull IncreaseMemberMoneyCommand command) {
+    public String handler(@NotNull IncreaseMemberMoneyCommand command) {
         System.out.println("IncreaseMemberMoneyCommand Handler");
         id = command.getAggregateIdentifier();
 
@@ -41,9 +45,31 @@ public class MemberMoneyAggregate {
         return id;
     }
 
+    @CommandHandler
+    public void handler(RechargingMoneyRequestCreateCommand command, GetRegisteredBankAccountPort getRegisteredBankAccountPort) {
+        System.out.println("RechargingMoneyRequestCreateCommand Handler");
+        id = command.getAggregateIdentifier();
+
+        // Saga Start - new RechargingRequestCreatedEvent
+        // It needs banking information -> Bank svc (get RegisteredBankAccount)
+        RegisteredBankAccountAggregateIdentifier aggregateIdentifier = getRegisteredBankAccountPort.getRegisteredBankAccount(
+                command.getMembershipId()
+        );
+
+        apply(new RechargingRequestCreatedEvent(
+                command.getRechargingRequestId(),
+                command.getMembershipId(),
+                command.getAmount(),
+                aggregateIdentifier.getAggregateIdentifier(),
+                aggregateIdentifier.getBankName(),
+                aggregateIdentifier.getBankAccountNumber()
+        ));
+
+    }
+
     @EventSourcingHandler
     public void on(MemberMoneyCreatedEvent event) {
-        System.out.println("MemberMoneyCreateEvent Sourcing Handler");
+        System.out.println("MemberMoneyCreatedEvent Sourcing Handler");
         id = UUID.randomUUID().toString();
         membershipId = Long.parseLong(event.getMembershipId());
         balance = 0;

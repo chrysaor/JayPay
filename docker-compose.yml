@@ -78,6 +78,7 @@ services:
       - LOGGING_TOPIC=jaypay.logging.out.stdout
       - TASK_TOPIC=jaypay.task.topic
       - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
 
   money-service:
     image: jaypay-money-service:1.0.0
@@ -104,6 +105,7 @@ services:
       - TASK_TOPIC=jaypay.task.topic
       - TASK_RESULT_TOPIC=jaypay.task.result.topic
       - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
 
   remittance-service:
     image: jaypay-remittance-service:1.0.0
