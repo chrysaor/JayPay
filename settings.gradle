@@ -6,3 +6,5 @@ include 'money-service'
 include 'remittance-service'
 include 'logging-consumer'
 include 'task-consumer'
+include 'payment-service'
+
