@@ -6,6 +6,7 @@ import com.jaypay.payment.application.port.in.RequestPaymentUseCase;
 import com.jaypay.payment.application.port.out.CreatePaymentPort;
 import com.jaypay.payment.application.port.out.GetMembershipPort;
 import com.jaypay.payment.application.port.out.GetRegisteredBankAccountPort;
+import com.jaypay.payment.application.port.out.MembershipStatus;
 import com.jaypay.payment.domain.Payment;
 import lombok.RequiredArgsConstructor;
 
@@ -24,15 +25,16 @@ public class PaymentService implements RequestPaymentUseCase {
 
     @Override
     public Payment requestPayment(RequestPaymentCommand command) {
+        // Check membership status
+        MembershipStatus membershipStatus = getMembershipPort.getMembership(command.getRequestMembershipId());
+        if (!membershipStatus.isValid()) {
+            return null;
+        }
 
-        // 충전도, 멤버십, 머니 유효성 확인.....
-        // getMembershipPort.getMembership(command.getRequestMembershipId());
-
+        // Check bank account
         //getRegisteredBankAccountPort.getRegisteredBankAccount(command.getRequestMembershipId());
 
-        //....
-
-        // createPaymentPort
+        // Create payment
         return createPaymentPort.createPayment(
                 command.getRequestMembershipId(),
                 command.getRequestPrice(),
