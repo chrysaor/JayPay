@@ -1,4 +1,5 @@
 rootProject.name = 'jaypay'
+
 include 'common'
 include 'membership-service'
 include 'banking-service'
@@ -7,4 +8,5 @@ include 'remittance-service'
 include 'logging-consumer'
 include 'task-consumer'
 include 'payment-service'
+include 'utility'
 
