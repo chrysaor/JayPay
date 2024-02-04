@@ -3,19 +3,21 @@ package com.jaypay.money.adapter.out.persistence;
 import com.jaypay.common.PersistenceAdapter;
 import com.jaypay.money.application.port.in.CreateMemberMoneyPort;
 import com.jaypay.money.application.port.in.GetMemberMoneyPort;
+import com.jaypay.money.application.port.out.GetMemberMoneyListPort;
 import com.jaypay.money.application.port.out.IncreaseMoneyPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import lombok.RequiredArgsConstructor;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 
 @PersistenceAdapter
 @RequiredArgsConstructor
-public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort, CreateMemberMoneyPort, GetMemberMoneyPort {
+public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort, CreateMemberMoneyPort, GetMemberMoneyPort, GetMemberMoneyListPort {
 
     private final SpringDataMoneyChangingRequestRepository moneyChangingRequestRepository;
     private final SpringDataMemberMoneyRepository memberMoneyRepository;
@@ -82,4 +84,15 @@ public class MoneyChangingRequestPersistenceAdapter implements IncreaseMoneyPort
 
         return entityList.get(0);
     }
+
+    @Override
+    public List<MemberMoneyJpaEntity> getMemberMoneys(List<String> membershipIds) {
+        List<Long> longList = new ArrayList<>();
+        for (String membershipId : membershipIds) {
+            longList.add(Long.parseLong(membershipId));
+        }
+
+        return memberMoneyRepository.fineMemberMoneyListByMembershipIds(longList);
+    }
+
 }

@@ -5,9 +5,7 @@ buildscript {
 }
 
 plugins {
-    id 'org.springframework.boot' version '2.5.2'
     id 'java'
-    id 'com.palantir.docker' version '0.25.0'
 }
 
 compileJava {
@@ -30,8 +28,4 @@ repositories {
 dependencies {
     runtimeOnly 'mysql:mysql-connector-java'
     implementation 'org.json:json:20200518'
-}
-
-test {
-    useJUnitPlatform()
 }
