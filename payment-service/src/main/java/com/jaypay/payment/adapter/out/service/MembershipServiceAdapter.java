@@ -8,7 +8,6 @@ import com.jaypay.payment.application.port.out.MembershipStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-
 @Component
 public class MembershipServiceAdapter implements GetMembershipPort {
 

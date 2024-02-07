@@ -22,8 +22,8 @@ import java.util.UUID;
 @Component
 public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyIncreaseEventByAddress {
     private static final String TABLE_NAME = "MoneyIncreaseEventByRegion";
-    private static final String ACCESS_KEY = "";
-    private static final String SECRET_KEY = "";
+    private static final String ACCESS_KEY = "AKIAVR3JWGYJBUPTCAZG";
+    private static final String SECRET_KEY = "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";
     private final DynamoDbClient dynamoDbClient;
     private final MoneySumByAddressMapper moneySumByAddressMapper;
 

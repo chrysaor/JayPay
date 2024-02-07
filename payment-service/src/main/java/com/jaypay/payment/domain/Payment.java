@@ -16,7 +16,7 @@ public class Payment {
     private int requestPrice;
     private String franchiseId;
     private String franchiseFeeRate;
-    private int paymentStatus;
+    private int paymentStatus; // 0: approved, 1: failed, 2: settlement finished
     private Date approvedAt;
 
     public static Payment generatePayment (
