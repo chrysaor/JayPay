@@ -7,7 +7,6 @@ import com.jaypay.payment.application.port.out.RegisteredBankAccountAggregateIde
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-
 @Component
 public class BankingServiceAdapter implements GetRegisteredBankAccountPort {
 
