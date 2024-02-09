@@ -18,7 +18,6 @@ public class GetRegisteredBankAccountController {
 
     @GetMapping(path = "/banking/account/{membershipId}")
     RegisteredBankAccount getRegisteredBankAccount(@PathVariable String membershipId) {
-        // 편의상 사용.
         GetRegisteredBankAccountCommand command = GetRegisteredBankAccountCommand.builder().membershipId(membershipId).build();
         return getRegisteredBankAccountUseCase.getRegisteredBankAccount(command);
     }

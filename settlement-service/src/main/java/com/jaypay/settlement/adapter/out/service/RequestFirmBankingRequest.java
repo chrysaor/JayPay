@@ -1,4 +1,4 @@
-package com.jaypay.banking.adapter.in.web;
+package com.jaypay.settlement.adapter.out.service;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,5 +12,5 @@ public class RequestFirmBankingRequest {
     private String fromBankAccountNumber;
     private String toBankName;
     private String toBankAccountNumber;
-    private int moneyAmount; // only won
+    private int moneyAmount;
 }

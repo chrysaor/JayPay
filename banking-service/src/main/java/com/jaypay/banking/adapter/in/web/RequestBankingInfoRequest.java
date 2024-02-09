@@ -9,7 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RequestBankingInfoRequest {
-    // a -> b 실물계좌 validation 확인용
     private String bankName;
     private String bankAccountNumber;
 }
