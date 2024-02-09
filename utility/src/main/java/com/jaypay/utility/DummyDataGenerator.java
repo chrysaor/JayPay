@@ -26,7 +26,7 @@ public class DummyDataGenerator {
             Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
 
             // 더미 데이터 생성
-            generateDummyData(conn);
+//            generateDummyData(conn);
             generateDummyPaymentData(conn);
 
             // 연결 종료

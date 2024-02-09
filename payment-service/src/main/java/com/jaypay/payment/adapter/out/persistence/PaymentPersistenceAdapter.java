@@ -35,7 +35,7 @@ public class PaymentPersistenceAdapter implements CreatePaymentPort, FinishSettl
     @Override
     public List<Payment> getNormalStatusPayments() {
         List<Payment> payments = new ArrayList<>();
-        List<PaymentJpaEntity> paymentJpaEntities = paymentRepository.findByPaymentStatus(1);
+        List<PaymentJpaEntity> paymentJpaEntities = paymentRepository.findByPaymentStatus(0);
         if (paymentJpaEntities != null) {
             for (PaymentJpaEntity paymentJpaEntity : paymentJpaEntities) {
                 payments.add(paymentMapper.mapToDomainEntity(paymentJpaEntity));
