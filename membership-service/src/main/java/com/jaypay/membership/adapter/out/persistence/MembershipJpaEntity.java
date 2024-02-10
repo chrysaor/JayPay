@@ -19,23 +19,20 @@ public class MembershipJpaEntity {
     @Id
     @GeneratedValue
     private Long membershipId;
-
     private String name;
-
     private String email;
-
     private String address;
-
     private boolean isValid;
-
     private boolean isCorp;
+    private String refreshToken;
 
-    public MembershipJpaEntity(String name, String email, String address, boolean isValid, boolean isCorp) {
+    public MembershipJpaEntity(String name, String email, String address, boolean isValid, boolean isCorp, String refreshToken) {
         this.name = name;
         this.address = address;
         this.email = email;
         this.isValid = isValid;
         this.isCorp = isCorp;
+        this.refreshToken = refreshToken;
     }
 
     @Override
@@ -43,10 +40,11 @@ public class MembershipJpaEntity {
         return "MembershipJpaEntity{" +
                 "membershipId=" + membershipId +
                 ", name='" + name + '\'' +
-                ", address='" + address + '\'' +
                 ", email='" + email + '\'' +
+                ", address='" + address + '\'' +
                 ", isValid=" + isValid +
                 ", isCorp=" + isCorp +
+                ", refreshToken='" + refreshToken + '\'' +
                 '}';
     }
 }
