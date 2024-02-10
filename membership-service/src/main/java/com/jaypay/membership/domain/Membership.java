@@ -10,16 +10,12 @@ import lombok.Value;
 public class Membership {
 
     private final String membershipId;
-
     private final String name;
-
     private final String email;
-
     private final String address;
-
     private final boolean isValid;
-
     private final boolean isCorp;
+    private final String refreshToken;
 
     public static Membership generateMember(
             MembershipId membershipId,
@@ -27,7 +23,9 @@ public class Membership {
             MembershipEmail membershipEmail,
             MembershipAddress membershipAddress,
             MembershipIsValid membershipIsValid,
-            MembershipIsCorp membershipIsCorp
+            MembershipIsCorp membershipIsCorp,
+            MembershipRefreshToken membershipRefreshToken
+
     ) {
         return new Membership(
                 membershipId.membershipId,
@@ -35,7 +33,8 @@ public class Membership {
                 membershipEmail.membershipEmail,
                 membershipAddress.membershipAddress,
                 membershipIsValid.membershipIsValid,
-                membershipIsCorp.membershipIsCorp
+                membershipIsCorp.membershipIsCorp,
+                membershipRefreshToken.refreshToken
         );
     }
 
@@ -91,5 +90,13 @@ public class Membership {
         }
 
         boolean membershipIsCorp;
+    }
+
+    @Value
+    public static class MembershipRefreshToken {
+        public MembershipRefreshToken(String value) {
+            this.refreshToken = value;
+        }
+        String refreshToken;
     }
 }
