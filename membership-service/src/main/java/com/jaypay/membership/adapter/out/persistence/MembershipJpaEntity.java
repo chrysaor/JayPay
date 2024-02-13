@@ -47,4 +47,14 @@ public class MembershipJpaEntity {
                 ", refreshToken='" + refreshToken + '\'' +
                 '}';
     }
+
+    public MembershipJpaEntity clone() {
+        try {
+            super.clone();
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+        return new MembershipJpaEntity(this.membershipId, this.name, this.email, this.address, this.isValid, this.isCorp, this.refreshToken);
+    }
 }

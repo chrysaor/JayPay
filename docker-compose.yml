@@ -53,6 +53,10 @@ services:
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
       - TASK_TOPIC=jaypay.task.topic
+      - SPRING_CLOUD_VAULT_TOKEN=hvs.CAESIEJIL3SzOoZA-HGkADGwsEZvoSP7AFyl3FDI860ShaXcGh4KHGh2cy41eU5SRGFFY1hSSTVLbFRLd2lxbTB4QWM
+      - SPRING_CLOUD_VAULT_SCHEME=http
+      - SPRING_CLOUD_VAULT_HOST=vault
+      - SPRING_CLOUD_VAULT_PORT=8200
 
   banking-service:
     image: jaypay-banking-service:1.0.0
@@ -242,6 +246,17 @@ services:
       - SERVICE_BANKING_URL=http://banking-service:8080
       - SERVICE_MONEY_URL=http://money-service:8080
       - SERVICE_PAYMENT_URL=http://payment-service:8080
+
+  valut:
+    image: vault:1.13.1
+    networks:
+      - jaypay_network
+    container_name: vault
+    ports:
+      - "8200:8200"
+    restart: always
+    cap_add:
+      - IPC_LOCK
 
   logging-consumer:
     image: jaypay-logging-consumer:1.0.0
