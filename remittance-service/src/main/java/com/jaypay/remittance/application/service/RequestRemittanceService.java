@@ -61,7 +61,7 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
         if (moneyInfo.getBalance() < command.getAmount()) {
             int rechargeAmount = (int) Math.ceil((command.getAmount() - moneyInfo.getBalance()) / 10000.0) * 10000;
             boolean moneyResult = moneyPort.requestMoneyRecharging(command.getFromMembershipId(), rechargeAmount);
-
+            System.out.println(moneyResult);
             if (!moneyResult) {
                 return null;
             }
