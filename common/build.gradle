@@ -6,6 +6,11 @@ ext {
     axonVersion = "4.6.0"
 }
 
+compileJava {
+    sourceCompatibility = 11
+    targetCompatibility = 11
+}
+
 group = 'com.jaypay.common'
 
 apply plugin: 'java'
