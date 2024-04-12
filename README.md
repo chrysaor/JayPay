@@ -1,4 +1,5 @@
-# JayPay
+# JayPay Project Overview
+![Overall Architecture](docs/architecture/jaypay_overall_architecture.png)
 
 ## Execution
 ```
