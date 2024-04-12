@@ -41,3 +41,11 @@ docker-compose up -d
   - http://localhost:8989
 - Axon Server Dashboard
   - http://localhost:8024
+
+## Trouble Shooting
+### 1. It needs connection information to use dynamo db.
+[MoneyQueryService: DynamoDBAdapter.java]
+```
+private static final String ACCESS_KEY = "";
+private static final String SECRET_KEY = "";
+```
