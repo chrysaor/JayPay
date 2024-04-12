@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthMembershipController {
     private final AuthMembershipUseCase authMembershipUseCase;
 
-    @PostMapping(path = "/membership/login")
+    @PostMapping(path = "/memberships/login")
     JwtToken loginMembership(@RequestBody LoginMembershipRequest request) {
         LoginMembershipCommand command = LoginMembershipCommand.builder()
                 .membershipId(request.getMembershipId())
@@ -27,7 +27,7 @@ public class AuthMembershipController {
         return authMembershipUseCase.loginMembership(command);
     }
 
-    @PostMapping(path = "/membership/refresh-token")
+    @PostMapping(path = "/memberships/refresh-token")
     JwtToken refreshToken(@RequestBody RefreshTokenRequest request) {
         RefreshTokenCommand command = RefreshTokenCommand.builder()
                 .refreshToken(request.getRefreshToken())
@@ -36,7 +36,7 @@ public class AuthMembershipController {
         return authMembershipUseCase.refreshJwtTokenByRefreshToken(command);
     }
 
-    @PostMapping(path = "/membership/token-validate")
+    @PostMapping(path = "/memberships/token-validate")
     boolean validateToken(@RequestBody ValidateTokenRequest request) {
         ValidateTokenCommand command = ValidateTokenCommand.builder()
                 .jwtToken(request.getJwtToken())
@@ -45,7 +45,7 @@ public class AuthMembershipController {
         return authMembershipUseCase.validateJwtToken(command);
     }
 
-    @PostMapping(path = "/membership/auth")
+    @PostMapping(path = "/memberships/auth")
     Membership authenticatedMembershipByToken(@RequestBody ValidateTokenRequest request) {
         ValidateTokenCommand command = ValidateTokenCommand.builder()
                 .jwtToken(request.getJwtToken())
