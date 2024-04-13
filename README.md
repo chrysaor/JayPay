@@ -1,6 +1,44 @@
 # JayPay Project Overview
 ![Overall Architecture](docs/architecture/jaypay_overall_architecture.png)
 
+```
+It consists of six services: Membership, Banking, Money, Remittance, Payment, and Settlement, each configured as an independent project.
+Each service implemented basic functionalities using Hexagonal Architecture, and then incorporates features such as EDA, CQRS, Event Sourcing, and the Saga Pattern.
+
+The projects are primarily based on Spring Boot and Java 11, and the Axon Framework v4.6.0 is used to implement EDA.
+```
+
+## Using Stack in this project
+- Java 11
+- Spring Boot, Spring Data JPA
+- Lombok
+- Gradle
+- JWT
+- Axon Framework
+- Docker, Docker Compose
+- Mysql, H2
+- AWS DynamoDB
+
+## Sequence Diagram Examples
+
+### Membership service
+![Membership Sequence Example](docs/sequences/1_membership.png)
+
+### Banking service
+![Banking Sequence Example](docs/sequences/2_transfer_money.png)
+
+### Money service
+![Money Sequence Example](docs/sequences/3_charge_money.png)
+
+### Remittance service
+![Remittance Sequence Example](docs/sequences/4_remittance.png)
+
+### Payment service
+![Payment Sequence Example](docs/sequences/5_payment.png)
+
+### Settlement service
+![Settlement Sequence Example](docs/sequences/6_settlement.png)
+
 ## Execution
 ```
 ./gradlew docker
