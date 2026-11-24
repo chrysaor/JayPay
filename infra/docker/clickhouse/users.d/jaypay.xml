@@ -1,0 +1,10 @@
+<clickhouse>
+    <profiles>
+        <default>
+            <max_threads>2</max_threads>
+            <max_memory_usage>402653184</max_memory_usage>
+            <max_bytes_before_external_group_by>134217728</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>134217728</max_bytes_before_external_sort>
+        </default>
+    </profiles>
+</clickhouse>

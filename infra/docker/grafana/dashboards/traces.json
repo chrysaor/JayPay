@@ -1,0 +1,195 @@
+{
+  "uid": "jaypay-traces",
+  "title": "JayPay traces",
+  "tags": [
+    "jaypay"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "trace_id",
+        "label": "Trace",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse"
+        },
+        "query": {
+          "refId": "trace_id",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT TraceId FROM otel.otel_traces WHERE $__timeFilter(Timestamp) GROUP BY TraceId HAVING uniqExact(ServiceName) > 1 ORDER BY min(Timestamp) DESC LIMIT 50",
+          "format": 1,
+          "queryType": "sql"
+        },
+        "definition": "Recent traces that cross more than one service",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 0
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "JayPay",
+      "type": "dashboards",
+      "tags": [
+        "jaypay"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Recent traces",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open this trace",
+                    "url": "/d/jaypay-traces/jaypay-traces?var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "duration_ms"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "started",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT TraceId AS trace_id, min(Timestamp) AS started, anyIf(SpanName, ParentSpanId = '') AS root_operation, arrayStringConcat(arraySort(groupUniqArray(ServiceName)), ', ') AS services, count() AS spans, round(max(Duration) / 1e6, 1) AS duration_ms FROM otel.otel_traces WHERE $__timeFilter(Timestamp) GROUP BY TraceId ORDER BY started DESC LIMIT 100",
+          "format": 1,
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "traces",
+      "title": "Trace ${trace_id}",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT TraceId AS traceID, SpanId AS spanID, ParentSpanId AS parentSpanID, ServiceName AS serviceName, SpanName AS operationName, multiply(toUnixTimestamp64Nano(Timestamp), 0.000001) AS startTime, multiply(Duration, 0.000001) AS duration, arrayMap(key -> map('key', key, 'value', SpanAttributes[key]), mapKeys(SpanAttributes)) AS tags, arrayMap(key -> map('key', key, 'value', ResourceAttributes[key]), mapKeys(ResourceAttributes)) AS serviceTags FROM otel.otel_traces WHERE TraceId = '${trace_id}' ORDER BY startTime ASC LIMIT 1000",
+          "format": 3,
+          "queryType": "sql"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Logs of this trace",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 10
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Ascending",
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT Timestamp AS timestamp, Body AS body, SeverityText AS level, ServiceName AS service, SpanId AS spanID FROM otel.otel_logs WHERE TraceId = '${trace_id}' ORDER BY Timestamp ASC LIMIT 1000",
+          "format": 2,
+          "queryType": "sql"
+        }
+      ]
+    }
+  ]
+}
