@@ -196,6 +196,16 @@ request "direct top-up" POST "$web/api/money/money/increase" "$(hex 16)" '{"targ
 [ -n "$(json_field moneyChangingRequestId)" ] || fail "direct top-up returned $(response)"
 eventually 30 "the direct top-up never reached the wallet" wallet_balance_is "$membership_id" 17000
 
+log "send 5000 to another member"
+sign_up "Smoke Receiver" "smoke-receiver-$run@example.com"
+receiver=$signed_up
+open_wallet "$receiver"
+request "remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
+  '{"fromMembershipId":"'$membership_id'","toMembershipId":"'$receiver'","remittanceType":0,"amount":5000}'
+[ "$(json_field remittanceStatus)" = success ] || fail "remittance returned $(response)"
+eventually 30 "the remittance never left the sender's wallet" wallet_balance_is "$membership_id" 12000
+eventually 30 "the remittance never reached the receiver's wallet" wallet_balance_is "$receiver" 5000
+
 log "register a second member's bank account synchronously, the way the web site does, and top it up through the saga"
 sign_up "Smoke Sync" "smoke-sync-$run@example.com"
 sync_member=$signed_up
