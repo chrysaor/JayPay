@@ -1,12 +1,14 @@
 package com.jaypay.common;
 
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.KafkaException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class LoggingProducer {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -21,13 +23,13 @@ public class LoggingProducer {
         try {
             kafkaTemplate.send(topic, key, value).whenComplete((result, exception) -> {
                 if (exception == null) {
-                    System.out.println("Message sent successfully. Offset: " + result.getRecordMetadata().offset());
+                    log.info("Message sent successfully. Offset: {}", result.getRecordMetadata().offset());
                 } else {
-                    System.err.println("Failed to send message: " + exception.getMessage());
+                    log.warn("Failed to send message: {}", exception.getMessage());
                 }
             });
         } catch (KafkaException e) {
-            System.err.println("Failed to send message: " + e.getMessage());
+            log.warn("Failed to send message: {}", e.getMessage());
         }
     }
 

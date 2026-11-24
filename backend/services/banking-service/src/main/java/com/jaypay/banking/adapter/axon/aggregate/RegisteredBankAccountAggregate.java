@@ -1,5 +1,6 @@
 package com.jaypay.banking.adapter.axon.aggregate;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.banking.adapter.axon.command.CreateRegisteredBankAccountCommand;
 import com.jaypay.banking.adapter.axon.event.CreateRegisteredBankAccountEvent;
 import com.jaypay.banking.adapter.out.external.bank.BankAccount;
@@ -21,6 +22,7 @@ import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 
 @Aggregate()
 @Data
+@Slf4j
 public class RegisteredBankAccountAggregate {
 
     @AggregateIdentifier
@@ -33,7 +35,7 @@ public class RegisteredBankAccountAggregate {
 
     @CommandHandler
     public RegisteredBankAccountAggregate(@NotNull CreateRegisteredBankAccountCommand command) {
-        System.out.println("CreateRegisteredBankAccountCommand Sourcing Handler");
+        log.info("CreateRegisteredBankAccountCommand Sourcing Handler");
 
         apply(new CreateRegisteredBankAccountEvent(
                 command.getMembershipId(), command.getBankName(), command.getBankAccountNumber()
@@ -42,7 +44,7 @@ public class RegisteredBankAccountAggregate {
 
     @CommandHandler
     public void handle(@NotNull CheckRegisteredBankAccountCommand command, RequestBankAccountInfoPort requestBankAccountInfoPort) {
-        System.out.println("CheckRegisteredBankAccountCommand Handler");
+        log.info("CheckRegisteredBankAccountCommand Handler");
 
         id = command.getAggregateIdentifier();
 
@@ -65,7 +67,7 @@ public class RegisteredBankAccountAggregate {
 
     @EventSourcingHandler
     public void on(CreateRegisteredBankAccountEvent event) {
-        System.out.println("CreatedRegisteredBankAccountEvent Sourcing Handler");
+        log.info("CreatedRegisteredBankAccountEvent Sourcing Handler");
 
         id = UUID.randomUUID().toString();
         membershipId = event.getMembershipId();

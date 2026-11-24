@@ -1,5 +1,6 @@
 package com.jaypay.money.adapter.in.kafka;
 
+import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CountDownLatchManager;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class RechargingMoneyResultConsumer {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -21,7 +23,7 @@ public class RechargingMoneyResultConsumer {
 
     @KafkaListener(topics = "${task.result.topic}", groupId = "my-group")
     public void consume(ConsumerRecord<String, String> record) throws JsonProcessingException {
-        System.out.println("[TaskResultConsumer] Received message: " + record.key() + " / " + record.value());
+        log.info("[TaskResultConsumer] Received message: {} / {}", record.key(), record.value());
 
         RechargingMoneyTask task = mapper.readValue(record.value(), RechargingMoneyTask.class);
 

@@ -1,5 +1,6 @@
 package com.jaypay.money.adapter.axon.saga;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.common.event.*;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 @Saga
 @NoArgsConstructor
+@Slf4j
 public class MoneyRechargeSaga {
 
     private transient CommandGateway commandGateway;
@@ -31,7 +33,7 @@ public class MoneyRechargeSaga {
     @StartSaga
     @SagaEventHandler(associationProperty = "rechargingRequestId")
     public void handle(RechargingRequestCreatedEvent event) {
-        System.out.println("RechargingRequestCreatedEvent Start saga");
+        log.info("RechargingRequestCreatedEvent Start saga");
 
         String checkRegisteredBankAccountId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("checkRegisteredBankAccountId", checkRegisteredBankAccountId);
@@ -47,10 +49,10 @@ public class MoneyRechargeSaga {
         ).whenComplete(
                 (result, throwable) -> {
                     if (throwable != null) {
-                        System.out.println("CheckRegisteredBankAccountCommand Command failed");
-                        System.out.println(throwable.getMessage());
+                        log.warn("CheckRegisteredBankAccountCommand Command failed");
+                        log.warn("{}", throwable.getMessage());
                     } else {
-                        System.out.println("CheckRegisteredBankAccountCommand Command success");
+                        log.info("CheckRegisteredBankAccountCommand Command success");
                     }
                 }
         );
@@ -59,12 +61,12 @@ public class MoneyRechargeSaga {
 
     @SagaEventHandler(associationProperty = "checkRegisteredBankAccountId")
     public void handle(CheckedRegisteredBankAccountEvent event) {
-        System.out.println("CheckedRegisteredBankAccountEvent saga: " + event.toString());
+        log.info("CheckedRegisteredBankAccountEvent saga: {}", event);
         boolean status = event.isChecked();
         if (status) {
-            System.out.println("CheckedRegisteredBankAccountEvent event success");
+            log.info("CheckedRegisteredBankAccountEvent event success");
         } else {
-            System.out.println("CheckedRegisteredBankAccountEvent event Failed");
+            log.warn("CheckedRegisteredBankAccountEvent event Failed");
         }
 
         String requestFirmBankingId = UUID.randomUUID().toString();
@@ -83,10 +85,10 @@ public class MoneyRechargeSaga {
         )).whenComplete(
                 (result, throwable) -> {
                     if (throwable != null) {
-                        System.out.println(throwable.getMessage());
-                        System.out.println("RequestFirmBankingCommand Command failed");
+                        log.warn("{}", throwable.getMessage());
+                        log.warn("RequestFirmBankingCommand Command failed");
                     } else {
-                        System.out.println("RequestFirmBankingCommand Command success");
+                        log.info("RequestFirmBankingCommand Command success");
                     }
                 }
         );
@@ -94,13 +96,13 @@ public class MoneyRechargeSaga {
 
     @SagaEventHandler(associationProperty = "requestFirmBankingId")
     public void handle(RequestFirmBankingFinishedEvent event, IncreaseMoneyPort increaseMoneyPort) {
-        System.out.println("RequestFirmBankingFinishedEvent saga: " + event.toString());
+        log.info("RequestFirmBankingFinishedEvent saga: {}", event);
 
         boolean status = event.getStatus() == 0;
         if (status) {
-            System.out.println("RequestFirmBankingFinishedEvent event success");
+            log.info("RequestFirmBankingFinishedEvent event success");
         } else {
-            System.out.println("RequestFirmBankingFinishedEvent event Failed");
+            log.warn("RequestFirmBankingFinishedEvent event Failed");
         }
 
         MemberMoneyJpaEntity resultEntity =
@@ -123,10 +125,10 @@ public class MoneyRechargeSaga {
             )).whenComplete(
                     (result, throwable) -> {
                         if (throwable != null) {
-                            System.out.println("RollbackFirmbankingRequestCommand Command failed");
-                            System.out.println(throwable.getMessage());
+                            log.warn("RollbackFirmbankingRequestCommand Command failed");
+                            log.warn("{}", throwable.getMessage());
                         } else {
-                            System.out.println("Saga success : "+ result.toString());
+                            log.info("Saga success : {}", result);
                             SagaLifecycle.end();
                         }
                     }
@@ -139,7 +141,7 @@ public class MoneyRechargeSaga {
     @EndSaga
     @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
     public void handle(RollbackFirmBankingFinishedEvent event) {
-        System.out.println("RollbackFirmBankingFinishedEvent saga" + event.toString());
+        log.info("RollbackFirmBankingFinishedEvent saga {}", event);
     }
 
 }

@@ -1,5 +1,6 @@
 package com.jaypay.membership.adapter.out.persistence;
 
+import lombok.extern.slf4j.Slf4j;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,6 +15,7 @@ import jakarta.persistence.Table;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Slf4j
 public class MembershipJpaEntity {
 
     @Id
@@ -52,7 +54,7 @@ public class MembershipJpaEntity {
         try {
             super.clone();
         } catch (Exception e) {
-            System.out.println(e.getMessage());
+            log.warn("{}", e.getMessage());
         }
 
         return new MembershipJpaEntity(this.membershipId, this.name, this.email, this.address, this.isValid, this.isCorp, this.refreshToken);

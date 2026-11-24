@@ -1,5 +1,6 @@
 package com.jaypay.taskconsumer;
 
+import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +8,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class TaskResultProducer {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -28,9 +30,9 @@ public class TaskResultProducer {
 
         kafkaTemplate.send(topic, key, jsonStringToProduce).whenComplete((result, exception) -> {
             if (exception == null) {
-                System.out.println("[TaskResultProducer] Message sent successfully. Offset: " + result.getRecordMetadata().offset());
+                log.info("[TaskResultProducer] Message sent successfully. Offset: {}", result.getRecordMetadata().offset());
             } else {
-                System.err.println("[TaskResultProducer] Failed to send message: " + exception.getMessage());
+                log.warn("[TaskResultProducer] Failed to send message: {}", exception.getMessage());
             }
         });
     }

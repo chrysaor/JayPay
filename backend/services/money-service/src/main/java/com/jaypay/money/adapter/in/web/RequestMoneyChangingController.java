@@ -1,6 +1,7 @@
 package com.jaypay.money.adapter.in.web;
 
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.common.WebAdapter;
 import com.jaypay.money.application.port.in.*;
 import com.jaypay.money.domain.MemberMoney;
@@ -15,6 +16,7 @@ import java.util.List;
 @WebAdapter
 @RestController
 @RequiredArgsConstructor
+@Slf4j
 public class RequestMoneyChangingController {
 
     private final IncreaseMoneyRequestUseCase increaseMoneyRequestUseCase;
@@ -57,7 +59,7 @@ public class RequestMoneyChangingController {
 
     @PostMapping(path = "/money/decrease")
     MoneyChangingResultDetail decreaseMoneyChangingRequest(@RequestBody DecreaseMoneyChangingRequest request) {
-        System.out.println(request.toString());
+        log.info("{}", request);
         return null;
     }
 

@@ -1,6 +1,7 @@
 package com.jaypay.money.adapter.out.kafka;
 
 
+import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.RechargingMoneyTask;
@@ -10,6 +11,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class TaskProducer implements SendRechargingMoneyTaskPort {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -36,9 +38,9 @@ public class TaskProducer implements SendRechargingMoneyTaskPort {
 
         kafkaTemplate.send(topic, key, jsonStringToProduce).whenComplete((result, exception) -> {
             if (exception == null) {
-                System.out.println("Message sent successfully. Offset: " + result.getRecordMetadata().offset());
+                log.info("Message sent successfully. Offset: {}", result.getRecordMetadata().offset());
             } else {
-                System.err.println("Failed to send message: " + exception.getMessage());
+                log.warn("Failed to send message: {}", exception.getMessage());
             }
         });
     }

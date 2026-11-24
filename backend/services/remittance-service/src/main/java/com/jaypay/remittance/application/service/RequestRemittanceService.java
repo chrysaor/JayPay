@@ -1,5 +1,6 @@
 package com.jaypay.remittance.application.service;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.common.UseCase;
 import com.jaypay.remittance.adapter.out.persistence.RemittanceRequestJpaEntity;
 import com.jaypay.remittance.adapter.out.persistence.RemittanceRequestMapper;
@@ -21,6 +22,7 @@ import jakarta.transaction.Transactional;
 @UseCase
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class RequestRemittanceService implements RequestRemittanceUseCase {
 
     private final RequestRemittancePort requestRemittancePort;
@@ -43,7 +45,7 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
         if (moneyInfo.getBalance() < command.getAmount()) {
             int rechargeAmount = (int) Math.ceil((command.getAmount() - moneyInfo.getBalance()) / 10000.0) * 10000;
             boolean moneyResult = moneyPort.requestMoneyRecharging(command.getFromMembershipId(), rechargeAmount);
-            System.out.println(moneyResult);
+            log.info("{}", moneyResult);
             if (!moneyResult) {
                 return null;
             }
