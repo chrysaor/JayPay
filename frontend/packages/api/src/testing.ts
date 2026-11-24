@@ -1,31 +1,13 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
-import { App } from '../App'
 
-export function renderApp(path: string) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const user = userEvent.setup()
-  render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
-  return user
-}
-
-type ReceivedRequest = {
+export type ReceivedRequest = {
   url: string
   method: string
   contentType: string | null
   body: string | null
 }
 
-type Reply = { status?: number; body?: unknown }
+export type Reply = { status?: number; body?: unknown }
 
 export function fakeServer(reply: Reply | ((request: ReceivedRequest) => Reply)) {
   const received: ReceivedRequest[] = []
@@ -46,9 +28,17 @@ export function fakeServer(reply: Reply | ((request: ReceivedRequest) => Reply))
   return received
 }
 
+export function fakeRoutes(routes: Partial<Record<string, Reply>>) {
+  return fakeServer((request) => routes[`${request.method} ${request.url}`] ?? { status: 404 })
+}
+
 export function unreachableServer() {
   vi.stubGlobal(
     'fetch',
     vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
   )
+}
+
+export function jsonBody(request: ReceivedRequest | undefined): unknown {
+  return JSON.parse(request?.body ?? 'null')
 }

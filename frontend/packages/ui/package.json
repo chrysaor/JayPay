@@ -1,0 +1,13 @@
+{
+  "name": "@jaypay/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./ErrorNotice": "./src/ErrorNotice.tsx",
+    "./form": "./src/form.ts",
+    "./money": "./src/money.ts"
+  },
+  "dependencies": {
+    "react": "19.3.1"
+  }
+}

@@ -1,21 +1,16 @@
 import { z } from 'zod'
-import { call, postJson } from './client'
+import { call } from './client'
 
-const membershipSchema = z.object({
+export const membershipSchema = z.object({
   membershipId: z.string(),
   name: z.string().nullish(),
   email: z.string().nullish(),
   address: z.string().nullish(),
   valid: z.boolean(),
   corp: z.boolean(),
-  refreshToken: z.string().nullish(),
 })
 
-export type NewMembership = { name: string; email: string; address: string; corp: boolean }
-
-export function registerMembership(input: NewMembership) {
-  return call('membership', '/memberships', membershipSchema, postJson(input))
-}
+export type Membership = z.output<typeof membershipSchema>
 
 export function findMembership(membershipId: string) {
   return call('membership', `/memberships/${encodeURIComponent(membershipId)}`, membershipSchema)
