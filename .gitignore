@@ -45,11 +45,5 @@ bin/
 
 ### Resource ###
 .env
-infra/docker/postgres/data/
-
-# AXON server
-axon-server-se/config/**
-axon-server-se/data/**
-axon-server-se/events/**
 
 .audit/
