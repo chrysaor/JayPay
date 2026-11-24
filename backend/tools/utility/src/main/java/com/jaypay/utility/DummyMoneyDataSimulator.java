@@ -21,7 +21,7 @@ public class DummyMoneyDataSimulator {
     private static final String CREATE_MONEY_API_ENDPOINT = "http://localhost:8083/money/create-member-money";
     private static final String REGISTER_ACCOUNT_API_ENDPOINT = "http://localhost:8082/banking/account/register-eda";
 
-    private static final String[] BANK_NAME = {"KBB", "신한한", "우리리"};
+    private static final String[] BANK_NAME = {"KB", "Shinhan", "Woori"};
     public static void main(String[] args) throws InterruptedException {
         Random random = new Random();
         List<Integer> readyMemberList = new ArrayList<>();
