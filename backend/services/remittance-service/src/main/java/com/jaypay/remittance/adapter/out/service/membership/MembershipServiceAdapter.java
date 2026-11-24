@@ -1,8 +1,8 @@
 package com.jaypay.remittance.adapter.out.service.membership;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CommonHttpClient;
 import com.jaypay.common.ExternalSystemAdapter;
+import com.jaypay.common.membership.MembershipResponse;
 import com.jaypay.remittance.application.port.out.membership.MembershipPort;
 import com.jaypay.remittance.application.port.out.membership.MembershipStatus;
 import lombok.RequiredArgsConstructor;
@@ -19,21 +19,8 @@ public class MembershipServiceAdapter implements MembershipPort {
 
     @Override
     public MembershipStatus getMembershipStatus(String membershipId) {
-
         String buildUrl = String.join("/", this.membershipServiceEndpoint, "memberships", membershipId);
-        try {
-            String jsonResponse = membershipServiceHttpClient.sendGetRequest(buildUrl).body();
-            ObjectMapper mapper = new ObjectMapper();
-
-            Membership mem = mapper.readValue(jsonResponse, Membership.class);
-            if (mem.isValid()){
-                return new MembershipStatus(mem.getMembershipId(), true);
-            } else{
-                return new MembershipStatus(mem.getMembershipId(), false);
-            }
-
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        MembershipResponse membership = membershipServiceHttpClient.get(buildUrl, MembershipResponse.class);
+        return new MembershipStatus(membership.membershipId(), membership.valid());
     }
 }

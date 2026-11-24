@@ -1,24 +1,12 @@
 package com.jaypay.remittance.application.port.in;
 
-import com.jaypay.common.SelfValidating;
 import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 
-import jakarta.validation.constraints.NotNull;
-
+import java.util.Objects;
 
 @Builder
-@Data
-@EqualsAndHashCode(callSuper = false)
-public class FindRemittanceCommand extends SelfValidating<FindRemittanceCommand> {
-
-    @NotNull
-    private String membershipId;
-
-    public FindRemittanceCommand(String membershipId) {
-        this.membershipId = membershipId;
-        this.validateSelf();
+public record FindRemittanceCommand(String membershipId) {
+    public FindRemittanceCommand {
+        Objects.requireNonNull(membershipId, "membershipId");
     }
-
 }

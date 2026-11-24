@@ -1,11 +1,10 @@
 package com.jaypay.remittance.application.port.out;
 
-import com.jaypay.remittance.adapter.out.persistence.RemittanceRequestJpaEntity;
-import com.jaypay.remittance.application.port.in.RequestRemittanceCommand;
+import com.jaypay.remittance.domain.RemittanceRequest;
 
 public interface RequestRemittancePort {
 
-    RemittanceRequestJpaEntity createRemittanceRequestHistory(RequestRemittanceCommand command);
-    boolean saveRemittanceRequestHistory(RemittanceRequestJpaEntity entity);
+    long createRemittanceRequestHistory(NewRemittanceRequest request);
+    RemittanceRequest saveRemittanceRequestStatus(long remittanceRequestHistoryId, String remittanceStatus);
 
 }

@@ -2,10 +2,9 @@ package com.jaypay.remittance.application.service;
 
 import lombok.extern.slf4j.Slf4j;
 import com.jaypay.common.UseCase;
-import com.jaypay.remittance.adapter.out.persistence.RemittanceRequestJpaEntity;
-import com.jaypay.remittance.adapter.out.persistence.RemittanceRequestMapper;
 import com.jaypay.remittance.application.port.in.RequestRemittanceCommand;
 import com.jaypay.remittance.application.port.in.RequestRemittanceUseCase;
+import com.jaypay.remittance.application.port.out.NewRemittanceRequest;
 import com.jaypay.remittance.application.port.out.RequestRemittancePort;
 import com.jaypay.remittance.application.port.out.banking.BankingInfo;
 import com.jaypay.remittance.application.port.out.banking.BankingPort;
@@ -26,58 +25,58 @@ import jakarta.transaction.Transactional;
 public class RequestRemittanceService implements RequestRemittanceUseCase {
 
     private final RequestRemittancePort requestRemittancePort;
-    private final RemittanceRequestMapper mapper;
     private final MembershipPort membershipPort;
     private final MoneyPort moneyPort;
     private final BankingPort bankingPort;
 
     @Override
     public RemittanceRequest requestRemittance(RequestRemittanceCommand command) {
-        RemittanceRequestJpaEntity entity = requestRemittancePort.createRemittanceRequestHistory(command);
+        long remittanceRequestHistoryId = requestRemittancePort.createRemittanceRequestHistory(new NewRemittanceRequest(
+                command.fromMembershipId(),
+                command.toMembershipId(),
+                command.toBankName(),
+                command.toBankAccountNumber(),
+                command.remittanceType(),
+                command.amount()
+        ));
 
-        MembershipStatus membershipStatus = membershipPort.getMembershipStatus(command.getFromMembershipId());
+        MembershipStatus membershipStatus = membershipPort.getMembershipStatus(command.fromMembershipId());
         if (!membershipStatus.isValid()) {
             return null;
         }
 
-        MoneyInfo moneyInfo = moneyPort.getMoneyInfo(command.getFromMembershipId());
+        MoneyInfo moneyInfo = moneyPort.getMoneyInfo(command.fromMembershipId());
 
-        if (moneyInfo.getBalance() < command.getAmount()) {
-            int rechargeAmount = (int) Math.ceil((command.getAmount() - moneyInfo.getBalance()) / 10000.0) * 10000;
-            boolean moneyResult = moneyPort.requestMoneyRecharging(command.getFromMembershipId(), rechargeAmount);
+        if (moneyInfo.getBalance() < command.amount()) {
+            int rechargeAmount = (int) Math.ceil((command.amount() - moneyInfo.getBalance()) / 10000.0) * 10000;
+            boolean moneyResult = moneyPort.requestMoneyRecharging(command.fromMembershipId(), rechargeAmount);
             log.info("{}", moneyResult);
             if (!moneyResult) {
                 return null;
             }
         }
 
-        if (command.getRemittanceType() == 0) {
+        if (command.remittanceType() == 0) {
             boolean decResult;
             boolean incResult;
-            decResult = moneyPort.requestMoneyDecrease(command.getFromMembershipId(), command.getAmount());
-            incResult = moneyPort.requestMoneyIncrease(command.getToMembershipId(), command.getAmount());
+            decResult = moneyPort.requestMoneyDecrease(command.fromMembershipId(), command.amount());
+            incResult = moneyPort.requestMoneyIncrease(command.toMembershipId(), command.amount());
 
             if (!decResult || !incResult) {
                 return null;
             }
-        } else if (command.getRemittanceType() == 1) {
-            BankingInfo bankingInfo = bankingPort.getMembershipBankingInfo(command.getToBankName(), command.getToBankAccountNumber());
+        } else if (command.remittanceType() == 1) {
+            BankingInfo bankingInfo = bankingPort.getMembershipBankingInfo(command.toBankName(), command.toBankAccountNumber());
             if (!bankingInfo.isValid()) {
                 return null;
             }
 
-            boolean remittanceResult = bankingPort.requestFirmbanking(command.getToBankName(), command.getToBankAccountNumber(), command.getAmount());
+            boolean remittanceResult = bankingPort.requestFirmbanking(command.toBankName(), command.toBankAccountNumber(), command.amount());
             if (!remittanceResult) {
                 return null;
             }
         }
 
-        entity.setRemittanceStatus("success");
-        boolean result = requestRemittancePort.saveRemittanceRequestHistory(entity);
-        if (result) {
-            return mapper.mapToDomainEntity(entity);
-        }
-
-        return null;
+        return requestRemittancePort.saveRemittanceRequestStatus(remittanceRequestHistoryId, "success");
     }
 }
