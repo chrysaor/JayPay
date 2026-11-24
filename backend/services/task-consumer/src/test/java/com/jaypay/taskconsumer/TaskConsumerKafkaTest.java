@@ -11,6 +11,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.time.Duration;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,5 +42,20 @@ class TaskConsumerKafkaTest {
         assertThat(task.get("moneyAmount").asInt()).isEqualTo(1000);
         assertThat(task.get("subTaskList")).hasSize(2)
                 .allSatisfy(subTask -> assertThat(subTask.get("status").asText()).isEqualTo("success"));
+    }
+
+    @Test
+    void continuesTheTraceOfTheTaskOnTheResultRecord() {
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        KafkaTestBroker.send("jaypay.task.topic", "task-traced", """
+                {"taskID":"task-traced","taskName":"Increase Money Task","membershipID":"7",
+                 "subTaskList":[{"membershipID":"7","subTaskName":"banking","taskType":"banking","status":"ready"}],
+                 "toBankName":"jay","toBankAccountNumber":null,"moneyAmount":1000}
+                """, Map.of("traceparent", "00-" + traceId + "-00f067aa0ba902b7-01"));
+
+        ConsumerRecord<String, String> result =
+                KafkaTestBroker.awaitRecord("jaypay.task.result.topic", "task-traced", Duration.ofSeconds(60));
+
+        assertThat(KafkaTestBroker.header(result, "traceparent")).startsWith("00-" + traceId + "-");
     }
 }
