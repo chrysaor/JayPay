@@ -26,7 +26,7 @@ class AESProviderTest {
 
     @Test
     void decryptsNonAsciiText() throws Exception {
-        String plainText = "회원@example.com";
+        String plainText = "jürgen.åse@example.com";
 
         assertThat(provider.decrypt(provider.encrypt(plainText))).isEqualTo(plainText);
     }
