@@ -1,5 +1,6 @@
 plugins {
     id("jaypay.java")
+    id("jaypay.slf4j-only")
     id("org.springframework.boot")
 }
 
