@@ -9,7 +9,7 @@ const upstreams = {
   money: ['JAYPAY_MONEY_URL', 'http://localhost:8083'],
   remittance: ['JAYPAY_REMITTANCE_URL', 'http://localhost:8084'],
   payment: ['JAYPAY_PAYMENT_URL', 'http://localhost:8085'],
-}
+} as const
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, resolve(import.meta.dirname, '../..'), 'JAYPAY_')

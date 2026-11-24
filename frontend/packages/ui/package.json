@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./Card": "./src/Card.tsx",
     "./ErrorNotice": "./src/ErrorNotice.tsx",
     "./form": "./src/form.ts",
-    "./money": "./src/money.ts"
+    "./format": "./src/format.ts"
   },
   "dependencies": {
     "react": "19.3.1"
