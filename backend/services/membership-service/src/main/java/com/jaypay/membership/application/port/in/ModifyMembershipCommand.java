@@ -1,46 +1,20 @@
 package com.jaypay.membership.application.port.in;
 
-import com.jaypay.common.SelfValidating;
 import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 
-import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import java.util.Objects;
 
 @Builder
-@Data
-@EqualsAndHashCode(callSuper = false)
-public class ModifyMembershipCommand extends SelfValidating<ModifyMembershipCommand> {
-
-    @NotNull
-    private final String membershipId;
-
-    @NotNull
-    private final String name;
-
-    @NotNull
-    private final String email;
-
-    @NotNull
-    @NotBlank
-    private final String address;
-
-    @AssertTrue
-    private final boolean isValid;
-
-    private final boolean isCorp;
-
-
-    public ModifyMembershipCommand(String membershipId, String name, String email, String address, boolean isValid, boolean isCorp) {
-        this.membershipId = membershipId;
-        this.name = name;
-        this.email = email;
-        this.address = address;
-        this.isValid = isValid;
-        this.isCorp = isCorp;
-
-        this.validateSelf();
+public record ModifyMembershipCommand(String membershipId, String name, String email, String address, boolean isValid, boolean isCorp) {
+    public ModifyMembershipCommand {
+        Objects.requireNonNull(membershipId, "membershipId");
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(email, "email");
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("address must not be blank");
+        }
+        if (!isValid) {
+            throw new IllegalArgumentException("a modified membership must stay valid");
+        }
     }
 }

@@ -1,13 +1,11 @@
 package com.jaypay.membership.application.service;
 
 import com.jaypay.common.UseCase;
-import com.jaypay.membership.adapter.out.persistence.MembershipJpaEntity;
-import com.jaypay.membership.adapter.out.persistence.MembershipMapper;
 import com.jaypay.membership.application.port.in.ModifyMembershipCommand;
 import com.jaypay.membership.application.port.in.ModifyMembershipUseCase;
+import com.jaypay.membership.application.port.out.EncryptionPort;
 import com.jaypay.membership.application.port.out.ModifyMembershipPort;
 import com.jaypay.membership.domain.Membership;
-
 import lombok.RequiredArgsConstructor;
 
 import jakarta.transaction.Transactional;
@@ -18,20 +16,24 @@ import jakarta.transaction.Transactional;
 public class ModifyMembershipService implements ModifyMembershipUseCase {
 
     private final ModifyMembershipPort modifyMembershipPort;
-    private final MembershipMapper membershipMapper;
+    private final EncryptionPort encryptionPort;
 
     @Override
     public Membership modifyMembership(ModifyMembershipCommand command) {
-        MembershipJpaEntity jpaEntity = modifyMembershipPort.modifyMembership(
-                new Membership.MembershipId(command.getMembershipId()),
-                new Membership.MembershipName(command.getName()),
-                new Membership.MembershipEmail(command.getEmail()),
-                new Membership.MembershipAddress(command.getAddress()),
-                new Membership.MembershipIsValid(command.isValid()),
-                new Membership.MembershipIsCorp(command.isCorp()),
-                new Membership.MembershipRefreshToken("")
+        Membership.MembershipId membershipId = new Membership.MembershipId(command.membershipId());
+        Membership.MembershipName name = new Membership.MembershipName(command.name());
+        Membership.MembershipAddress address = new Membership.MembershipAddress(command.address());
+        Membership.MembershipIsValid isValid = new Membership.MembershipIsValid(command.isValid());
+        Membership.MembershipIsCorp isCorp = new Membership.MembershipIsCorp(command.isCorp());
+        Membership.MembershipRefreshToken refreshToken = new Membership.MembershipRefreshToken("");
+
+        modifyMembershipPort.modifyMembership(
+                membershipId, name, new Membership.MembershipEmail(encryptionPort.encrypt(command.email())),
+                address, isValid, isCorp, refreshToken
         );
 
-        return membershipMapper.mapToDomainEntity(jpaEntity);
+        return Membership.generateMember(
+                membershipId, name, new Membership.MembershipEmail(command.email()), address, isValid, isCorp, refreshToken
+        );
     }
 }
