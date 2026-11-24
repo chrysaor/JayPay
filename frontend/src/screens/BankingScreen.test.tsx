@@ -28,7 +28,6 @@ describe('계좌 화면', () => {
         url: '/api/banking/banking/account/register',
         method: 'POST',
         contentType: 'application/json',
-        // Lombok turns `boolean isValid` into the JSON property `valid`.
         body: JSON.stringify({ membershipId: '1', bankName: '국민은행', bankAccountNumber: '123-456', valid: true }),
       },
     ])

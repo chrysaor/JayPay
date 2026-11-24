@@ -1,8 +1,6 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
-// Each backend service is reached through /api/<service>/... on the same origin.
-// The dev server proxies it here; nginx does the same in the container image.
 const upstreams = {
   membership: process.env.JAYPAY_MEMBERSHIP_URL ?? 'http://localhost:8081',
   banking: process.env.JAYPAY_BANKING_URL ?? 'http://localhost:8082',

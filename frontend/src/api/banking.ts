@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { call } from './client'
+import { call, postJson } from './client'
 
 const registeredBankAccountSchema = z.object({
   registeredBankAccountId: z.string(),
@@ -13,10 +13,7 @@ const registeredBankAccountSchema = z.object({
 export type NewBankAccount = { membershipId: string; bankName: string; bankAccountNumber: string; valid: boolean }
 
 export function registerBankAccount(input: NewBankAccount) {
-  return call('banking', '/banking/account/register', registeredBankAccountSchema, {
-    method: 'POST',
-    body: { json: input },
-  })
+  return call('banking', '/banking/account/register', registeredBankAccountSchema, postJson(input))
 }
 
 export function findRegisteredBankAccount(membershipId: string) {

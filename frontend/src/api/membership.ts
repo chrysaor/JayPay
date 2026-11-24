@@ -1,8 +1,6 @@
 import { z } from 'zod'
-import { call, segment } from './client'
+import { call, postJson } from './client'
 
-// membership-service: RegisterMembershipController, FindMembershipController.
-// Lombok names the getter of `boolean isValid` `isValid()`, so Jackson writes and reads `valid`, not `isValid`.
 const membershipSchema = z.object({
   membershipId: z.string(),
   name: z.string().nullish(),
@@ -13,14 +11,12 @@ const membershipSchema = z.object({
   refreshToken: z.string().nullish(),
 })
 
-export type Membership = z.output<typeof membershipSchema>
-
 export type NewMembership = { name: string; email: string; address: string; corp: boolean }
 
 export function registerMembership(input: NewMembership) {
-  return call('membership', '/memberships', membershipSchema, { method: 'POST', body: { json: input } })
+  return call('membership', '/memberships', membershipSchema, postJson(input))
 }
 
 export function findMembership(membershipId: string) {
-  return call('membership', `/memberships/${segment(membershipId)}`, membershipSchema)
+  return call('membership', `/memberships/${encodeURIComponent(membershipId)}`, membershipSchema)
 }

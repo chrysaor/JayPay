@@ -5,7 +5,6 @@ import { MembershipScreen } from './screens/MembershipScreen'
 
 type Screen = { path: string; label: string; element: ReactElement }
 
-// One entry per screen. The nav, the home page and the routes all read this list.
 const screens: Screen[] = [
   { path: '/membership', label: '회원', element: <MembershipScreen /> },
   { path: '/banking', label: '계좌', element: <BankingScreen /> },

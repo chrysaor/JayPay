@@ -1,6 +1,5 @@
 import type { SubmitEvent } from 'react'
 
-/** Reads the submitted form's fields by input name, after stopping the page reload. */
 export function readForm(event: SubmitEvent<HTMLFormElement>) {
   event.preventDefault()
   const data = new FormData(event.currentTarget)

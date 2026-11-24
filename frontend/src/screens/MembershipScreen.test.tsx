@@ -30,7 +30,6 @@ describe('회원 화면', () => {
         url: '/api/membership/memberships',
         method: 'POST',
         contentType: 'application/json',
-        // Lombok turns `boolean isCorp` into the JSON property `corp`.
         body: JSON.stringify({ name: '홍길동', email: 'hong@example.com', address: '서울', corp: true }),
       },
     ])
