@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.CompositeArchRule;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +14,7 @@ import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPac
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
+import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 class HexagonalArchitectureTest {
 
@@ -116,6 +118,15 @@ class HexagonalArchitectureTest {
                 .orShould().beAnnotatedWith("org.axonframework.queryhandling.QueryHandler")
                 .orShould().beAnnotatedWith("org.axonframework.modelling.saga.SagaEventHandler")
                 .orShould().beAnnotatedWith("org.springframework.kafka.annotation.KafkaListener")
+                .allowEmptyShould(true)
+                .check(service);
+    }
+
+    @Test
+    void siblingAdaptersNeverCallEachOther() {
+        CompositeArchRule.of(slices().matching(root + ".adapter.in.(*)..").should().notDependOnEachOther())
+                .and(slices().matching(root + ".adapter.out.(*)..").should().notDependOnEachOther())
+                .because("adapters meet only through the ports of the application")
                 .allowEmptyShould(true)
                 .check(service);
     }
