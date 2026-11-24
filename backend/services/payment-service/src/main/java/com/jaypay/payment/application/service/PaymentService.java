@@ -5,7 +5,10 @@ import com.jaypay.payment.application.port.in.FinishSettlementCommand;
 import com.jaypay.payment.application.port.in.FinishSettlementUseCase;
 import com.jaypay.payment.application.port.in.RequestPaymentCommand;
 import com.jaypay.payment.application.port.in.RequestPaymentUseCase;
-import com.jaypay.payment.application.port.out.*;
+import com.jaypay.payment.application.port.out.CreatePaymentPort;
+import com.jaypay.payment.application.port.out.FinishSettlementPort;
+import com.jaypay.payment.application.port.out.GetMembershipPort;
+import com.jaypay.payment.application.port.out.MembershipStatus;
 import com.jaypay.payment.domain.Payment;
 import lombok.RequiredArgsConstructor;
 
@@ -20,7 +23,6 @@ public class PaymentService implements RequestPaymentUseCase, FinishSettlementUs
     private final CreatePaymentPort createPaymentPort;
     private final GetMembershipPort getMembershipPort;
     private final FinishSettlementPort finishSettlementPort;
-    private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
 
     @Override
     public Payment requestPayment(RequestPaymentCommand command) {

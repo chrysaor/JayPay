@@ -1,0 +1,40 @@
+package com.jaypay.money.query.application.service;
+
+import com.jaypay.money.query.application.port.in.QueryMoneySumByRegionQuery;
+import com.jaypay.money.query.application.port.out.MemberAddressInfo;
+import com.jaypay.money.query.domain.MoneySumByRegion;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class MoneySumByAddressServicesTest {
+
+    private record Increase(String address, int moneyAmount) {
+    }
+
+    @Test
+    void recordsAnIncreaseUnderTheAddressOfTheMember() {
+        List<Increase> increases = new ArrayList<>();
+        IncreaseMoneySumByAddressService service = new IncreaseMoneySumByAddressService(
+                membershipId -> new MemberAddressInfo(membershipId, membershipId.equals("7") ? "Seocho" : "unknown"),
+                (address, moneyAmount) -> increases.add(new Increase(address, moneyAmount)));
+
+        service.increaseMoneySum("7", 3000);
+
+        assertThat(increases).containsExactly(new Increase("Seocho", 3000));
+    }
+
+    @Test
+    void reportsTheStoredSumForTheRequestedAddress() {
+        QueryMoneySumByRegionService service = new QueryMoneySumByRegionService(
+                address -> address.equals("Seocho") ? 4200 : 0);
+
+        MoneySumByRegion sum = service.queryMoneySumByRegion(new QueryMoneySumByRegionQuery("Seocho"));
+
+        assertThat(sum.getRegionName()).isEqualTo("Seocho");
+        assertThat(sum.getMoneySum()).isEqualTo(4200);
+    }
+}
