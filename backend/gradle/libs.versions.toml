@@ -1,0 +1,42 @@
+[versions]
+java = "25"
+spring-boot = "4.2.0"
+axon = "4.13.3"
+awssdk = "2.59.8"
+springdoc = "3.2.1"
+jjwt = "0.13.0"
+spring-vault = "4.1.2"
+postgresql = "42.7.15"
+json = "20260814"
+
+[libraries]
+spring-boot-gradle-plugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+axon-bom = { module = "org.axonframework:axon-bom", version.ref = "axon" }
+awssdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "awssdk" }
+
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-aspectj = { module = "org.springframework.boot:spring-boot-starter-aspectj" }
+spring-boot-starter-batch-jdbc = { module = "org.springframework.boot:spring-boot-starter-batch-jdbc" }
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-data-jpa-test = { module = "org.springframework.boot:spring-boot-starter-data-jpa-test" }
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+lombok = { module = "org.projectlombok:lombok" }
+kafka-clients = { module = "org.apache.kafka:kafka-clients" }
+jackson2-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
+jackson2-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310" }
+axon-spring-boot-starter = { module = "org.axonframework:axon-spring-boot-starter" }
+awssdk-dynamodb = { module = "software.amazon.awssdk:dynamodb" }
+
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+jjwt-api = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
+jjwt-impl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
+jjwt-jackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
+spring-vault-core = { module = "org.springframework.vault:spring-vault-core", version.ref = "spring-vault" }
+json = { module = "org.json:json", version.ref = "json" }
