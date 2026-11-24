@@ -4,63 +4,25 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.RechargingMoneyTask;
 import com.jaypay.common.SubTask;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
-import java.util.Collections;
-import java.util.Properties;
-
 @Component
+@RequiredArgsConstructor
 public class TaskConsumer {
 
-    private final KafkaConsumer<String, String> consumer;
+    private final ObjectMapper mapper = new ObjectMapper();
     private final TaskResultProducer taskResultProducer;
 
-    public TaskConsumer(@Value("${kafka.clusters.bootstrapservers}") String bootstrapServers,
-                        @Value("${task.topic}")String topic, TaskResultProducer taskResultProducer) {
-        this.taskResultProducer = taskResultProducer;
+    @KafkaListener(topics = "${task.topic}", groupId = "my-group")
+    public void consume(String message) throws JsonProcessingException {
+        RechargingMoneyTask task = mapper.readValue(message, RechargingMoneyTask.class);
 
-        Properties props = new Properties();
+        for (SubTask subTask : task.getSubTaskList()) {
+            subTask.setStatus("success");
+        }
 
-        props.put("bootstrap.servers", bootstrapServers);
-
-        props.put("group.id", "my-group");
-
-        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        this.consumer = new KafkaConsumer<>(props);
-
-        consumer.subscribe(Collections.singletonList(topic));
-        Thread consumerThread = new Thread(() -> {
-            try {
-                while (true) {
-                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-                    ObjectMapper mapper = new ObjectMapper();
-
-                    for (ConsumerRecord<String, String> record : records) {
-                        RechargingMoneyTask task;
-
-                        try {
-                            task = mapper.readValue(record.value(), RechargingMoneyTask.class);
-                        } catch (JsonProcessingException e) {
-                            throw new RuntimeException(e);
-                        }
-
-                        for (SubTask subTask: task.getSubTaskList()) {
-                            subTask.setStatus("success");
-                        }
-
-                        this.taskResultProducer.sendTaskResult(task.getTaskID(), task);
-                    }
-                }
-            } finally {
-                consumer.close();
-            }
-        });
-        consumerThread.start();
+        this.taskResultProducer.sendTaskResult(task.getTaskID(), task);
     }
 }

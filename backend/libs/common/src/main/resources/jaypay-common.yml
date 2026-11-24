@@ -1,0 +1,14 @@
+spring:
+  jackson:
+    use-jackson2-defaults: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+axon:
+  axonserver:
+    servers: ${AXON_AXONSERVER_SERVERS:localhost:8124}
+  serializer:
+    general: xstream
+    events: jackson
+    messages: jackson
+logging:
+  topic: jaypay.logging.out.stdout

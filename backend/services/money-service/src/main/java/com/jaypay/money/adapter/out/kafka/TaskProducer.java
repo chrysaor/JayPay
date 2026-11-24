@@ -5,28 +5,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.RechargingMoneyTask;
 import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-
-import java.util.Properties;
 
 @Component
 public class TaskProducer implements SendRechargingMoneyTaskPort {
 
-    private final KafkaProducer<String, String> producer;
+    private final KafkaTemplate<String, String> kafkaTemplate;
     private final String topic;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    public TaskProducer(@Value("${kafka.clusters.bootstrapservers}") String bootstrapServers,
-                        @Value("${task.topic}") String topic) {
-
-        Properties props = new Properties();
-        props.put("bootstrap.servers", bootstrapServers);
-        props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-        props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-
-        this.producer = new KafkaProducer<>(props);
+    public TaskProducer(KafkaTemplate<String, String> kafkaTemplate, @Value("${task.topic}") String topic) {
+        this.kafkaTemplate = kafkaTemplate;
         this.topic = topic;
     }
 
@@ -36,7 +27,6 @@ public class TaskProducer implements SendRechargingMoneyTaskPort {
     }
 
     public void sendMessage(String key, RechargingMoneyTask value) {
-        ObjectMapper mapper = new ObjectMapper();
         String jsonStringToProduce;
         try {
             jsonStringToProduce = mapper.writeValueAsString(value);
@@ -44,10 +34,9 @@ public class TaskProducer implements SendRechargingMoneyTaskPort {
             throw new RuntimeException(e);
         }
 
-        ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, jsonStringToProduce);
-        producer.send(record, (metadata, exception) -> {
+        kafkaTemplate.send(topic, key, jsonStringToProduce).whenComplete((result, exception) -> {
             if (exception == null) {
-                System.out.println("Message sent successfully. Offset: " + metadata.offset());
+                System.out.println("Message sent successfully. Offset: " + result.getRecordMetadata().offset());
             } else {
                 System.err.println("Failed to send message: " + exception.getMessage());
             }
