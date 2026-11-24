@@ -1,0 +1,28 @@
+map $request_uri $jaypay_upstream {
+    ~^/api/membership/  ${JAYPAY_MEMBERSHIP_URL};
+    ~^/api/banking/     ${JAYPAY_BANKING_URL};
+    ~^/api/money/       ${JAYPAY_MONEY_URL};
+    ~^/api/remittance/  ${JAYPAY_REMITTANCE_URL};
+    ~^/api/payment/     ${JAYPAY_PAYMENT_URL};
+}
+
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    location ~ ^/api/(membership|banking|money|remittance|payment)/ {
+        rewrite ^/api/[a-z]+(/.*)$ $1 break;
+        proxy_pass $jaypay_upstream;
+        proxy_connect_timeout 5s;
+    }
+
+    location /api/ {
+        return 404;
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
