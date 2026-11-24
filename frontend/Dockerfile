@@ -5,7 +5,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
+USER root
+RUN apk upgrade --no-cache
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     JAYPAY_MEMBERSHIP_URL=http://membership-service:8080 \
     JAYPAY_BANKING_URL=http://banking-service:8080 \
