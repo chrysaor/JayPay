@@ -15,7 +15,7 @@ Docker must be running. Backend tests start PostgreSQL through Testcontainers, a
 
 ## The gate
 
-`make verify` runs the endpoint contract diff, terraform fmt and validate, actionlint, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
+`make verify` runs the endpoint contract diff, the English-only check, terraform fmt and validate, actionlint, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
 
 Do not report work as done until `make verify` passes. Changed an HTTP endpoint on purpose? Run `make contract` and commit `docs/api-contract.md`.
 
