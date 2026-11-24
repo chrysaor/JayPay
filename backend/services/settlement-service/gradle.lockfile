@@ -216,7 +216,6 @@ org.springframework.boot:spring-boot-starter-opentelemetry:4.2.0=compileClasspat
 org.springframework.boot:spring-boot-starter-test:4.2.0=testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-starter-tomcat-runtime:4.2.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-starter-tomcat:4.2.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
-org.springframework.boot:spring-boot-starter-validation:4.2.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-starter-webmvc-test:4.2.0=testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-starter-webmvc:4.2.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-starter:4.2.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath

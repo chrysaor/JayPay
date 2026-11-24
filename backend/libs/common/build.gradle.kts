@@ -5,7 +5,6 @@ plugins {
 }
 
 dependencies {
-    api(libs.spring.boot.starter.validation)
     api(libs.spring.boot.starter.aspectj)
     api(libs.spring.boot.starter.kafka)
     api(libs.spring.boot.starter.opentelemetry)
