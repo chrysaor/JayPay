@@ -67,7 +67,7 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
             }
         } else if (command.remittanceType() == 1) {
             BankingInfo bankingInfo = bankingPort.getMembershipBankingInfo(command.toBankName(), command.toBankAccountNumber());
-            if (!bankingInfo.isValid()) {
+            if (!bankingInfo.valid()) {
                 return null;
             }
 
