@@ -122,7 +122,7 @@
             "uid": "clickhouse"
           },
           "editorType": "sql",
-          "rawSql": "SELECT TraceId AS trace_id, min(Timestamp) AS started, anyIf(SpanName, ParentSpanId = '') AS root_operation, arrayStringConcat(arraySort(groupUniqArray(ServiceName)), ', ') AS services, count() AS spans, round(max(Duration) / 1e6, 1) AS duration_ms FROM otel.otel_traces WHERE $__timeFilter(Timestamp) GROUP BY TraceId ORDER BY started DESC LIMIT 100",
+          "rawSql": "SELECT TraceId AS trace_id, min(Timestamp) AS started, argMin(SpanName, Timestamp) AS first_operation, arrayStringConcat(arraySort(groupUniqArray(ServiceName)), ', ') AS services, count() AS spans, round(max(Duration) / 1e6, 1) AS duration_ms FROM otel.otel_traces WHERE $__timeFilter(Timestamp) GROUP BY TraceId ORDER BY started DESC LIMIT 100",
           "format": 1,
           "queryType": "sql"
         }
