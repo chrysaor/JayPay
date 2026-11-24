@@ -1,7 +1,6 @@
 package com.jaypay.banking.application.service;
 
 import lombok.extern.slf4j.Slf4j;
-import com.jaypay.banking.adapter.axon.command.CreateRegisteredBankAccountCommand;
 import com.jaypay.banking.adapter.out.external.bank.BankAccount;
 import com.jaypay.banking.adapter.out.external.bank.GetBankAccountRequest;
 import com.jaypay.banking.adapter.out.persistence.RegisteredBankAccountJpaEntity;
@@ -14,7 +13,6 @@ import com.jaypay.banking.application.port.out.*;
 import com.jaypay.banking.domain.RegisteredBankAccount;
 import com.jaypay.common.UseCase;
 import lombok.RequiredArgsConstructor;
-import org.axonframework.commandhandling.gateway.CommandGateway;
 
 import jakarta.transaction.Transactional;
 
@@ -29,7 +27,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
     private final RequestBankAccountInfoPort requestBankAccountInfoPort;
     private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
     private final RegisteredBankAccountMapper mapper;
-    private final CommandGateway commandGateway;
+    private final RegisteredBankAccountAggregatePort registeredBankAccountAggregatePort;
 
     @Override
     public RegisteredBankAccount registerBankAccount(RegisterBankAccountCommand command) {
@@ -44,12 +42,14 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
         );
 
         if(accountInfo.isValid()) {
+            String aggregateIdentifier = registeredBankAccountAggregatePort.createRegisteredBankAccountAggregate(
+                    command.getMembershipId(), command.getBankName(), command.getBankAccountNumber()).join();
             RegisteredBankAccountJpaEntity savedAccountInfo = registerBankAccountPort.createRegisteredBankAccount(
                     new RegisteredBankAccount.MembershipId(String.format("%s", command.getMembershipId())),
                     new RegisteredBankAccount.BankName(command.getBankName()),
                     new RegisteredBankAccount.BankAccountNumber(command.getBankAccountNumber()),
                     new RegisteredBankAccount.LinkedStatusIsValid(command.isValid()),
-                    new RegisteredBankAccount.AggregateIdentifier("")
+                    new RegisteredBankAccount.AggregateIdentifier(aggregateIdentifier)
             );
             return mapper.mapToDomainEntity(savedAccountInfo);
         } else {
@@ -60,7 +60,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
     @Override
     public void registerBankAccountByEvent(RegisterBankAccountCommand command) {
 
-        commandGateway.send(new CreateRegisteredBankAccountCommand(command.getMembershipId(), command.getBankName(), command.getBankAccountNumber()))
+        registeredBankAccountAggregatePort.createRegisteredBankAccountAggregate(command.getMembershipId(), command.getBankName(), command.getBankAccountNumber())
                 .whenComplete(
                         (result, throwable) -> {
                             if (throwable != null) {
