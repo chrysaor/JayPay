@@ -30,7 +30,8 @@ spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-bo
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 lombok = { module = "org.projectlombok:lombok" }
-kafka-clients = { module = "org.apache.kafka:kafka-clients" }
+spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
+testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
 jackson2-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
 jackson2-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310" }
 axon-spring-boot-starter = { module = "org.axonframework:axon-spring-boot-starter" }
