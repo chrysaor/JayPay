@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: logging-consumer
+  jackson:
+    use-jackson2-defaults: true
+axon:
+  axonserver:
+    servers: ${AXON_AXONSERVER_SERVERS:localhost:8124}
+  serializer:
+    general: ${AXON_SERIALIZER_GENERAL:xstream}
+    events: ${AXON_SERIALIZER_EVENTS:jackson}
+    messages: ${AXON_SERIALIZER_MESSAGES:jackson}
+kafka:
+  clusters:
+    bootstrapservers: ${KAFKA_CLUSTERS_BOOTSTRAPSERVERS:localhost:9092}
+logging:
+  topic: ${LOGGING_TOPIC:jaypay.logging.out.stdout}

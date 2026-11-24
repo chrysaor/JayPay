@@ -1,0 +1,348 @@
+version: '3'
+services:
+  axon-server:
+    container_name: axon-server
+    image: axoniq/axonserver:4.6.3-jdk-11-dev
+    networks:
+      - jaypay_network
+    ports:
+      - "8024:8024"
+      - "8124:8124"
+    volumes:
+      - axonserver-data:/axonserver/data
+      - axonserver-events:/axonserver/events
+      - axonserver-config:/axonserver/config:ro
+
+  postgres:
+    image: postgres:19.0-alpine
+    volumes:
+      - ./postgres/data:/var/lib/postgresql
+      - ./postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    environment:
+      - TZ=Asia/Seoul
+      - POSTGRES_DB=jaypay
+      - POSTGRES_USER=${POSTGRES_USER:-jaypay}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+    networks:
+      - jaypay_network
+
+  membership-service:
+    image: jaypay/membership-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8081:8080"
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - TASK_TOPIC=jaypay.task.topic
+      - SPRING_CLOUD_VAULT_TOKEN=${SPRING_CLOUD_VAULT_TOKEN:?set SPRING_CLOUD_VAULT_TOKEN in infra/docker/.env}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in infra/docker/.env}
+      - ENCRYPTION_FALLBACK_KEY=${ENCRYPTION_FALLBACK_KEY:?set ENCRYPTION_FALLBACK_KEY in infra/docker/.env}
+      - SPRING_CLOUD_VAULT_SCHEME=http
+      - SPRING_CLOUD_VAULT_HOST=vault
+      - SPRING_CLOUD_VAULT_PORT=8200
+
+  banking-service:
+    image: jaypay/banking-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8082:8080"
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - TASK_TOPIC=jaypay.task.topic
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+
+  money-service:
+    image: jaypay/money-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8083:8080"
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - TASK_TOPIC=jaypay.task.topic
+      - TASK_RESULT_TOPIC=jaypay.task.result.topic
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+
+  remittance-service:
+    image: jaypay/remittance-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8084:8080"
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - TASK_TOPIC=jaypay.task.topic
+      - TASK_RESULT_TOPIC=jaypay.task.result.topic
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+      - SERVICE_MONEY_URL=http://money-service:8080
+
+  payment-service:
+    image: jaypay/payment-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8085:8080"
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+
+  money-aggregation-service:
+    image: jaypay/money-aggregation-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8086:8080"
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+      - SERVICE_MONEY_URL=http://money-service:8080
+
+  money-query-service:
+    image: jaypay/money-query-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8087:8080"
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+      - SERVICE_MONEY_URL=http://money-service:8080
+
+  settlement-service:
+    image: jaypay/settlement-service
+    networks:
+      - jaypay_network
+    ports:
+      - "8088:8080"
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+      - axon-server
+    environment:
+      - AXON_AXONSERVER_SERVERS=axon-server:8124
+      - AXON_SERIALIZER_EVENTS=jackson
+      - AXON_SERIALIZER_MESSAGES=jackson
+      - AXON_SERIALIZER_GENERAL=xstream
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=fastcampus.logging.out.stdout
+      - SERVICE_MEMBERSHIP_URL=http://membership-service:8080
+      - SERVICE_BANKING_URL=http://banking-service:8080
+      - SERVICE_MONEY_URL=http://money-service:8080
+      - SERVICE_PAYMENT_URL=http://payment-service:8080
+
+  valut:
+    image: vault:1.13.1
+    networks:
+      - jaypay_network
+    container_name: vault
+    ports:
+      - "8200:8200"
+    restart: always
+    cap_add:
+      - IPC_LOCK
+
+  logging-consumer:
+    image: jaypay/logging-consumer
+    networks:
+      - jaypay_network
+    restart: always
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+
+  task-consumer:
+    image: jaypay/task-consumer
+    networks:
+      - jaypay_network
+    restart: always
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
+      - LOGGING_TOPIC=jaypay.logging.out.stdout
+      - TASK_TOPIC=jaypay.task.topic
+      - TASK_RESULT_TOPIC=jaypay.task.result.topic
+
+  zookeeper:
+    image: 'arm64v8/zookeeper:3.8'
+    networks:
+      - jaypay_network
+    ports:
+      - '2181:2181'
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_TLS_CLIENT_AUTH=none
+      - ZOO_TLS_QUORUM_CLIENT_AUTH=none
+
+  kafka:
+    image: 'bitnami/kafka:3.4.0'
+    networks:
+      - jaypay_network
+    ports:
+      - '9092:9092'
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENERS=LC://kafka:29092,LX://kafka:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=LC://kafka:29092,LX://${DOCKER_HOST_IP:-localhost}:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=LC:PLAINTEXT,LX:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=LC
+      - KAFKA_ENABLE_KRAFT=no
+    depends_on:
+      - zookeeper
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    networks:
+      - jaypay_network
+    ports:
+      - "8989:8080"
+    restart: always
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
+      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
+
+volumes:
+  axonserver-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ${PWD}/axon-server-se/data
+  axonserver-events:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ${PWD}/axon-server-se/events
+  axonserver-config:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ${PWD}/axon-server-se/config
+
+networks:
+  jaypay_network:
+    driver: bridge

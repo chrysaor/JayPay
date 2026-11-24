@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:19.0-alpine:///jaypay
+    username: test
+    password: test
+  cloud:
+    vault:
+      token: test-only-vault-token
+axon:
+  axonserver:
+    enabled: false
+jwt:
+  secret: test-only-jwt-secret-test-only-jwt-secret-test-only-jwt-secret-test
+encryption:
+  fallback-key: test-only-key-16
