@@ -1,40 +1,55 @@
 # JayPay frontend
 
-결제 앱의 주요 흐름(회원, 계좌, 머니 충전, 송금, 결제)을 브라우저에서 눌러 보는 예제 화면입니다. 브라우저는 같은 출처의 `/api/<서비스>/...`만 호출하고, 개발 서버나 nginx가 이 경로에서 `/api/<서비스>`를 떼고 각 서비스로 넘깁니다.
+Two sites in one npm workspace:
 
-## 개발 서버
+| Workspace | Path | What it is |
+| --- | --- | --- |
+| `@jaypay/web` | `apps/web` | Customer site: sign up, sign in, wallet balance and top-up, bank account, sending money, paying a merchant |
+| `@jaypay/admin` | `apps/admin` | Admin console: member search and edits, regional money totals, settlement queue |
+| `@jaypay/api` | `packages/api` | Typed fetch client that parses responses with zod, the schemas both sites read, and the fake server tests use |
+| `@jaypay/ui` | `packages/ui` | Form reader, money and date formatting, and the card and error notice both sites render |
 
-Node 24 이상이 필요합니다.
+The browser only calls same-origin `/api/<service>/...`. The Vite dev server and the nginx image strip `/api/<service>` and forward the rest to that service.
+
+## Development
+
+Node 24 or newer.
 
 ```sh
 npm ci
-npm run dev        # http://localhost:5173
+npm run dev:web      # http://localhost:5173
+npm run dev:admin    # http://localhost:5174
 npm run lint
 npm test
 npm run build
 ```
 
-## 프록시 환경 변수
+`npm test` and `npm run build` run in every workspace.
 
-개발 서버(`vite.config.ts`)와 이미지(`nginx/default.conf.template`)가 같은 이름을 씁니다.
+## Environment
 
-| 변수 | 경로 | 개발 서버 기본값 | 이미지 기본값 |
-| --- | --- | --- | --- |
-| `JAYPAY_MEMBERSHIP_URL` | `/api/membership` | `http://localhost:8081` | `http://membership-service:8080` |
-| `JAYPAY_BANKING_URL` | `/api/banking` | `http://localhost:8082` | `http://banking-service:8080` |
-| `JAYPAY_MONEY_URL` | `/api/money` | `http://localhost:8083` | `http://money-service:8080` |
-| `JAYPAY_REMITTANCE_URL` | `/api/remittance` | `http://localhost:8084` | `http://remittance-service:8080` |
-| `JAYPAY_PAYMENT_URL` | `/api/payment` | `http://localhost:8085` | `http://payment-service:8080` |
+Copy `.env.example` to `.env` to point the dev servers somewhere else. Both dev servers read `frontend/.env`, and variables set in the shell win over the file. The images read the same names from the container environment. Each site reads only the variables of the services it proxies.
+
+| Variable | Path | Read by | Dev default | Image default |
+| --- | --- | --- | --- | --- |
+| `JAYPAY_MEMBERSHIP_URL` | `/api/membership` | web, admin | `http://localhost:8081` | `http://membership-service:8080` |
+| `JAYPAY_BANKING_URL` | `/api/banking` | web | `http://localhost:8082` | `http://banking-service:8080` |
+| `JAYPAY_MONEY_URL` | `/api/money` | web | `http://localhost:8083` | `http://money-service:8080` |
+| `JAYPAY_REMITTANCE_URL` | `/api/remittance` | web | `http://localhost:8084` | `http://remittance-service:8080` |
+| `JAYPAY_PAYMENT_URL` | `/api/payment` | web, admin | `http://localhost:8085` | `http://payment-service:8080` |
+| `JAYPAY_MONEY_AGGREGATION_URL` | `/api/money-aggregation` | admin | `http://localhost:8086` | `http://money-aggregation-service:8080` |
+| `JAYPAY_MONEY_QUERY_URL` | `/api/money-query` | admin | `http://localhost:8087` | `http://money-query-service:8080` |
+
+The dev defaults match the host ports in `infra/docker/compose.yaml`.
+
+## Images
+
+One `Dockerfile` builds either site. `APP` picks it.
 
 ```sh
-JAYPAY_MEMBERSHIP_URL=http://localhost:9081 npm run dev
+docker build --build-arg APP=web --tag jaypay/frontend-web frontend
+docker build --build-arg APP=admin --tag jaypay/frontend-admin frontend
+docker run --rm -p 8080:8080 jaypay/frontend-web
 ```
 
-## 이미지 빌드
-
-```sh
-docker build -t jaypay-frontend frontend
-docker run --rm -p 8080:8080 jaypay-frontend   # http://localhost:8080
-```
-
-컨테이너는 nginx를 uid 101로 8080 포트에서 실행합니다. 업스트림 주소는 요청마다 DNS로 찾기 때문에, 서비스가 떠 있지 않아도 컨테이너는 뜨고 해당 `/api` 요청만 502로 응답합니다.
+`make images` builds both. Each container runs nginx as uid 101 on port 8080 and serves `index.html` for every site path. Upstream hosts are resolved per request, so a container starts without its services and answers only the affected `/api` requests with 502.

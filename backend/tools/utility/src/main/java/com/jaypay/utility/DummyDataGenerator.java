@@ -14,7 +14,7 @@ public class DummyDataGenerator {
     private static final String DB_USER = Objects.requireNonNullElse(System.getenv("SPRING_DATASOURCE_USERNAME"), "jaypay");
     private static final String DB_PASSWORD = System.getenv("SPRING_DATASOURCE_PASSWORD");
 
-    private static final String[] ADDRESSES = {"강남구", "관악구", "서초구"};
+    private static final String[] ADDRESSES = {"Gangnam", "Gwanak", "Seocho"};
 
     public static void main(String[] args) {
         try {

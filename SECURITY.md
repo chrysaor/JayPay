@@ -8,16 +8,17 @@ Report vulnerabilities privately through GitHub's "Report a vulnerability" butto
 
 | Check | Workflow | Runs on |
 | --- | --- | --- |
-| CodeQL (`java-kotlin`, `javascript-typescript`) | `security.yml` | PR, push to `master`, weekly |
+| CodeQL (`java-kotlin`, `javascript-typescript`) | `security.yml` | PR, push to a long-lived branch, weekly |
 | Dependency review | `security.yml` | PR |
-| Trivy filesystem scan (vulnerabilities and misconfigurations, SARIF to code scanning) | `security.yml` | PR, push to `master`, weekly |
-| gitleaks secret scan | `security.yml` | PR (PR commits only), push to `master` (pushed commits only), weekly (full history) |
-| Dependabot version updates (gradle, npm, github-actions, docker, docker-compose, terraform) | `dependabot.yml` | Weekly, grouped |
-| Backend build and tests, frontend lint, tests and build | `ci.yml` | PR and push to `master`, only when `backend/` or `frontend/` changes |
+| Trivy filesystem scan (vulnerabilities and misconfigurations, SARIF to code scanning) | `security.yml` | PR, push to a long-lived branch, weekly |
+| gitleaks secret scan | `security.yml` | PR (PR commits only), push to a long-lived branch (pushed commits only), weekly (full history) |
+| Trivy image scan of every service image and both frontend images, fails on HIGH or CRITICAL | `release.yml` | Push to `release/**`, push of a `v*` tag |
+| Dependabot version updates (gradle, npm, github-actions, docker, docker-compose, terraform) | `dependabot.yml` | Weekly, grouped, PRs into `develop` |
+| `make verify` steps: contract diff, terraform, actionlint, backend, frontend | `ci.yml` | PR and push to a long-lived branch; backend and frontend only when they change |
+
+Long-lived branches are `master`, `develop` and `release/**`.
 
 The weekly run is Monday 03:00 KST.
-
-Container image scanning goes in `security.yml` as a Trivy `image` job once the image build is defined.
 
 ## Known findings
 
@@ -25,11 +26,13 @@ Container image scanning goes in `security.yml` as a Trivy `image` job once the 
 
 ## Running the checks locally
 
-From the repository root:
+From the repository root, `make scan` runs both of these:
 
 ```sh
 docker run --rm -v "$PWD:/repo" -w /repo aquasec/trivy:0.76.2 fs --scanners vuln,misconfig .
 docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --redact --verbose --gitleaks-ignore-path /repo/.github/.gitleaksignore
 ```
 
-The gitleaks command scans full history, like the weekly run. Add `--log-opts=origin/master..HEAD` to scan only your branch, like a PR run.
+The gitleaks command scans full history, like the weekly run. Add `--log-opts=origin/develop..HEAD` to scan only your branch, like a PR run.
+
+`make images scan-images` builds every image and runs the same image scan as `release.yml`.
