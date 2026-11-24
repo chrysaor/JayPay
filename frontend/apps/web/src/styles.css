@@ -158,6 +158,7 @@ label.check,
 
 input {
   font: inherit;
+  font-weight: 400;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
