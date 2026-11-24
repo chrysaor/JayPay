@@ -9,6 +9,7 @@ TRIVY_IMAGE := aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a
 GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 TRIVY_CACHE := -v jaypay-trivy-cache:/root/.cache/trivy
 FRONTEND_DEPS := frontend/node_modules/.package-lock.json
+GIT_COMMON_DIR := $(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
 .PHONY: help build test verify verify-selftest images scan scan-images push up down lock contract release-branch
@@ -50,7 +51,7 @@ images:
 
 scan:
 	docker run --rm $(TRIVY_CACHE) -v "$(CURDIR):/repo" -w /repo $(TRIVY_IMAGE) fs --scanners vuln,misconfig .
-	docker run --rm -v "$(CURDIR):/repo" $(GITLEAKS_IMAGE) git /repo --redact --verbose --gitleaks-ignore-path /repo/.github/.gitleaksignore
+	docker run --rm -v "$(CURDIR):/repo" -v "$(GIT_COMMON_DIR):$(GIT_COMMON_DIR):ro" $(GITLEAKS_IMAGE) git /repo --redact --verbose --gitleaks-ignore-path /repo/.github/.gitleaksignore
 
 scan-images:
 	@status=0; for name in $(IMAGES); do \
