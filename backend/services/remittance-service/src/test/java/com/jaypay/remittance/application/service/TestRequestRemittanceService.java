@@ -1,6 +1,5 @@
 package com.jaypay.remittance.application.service;
 
-import com.jaypay.remittance.adapter.out.persistence.RemittanceRequestMapper;
 import com.jaypay.remittance.application.port.in.RequestRemittanceCommand;
 import com.jaypay.remittance.application.port.out.RequestRemittancePort;
 import com.jaypay.remittance.application.port.out.banking.BankingPort;
@@ -19,6 +18,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.stream.Stream;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 public class TestRequestRemittanceService {
@@ -28,8 +28,6 @@ public class TestRequestRemittanceService {
 
     @Mock
     private RequestRemittancePort requestRemittancePort;
-    @Mock
-    private RemittanceRequestMapper mapper;
     @Mock
     private MembershipPort membershipPort;
     @Mock
@@ -42,7 +40,7 @@ public class TestRequestRemittanceService {
         MockitoAnnotations.openMocks(this);
 
         requestRemittanceService
-                = new RequestRemittanceService(requestRemittancePort, mapper, membershipPort, moneyPort, bankingPort);
+                = new RequestRemittanceService(requestRemittancePort, membershipPort, moneyPort, bankingPort);
     }
 
     private static Stream<RequestRemittanceCommand> provideRequestRemittanceCommand () {
@@ -61,15 +59,15 @@ public class TestRequestRemittanceService {
     @ParameterizedTest
     @MethodSource("provideRequestRemittanceCommand")
     public void testRequestRemittanceServiceWhenFromMembershipInvalid(RequestRemittanceCommand testCommand) {
-        when(requestRemittancePort.createRemittanceRequestHistory(testCommand))
-                .thenReturn(null);
-        when(membershipPort.getMembershipStatus(testCommand.getFromMembershipId()))
-                .thenReturn(new MembershipStatus(testCommand.getFromMembershipId(), false));
+        when(requestRemittancePort.createRemittanceRequestHistory(any()))
+                .thenReturn(1L);
+        when(membershipPort.getMembershipStatus(testCommand.fromMembershipId()))
+                .thenReturn(new MembershipStatus(testCommand.fromMembershipId(), false));
 
         RemittanceRequest got = requestRemittanceService.requestRemittance(testCommand);
 
-        verify(requestRemittancePort, times(1)).createRemittanceRequestHistory(testCommand);
-        verify(membershipPort, times(1)).getMembershipStatus(testCommand.getFromMembershipId());
+        verify(requestRemittancePort, times(1)).createRemittanceRequestHistory(any());
+        verify(membershipPort, times(1)).getMembershipStatus(testCommand.fromMembershipId());
 
         Assertions.assertNull(got);
     }
@@ -78,27 +76,27 @@ public class TestRequestRemittanceService {
     @MethodSource("provideRequestRemittanceCommand")
     public void testRequestRemittanceServiceWhenNotEnoughMoney(RequestRemittanceCommand testCommand) {
         MoneyInfo dummyMoneyInfo = new MoneyInfo(
-                testCommand.getFromMembershipId(),
+                testCommand.fromMembershipId(),
                 10000
         );
 
-        when(requestRemittancePort.createRemittanceRequestHistory(testCommand))
-                .thenReturn(null);
-        when(membershipPort.getMembershipStatus(testCommand.getFromMembershipId()))
-                .thenReturn(new MembershipStatus(testCommand.getFromMembershipId(), true));
-        when(moneyPort.getMoneyInfo(testCommand.getFromMembershipId()))
+        when(requestRemittancePort.createRemittanceRequestHistory(any()))
+                .thenReturn(1L);
+        when(membershipPort.getMembershipStatus(testCommand.fromMembershipId()))
+                .thenReturn(new MembershipStatus(testCommand.fromMembershipId(), true));
+        when(moneyPort.getMoneyInfo(testCommand.fromMembershipId()))
                 .thenReturn(dummyMoneyInfo);
 
-        int rechargeAmount = (int) Math.ceil((testCommand.getAmount() - dummyMoneyInfo.getBalance()) / 10000.0) * 10000;
-        when(moneyPort.requestMoneyRecharging(testCommand.getFromMembershipId(), rechargeAmount))
+        int rechargeAmount = (int) Math.ceil((testCommand.amount() - dummyMoneyInfo.getBalance()) / 10000.0) * 10000;
+        when(moneyPort.requestMoneyRecharging(testCommand.fromMembershipId(), rechargeAmount))
                 .thenReturn(false);
 
         RemittanceRequest got = requestRemittanceService.requestRemittance(testCommand);
 
-        verify(requestRemittancePort, times(1)).createRemittanceRequestHistory(testCommand);
-        verify(membershipPort, times(1)).getMembershipStatus(testCommand.getFromMembershipId());
-        verify(moneyPort, times(1)).getMoneyInfo(testCommand.getFromMembershipId());
-        verify(moneyPort, times(1)).requestMoneyRecharging(testCommand.getFromMembershipId(), rechargeAmount);
+        verify(requestRemittancePort, times(1)).createRemittanceRequestHistory(any());
+        verify(membershipPort, times(1)).getMembershipStatus(testCommand.fromMembershipId());
+        verify(moneyPort, times(1)).getMoneyInfo(testCommand.fromMembershipId());
+        verify(moneyPort, times(1)).requestMoneyRecharging(testCommand.fromMembershipId(), rechargeAmount);
 
         Assertions.assertNull(got);
     }

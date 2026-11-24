@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Value;
+import lombok.With;
 
 @Getter
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -11,6 +12,7 @@ public class Membership {
 
     private final String membershipId;
     private final String name;
+    @With
     private final String email;
     private final String address;
     private final boolean isValid;

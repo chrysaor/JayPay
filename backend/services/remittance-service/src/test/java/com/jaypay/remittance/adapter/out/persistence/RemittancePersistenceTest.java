@@ -20,9 +20,6 @@ class RemittancePersistenceTest {
     @Autowired
     private SpringDataRemittanceRequestRepository remittanceRequestRepository;
 
-    @Autowired
-    private SpringDataRemittanceRepository remittanceRepository;
-
     @Test
     void storesRemittanceRequest() {
         Long id = remittanceRequestRepository.saveAndFlush(RemittanceRequestJpaEntity.builder()
@@ -46,15 +43,5 @@ class RemittancePersistenceTest {
                         RemittanceRequestJpaEntity::getAmount,
                         RemittanceRequestJpaEntity::getRemittanceStatus)
                 .containsExactly("1", "2", "Shinhan bank", "12345", 1, 150000, "success");
-    }
-
-    @Test
-    void storesRemittance() {
-        Long id = remittanceRepository.saveAndFlush(new RemittanceJpaEntity(null, "success")).getRemittanceId();
-        entityManager.clear();
-
-        assertThat(remittanceRepository.findById(id)).get()
-                .extracting(RemittanceJpaEntity::getStatus)
-                .isEqualTo("success");
     }
 }

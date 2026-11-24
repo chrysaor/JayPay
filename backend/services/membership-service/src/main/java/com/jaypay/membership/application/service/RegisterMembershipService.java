@@ -1,17 +1,14 @@
 package com.jaypay.membership.application.service;
 
 import com.jaypay.common.UseCase;
-import com.jaypay.membership.adapter.out.persistence.MembershipJpaEntity;
-import com.jaypay.membership.adapter.out.persistence.MembershipMapper;
 import com.jaypay.membership.application.port.in.RegisterMembershipCommand;
 import com.jaypay.membership.application.port.in.RegisterMembershipUseCase;
+import com.jaypay.membership.application.port.out.EncryptionPort;
 import com.jaypay.membership.application.port.out.RegisterMembershipPort;
 import com.jaypay.membership.domain.Membership;
-
 import lombok.RequiredArgsConstructor;
 
 import jakarta.transaction.Transactional;
-
 
 @UseCase
 @RequiredArgsConstructor
@@ -19,19 +16,23 @@ import jakarta.transaction.Transactional;
 public class RegisterMembershipService implements RegisterMembershipUseCase {
 
     private final RegisterMembershipPort registerMembershipPort;
-    private final MembershipMapper membershipMapper;
+    private final EncryptionPort encryptionPort;
 
     @Override
     public Membership registerMembership(RegisterMembershipCommand command) {
-        MembershipJpaEntity jpaEntity = registerMembershipPort.createMembership(
-                new Membership.MembershipName(command.getName()),
-                new Membership.MembershipEmail(command.getEmail()),
-                new Membership.MembershipAddress(command.getAddress()),
-                new Membership.MembershipIsValid(command.isValid()),
-                new Membership.MembershipIsCorp(command.isCorp())
+        Membership.MembershipName name = new Membership.MembershipName(command.name());
+        Membership.MembershipAddress address = new Membership.MembershipAddress(command.address());
+        Membership.MembershipIsValid isValid = new Membership.MembershipIsValid(command.isValid());
+        Membership.MembershipIsCorp isCorp = new Membership.MembershipIsCorp(command.isCorp());
+
+        Membership.MembershipId membershipId = registerMembershipPort.createMembership(
+                name, new Membership.MembershipEmail(encryptionPort.encrypt(command.email())), address, isValid, isCorp
         );
 
-        return membershipMapper.mapToDomainEntity(jpaEntity);
+        return Membership.generateMember(
+                membershipId, name, new Membership.MembershipEmail(command.email()), address, isValid, isCorp,
+                new Membership.MembershipRefreshToken("")
+        );
     }
 
 }
