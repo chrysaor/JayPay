@@ -23,7 +23,7 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
 
     @Override
     public int getMoneySumByAddress(GetMoneySumByAddressCommand command) {
-        String targetAddress = command.getAddress();
+        String targetAddress = command.address();
         List<String> membershipIds = getMembershipPort.getMembershipByAddress(targetAddress);
 
         List<List<String>> membershipPartitionList;
@@ -39,7 +39,7 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
             List<MemberMoney> memberMoneyList = getMoneySumPort.getMoneySumByMembershipIds(partitionedList);
 
             for (MemberMoney memberMoney : memberMoneyList) {
-                sum += memberMoney.getBalance();
+                sum += memberMoney.balance();
             }
         }
 

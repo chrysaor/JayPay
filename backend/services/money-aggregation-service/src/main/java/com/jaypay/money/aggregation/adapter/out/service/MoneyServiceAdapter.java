@@ -1,7 +1,6 @@
 package com.jaypay.money.aggregation.adapter.out.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CommonHttpClient;
 import com.jaypay.common.ExternalSystemAdapter;
 import com.jaypay.money.aggregation.application.port.out.GetMoneySumPort;
@@ -13,27 +12,21 @@ import java.util.List;
 @ExternalSystemAdapter
 public class MoneyServiceAdapter implements GetMoneySumPort {
 
-    private final CommonHttpClient moneyServiceHttpClient;
-
-    @Value("${service.money.url}")
-    private String moneyServiceEndpoint;
+    private final CommonHttpClient commonHttpClient;
+    private final String moneyServiceUrl;
 
     public MoneyServiceAdapter(CommonHttpClient commonHttpClient,
-                               @Value("${service.money.url}") String moneyServiceEndpoint) {
-        this.moneyServiceHttpClient = commonHttpClient;
-        this.moneyServiceEndpoint = moneyServiceEndpoint;
+                               @Value("${service.money.url}") String moneyServiceUrl) {
+        this.commonHttpClient = commonHttpClient;
+        this.moneyServiceUrl = moneyServiceUrl;
     }
+
     @Override
     public List<MemberMoney> getMoneySumByMembershipIds(List<String> membershipIds) {
-        String url = String.join("/", moneyServiceEndpoint, "money/member-money");
-        ObjectMapper mapper = new ObjectMapper();
+        String url = String.join("/", moneyServiceUrl, "money/member-money");
+        return commonHttpClient.post(url, new FindMemberMoneyRequest(membershipIds), new TypeReference<>() {});
+    }
 
-        try {
-            FindMemberMoneyRequest request = new FindMemberMoneyRequest(membershipIds);
-            String jsonResponse = moneyServiceHttpClient.sendPostRequest(url, mapper.writeValueAsString(request)).body();
-            return mapper.readValue(jsonResponse, new TypeReference<>() {});
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    record FindMemberMoneyRequest(List<String> targetMembershipIds) {
     }
 }

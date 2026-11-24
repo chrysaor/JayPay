@@ -17,8 +17,7 @@ public class GetMoneySumController {
     int getMoneySumByAddress(@RequestBody GetMoneySumByAddressRequest request) {
 
         return getMoneySumByAddressUseCase.getMoneySumByAddress(
-                GetMoneySumByAddressCommand.builder()
-                        .address(request.getAddress()).build()
+                new GetMoneySumByAddressCommand(request.getAddress())
         );
     }
 }
