@@ -14,9 +14,12 @@ for folder, dirs, files in os.walk(root):
         path = os.path.join(folder, name)
         try:
             with open(path, "rb") as handle:
-                lines = handle.read().split(b"\n")
+                content = handle.read()
         except OSError:
             continue
+        if b"\0" in content:
+            continue
+        lines = content.split(b"\n")
         for number, line in enumerate(lines, 1):
             if HANGUL.search(line):
                 print(f"{os.path.relpath(path, root)}:{number}: Hangul text")
