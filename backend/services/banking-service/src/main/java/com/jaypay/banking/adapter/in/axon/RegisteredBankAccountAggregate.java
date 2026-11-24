@@ -36,7 +36,7 @@ public class RegisteredBankAccountAggregate {
         log.info("CreateRegisteredBankAccountCommand Sourcing Handler");
 
         apply(new CreateRegisteredBankAccountEvent(
-                command.getMembershipId(), command.getBankName(), command.getBankAccountNumber()
+                command.membershipId(), command.bankName(), command.bankAccountNumber()
         ));
     }
 
@@ -67,9 +67,9 @@ public class RegisteredBankAccountAggregate {
         log.info("CreatedRegisteredBankAccountEvent Sourcing Handler");
 
         id = UUID.randomUUID().toString();
-        membershipId = event.getMembershipId();
-        bankName = event.getBankName();
-        bankAccountNumber = event.getBankAccountNumber();
+        membershipId = event.membershipId();
+        bankName = event.bankName();
+        bankAccountNumber = event.bankAccountNumber();
     }
 
 }

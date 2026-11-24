@@ -47,7 +47,7 @@ public class FirmBankingRequestAggregate {
     public FirmBankingRequestAggregate(CreateFirmBankingRequestCommand command) {
         log.info("CreateFirmBankingRequestCommand Handler");
 
-        apply(new FirmBankingRequestCreatedEvent(command.getFromBankName(), command.getFromBankAccountNumber(), command.getToBankName(), command.getToBankAccountNumber(), command.getMoneyAmount()));
+        apply(new FirmBankingRequestCreatedEvent(command.fromBankName(), command.fromBankAccountNumber(), command.toBankName(), command.toBankAccountNumber(), command.moneyAmount()));
     }
 
     @CommandHandler
@@ -114,8 +114,8 @@ public class FirmBankingRequestAggregate {
     public String handle(UpdateFirmBankingRequestCommand command) {
         log.info("UpdateFirmBankingRequestCommand Handler");
 
-        id = command.getAggregateIdentifier();
-        apply(new FirmBankingRequestUpdatedEvent(command.getFirmbankingStatus()));
+        id = command.aggregateIdentifier();
+        apply(new FirmBankingRequestUpdatedEvent(command.firmbankingStatus()));
 
         return id;
     }
@@ -125,17 +125,17 @@ public class FirmBankingRequestAggregate {
         log.info("FirmBankingRequestCreatedEvent Sourcing Handler");
 
         id = UUID.randomUUID().toString();
-        fromBankName = event.getFromBankName();
-        fromBankAccountNumber = event.getToBankAccountNumber();
-        toBankName = event.getToBankName();
-        toBankAccountNumber = event.getToBankAccountNumber();
+        fromBankName = event.fromBankName();
+        fromBankAccountNumber = event.toBankAccountNumber();
+        toBankName = event.toBankName();
+        toBankAccountNumber = event.toBankAccountNumber();
     }
 
     @EventSourcingHandler
     public void on(FirmBankingRequestUpdatedEvent event) {
         log.info("FirmBankingRequestUpdatedEvent Sourcing Handler");
 
-        firmbankingStatus = event.getFirmBankingStatus();
+        firmbankingStatus = event.firmBankingStatus();
     }
 
 }
