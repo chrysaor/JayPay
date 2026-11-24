@@ -109,7 +109,7 @@ class ObservabilityTest {
     private static HttpServer startMembershipStub() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/membership/", exchange -> {
+            server.createContext("/memberships/", exchange -> {
                 RECEIVED_TRACEPARENT.set(exchange.getRequestHeaders().getFirst("traceparent"));
                 byte[] body = "{\"membershipId\":\"1\",\"valid\":true}".getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
