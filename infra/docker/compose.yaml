@@ -94,6 +94,7 @@ services:
 
   axon-server:
     image: axoniq/axonserver:2026.1.8-nonroot@sha256:9f7171b3b47b0310f897fe14fb803838c0fdd80b40f5293fab55e2356c76cf70
+    hostname: axon-server
     restart: unless-stopped
     mem_limit: 768m
     logging: *logging
