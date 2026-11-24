@@ -1,9 +1,9 @@
 package com.jaypay.settlement.adapter.out.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CommonHttpClient;
-import com.jaypay.settlement.port.out.PaymentPort;
+import com.jaypay.settlement.application.port.out.Payment;
+import com.jaypay.settlement.application.port.out.PaymentPort;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -21,32 +21,18 @@ public class PaymentServiceAdapter implements PaymentPort {
         this.paymentServiceUrl = paymentServiceUrl;
     }
 
-
     @Override
     public List<Payment> getNormalStatusPayments() {
         String url = String.join("/", paymentServiceUrl, "payment/normal-status");
-
-        try {
-            String jsonResponse = commonHttpClient.sendGetRequest(url).body();
-            ObjectMapper mapper = new ObjectMapper();
-
-            return mapper.readValue(jsonResponse, new TypeReference<>() {});
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return commonHttpClient.get(url, new TypeReference<>() {});
     }
 
     @Override
-    public void finishSettlement(Long paymentId) {
+    public void finishSettlement(long paymentId) {
         String url = String.join("/", paymentServiceUrl, "payment/finish-settlement");
-        ObjectMapper mapper = new ObjectMapper();
+        commonHttpClient.post(url, new FinishSettlementRequest(String.valueOf(paymentId)));
+    }
 
-        try {
-            FinishSettlementRequest request = new FinishSettlementRequest(String.valueOf(paymentId));
-            commonHttpClient.sendPostRequest(url, mapper.writeValueAsString(request)).body();
-
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    record FinishSettlementRequest(String paymentId) {
     }
 }

@@ -1,6 +1,5 @@
-package com.jaypay.settlement.job;
+package com.jaypay.settlement.adapter.in.batch;
 
-import com.jaypay.settlement.tasklet.SettlementTasklet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
