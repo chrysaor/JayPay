@@ -30,7 +30,8 @@ backend/            Gradle build root
   Dockerfile        one image recipe for every service
 infra/docker/       compose.yaml, .env.example, PostgreSQL init scripts
 docs/               diagrams and the HTTP API contract
-scripts/            extract-endpoints.py
+scripts/            verify.sh, verify-selftest.sh, extract-endpoints.py
+Makefile            the single entry point for build, test, verify, images and the local stack
 ```
 
 ## Sequence Diagram Examples
@@ -53,32 +54,25 @@ scripts/            extract-endpoints.py
 ### Settlement service
 ![Settlement Sequence Example](docs/sequences/6_settlement.png)
 
-## Build and test
-```
-cd backend
-./gradlew build
-```
-Tests start PostgreSQL through Testcontainers, so Docker must be running.
+## Build, test and run
+Every command runs from the repository root. Run `make` to list them. Docker must be running.
 
-## Execution
-```
-cd backend
-./gradlew dockerBuild
-cd ../infra/docker
-cp .env.example .env
-docker compose up -d
-```
-`./gradlew dockerBuild` builds `jaypay/<service>` for every service. Fill in every value in `.env` before starting compose; secrets have no defaults.
+| Command | What it does |
+| --- | --- |
+| `make build` | Compiles the backend and builds the frontend |
+| `make test` | Runs backend tests (PostgreSQL through Testcontainers) and frontend tests |
+| `make verify` | The gate CI runs: contract diff, terraform, actionlint, frontend, backend |
+| `make images` | Builds `jaypay/<service>` for every service and `jaypay/frontend` |
+| `make up` / `make down` | Starts or stops the stack in `infra/docker` |
+| `make scan`, `make scan-images` | Trivy and gitleaks, see [SECURITY.md](SECURITY.md) |
+| `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
+| `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
 
-## Dependency locks
-Every project commits a `gradle.lockfile`. After changing `gradle/libs.versions.toml`, refresh them with
-```
-cd backend
-./gradlew resolveAndLockAll --write-locks
-```
+Before `make up`, run `cp infra/docker/.env.example infra/docker/.env` and fill in every value. Secrets have no defaults, so `make up` stops while the file is missing.
 
-## API contract
-`docs/api-contract.md` lists every HTTP endpoint. `python3 scripts/extract-endpoints.py backend | diff docs/api-contract.md -` must print nothing.
+`docs/api-contract.md` lists every HTTP endpoint, and `make verify` fails when the code no longer matches it.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, PR and release flow, and [CLAUDE.md](CLAUDE.md) for the rules agents follow.
 
 ## Service Endpoint & Swagger UI
 - Membership Service
