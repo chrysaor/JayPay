@@ -44,8 +44,8 @@ bin/
 .DS_Store
 
 ### Resource ###
-application.properties
-db/data
+.env
+infra/docker/postgres/data/
 
 # AXON server
 axon-server-se/config/**

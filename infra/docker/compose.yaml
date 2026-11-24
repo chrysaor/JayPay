@@ -13,70 +13,68 @@ services:
       - axonserver-events:/axonserver/events
       - axonserver-config:/axonserver/config:ro
 
-  mysql:
-    image: mysql:8.0
-    networks:
-      - jaypay_network
+  postgres:
+    image: postgres:19.0-alpine
     volumes:
-      - ./db/conf.d:/etc/mysql/conf.d
-      - ./db/data:/var/lib/mysql
-      - ./db/initdb.d:/docker-entrypoint-initdb.d
-    env_file: .env
+      - ./postgres/data:/var/lib/postgresql
+      - ./postgres/initdb.d:/docker-entrypoint-initdb.d:ro
     ports:
-      - "3306:3306"
+      - "5432:5432"
     environment:
       - TZ=Asia/Seoul
-      - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_USER=mysqluser
-      - MYSQL_PASSWORD=mysqlpw
+      - POSTGRES_DB=jaypay
+      - POSTGRES_USER=${POSTGRES_USER:-jaypay}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
+    networks:
+      - jaypay_network
 
   membership-service:
-    image: jaypay-membership-service:1.0.0
+    image: jaypay/membership-service
     networks:
       - jaypay_network
     ports:
       - "8081:8080"
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
       - TASK_TOPIC=jaypay.task.topic
-      - SPRING_CLOUD_VAULT_TOKEN=hvs.CAESIEJIL3SzOoZA-HGkADGwsEZvoSP7AFyl3FDI860ShaXcGh4KHGh2cy41eU5SRGFFY1hSSTVLbFRLd2lxbTB4QWM
+      - SPRING_CLOUD_VAULT_TOKEN=${SPRING_CLOUD_VAULT_TOKEN:?set SPRING_CLOUD_VAULT_TOKEN in infra/docker/.env}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in infra/docker/.env}
+      - ENCRYPTION_FALLBACK_KEY=${ENCRYPTION_FALLBACK_KEY:?set ENCRYPTION_FALLBACK_KEY in infra/docker/.env}
       - SPRING_CLOUD_VAULT_SCHEME=http
       - SPRING_CLOUD_VAULT_HOST=vault
       - SPRING_CLOUD_VAULT_PORT=8200
 
   banking-service:
-    image: jaypay-banking-service:1.0.0
+    image: jaypay/banking-service
     networks:
       - jaypay_network
     ports:
       - "8082:8080"
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
@@ -85,24 +83,23 @@ services:
       - SERVICE_BANKING_URL=http://banking-service:8080
 
   money-service:
-    image: jaypay-money-service:1.0.0
+    image: jaypay/money-service
     networks:
       - jaypay_network
     ports:
       - "8083:8080"
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
@@ -112,24 +109,23 @@ services:
       - SERVICE_BANKING_URL=http://banking-service:8080
 
   remittance-service:
-    image: jaypay-remittance-service:1.0.0
+    image: jaypay/remittance-service
     networks:
       - jaypay_network
     ports:
       - "8084:8080"
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
@@ -140,7 +136,7 @@ services:
       - SERVICE_MONEY_URL=http://money-service:8080
 
   payment-service:
-    image: jaypay-payment-service:1.0.0
+    image: jaypay/payment-service
     networks:
       - jaypay_network
     ports:
@@ -148,17 +144,16 @@ services:
     restart: always
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
@@ -166,7 +161,7 @@ services:
       - SERVICE_BANKING_URL=http://banking-service:8080
 
   money-aggregation-service:
-    image: jaypay-money-aggregation-service:1.0.0
+    image: jaypay/money-aggregation-service
     networks:
       - jaypay_network
     ports:
@@ -174,17 +169,16 @@ services:
     restart: always
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
@@ -193,7 +187,7 @@ services:
       - SERVICE_MONEY_URL=http://money-service:8080
 
   money-query-service:
-    image: jaypay-money-query-service:1.0.0
+    image: jaypay/money-query-service
     networks:
       - jaypay_network
     ports:
@@ -201,17 +195,18 @@ services:
     restart: always
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=jaypay.logging.out.stdout
@@ -220,7 +215,7 @@ services:
       - SERVICE_MONEY_URL=http://money-service:8080
 
   settlement-service:
-    image: jaypay-settlement-service:1.0.0
+    image: jaypay/settlement-service
     networks:
       - jaypay_network
     ports:
@@ -228,17 +223,16 @@ services:
     restart: always
     depends_on:
       - kafka
-      - mysql
+      - postgres
       - axon-server
     environment:
       - AXON_AXONSERVER_SERVERS=axon-server:8124
       - AXON_SERIALIZER_EVENTS=jackson
       - AXON_SERIALIZER_MESSAGES=jackson
       - AXON_SERIALIZER_GENERAL=xstream
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jaypay?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=mysqluser
-      - SPRING_DATASOURCE_PASSWORD=mysqlpw
-      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQL5InnoDBDialect
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jaypay
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-jaypay}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/docker/.env}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - KAFKA_CLUSTERS_BOOTSTRAPSERVERS=kafka:29092
       - LOGGING_TOPIC=fastcampus.logging.out.stdout
@@ -259,7 +253,7 @@ services:
       - IPC_LOCK
 
   logging-consumer:
-    image: jaypay-logging-consumer:1.0.0
+    image: jaypay/logging-consumer
     networks:
       - jaypay_network
     restart: always
@@ -271,7 +265,7 @@ services:
       - LOGGING_TOPIC=jaypay.logging.out.stdout
 
   task-consumer:
-    image: jaypay-task-consumer:1.0.0
+    image: jaypay/task-consumer
     networks:
       - jaypay_network
     restart: always
