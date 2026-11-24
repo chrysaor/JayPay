@@ -1,6 +1,8 @@
 spring:
   application:
     name: settlement-service
+  config:
+    import: classpath:jaypay-common.yml
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jaypay}
     username: ${SPRING_DATASOURCE_USERNAME:jaypay}
@@ -13,20 +15,6 @@ spring:
       enabled: ${SPRING_BATCH_JOB_ENABLED:false}
     jdbc:
       initialize-schema: ${SPRING_BATCH_JDBC_INITIALIZE_SCHEMA:always}
-  jackson:
-    use-jackson2-defaults: true
-axon:
-  axonserver:
-    servers: ${AXON_AXONSERVER_SERVERS:localhost:8124}
-  serializer:
-    general: ${AXON_SERIALIZER_GENERAL:xstream}
-    events: ${AXON_SERIALIZER_EVENTS:jackson}
-    messages: ${AXON_SERIALIZER_MESSAGES:jackson}
-kafka:
-  clusters:
-    bootstrapservers: ${KAFKA_CLUSTERS_BOOTSTRAPSERVERS:localhost:9092}
-logging:
-  topic: ${LOGGING_TOPIC:jaypay.logging.out.stdout}
 service:
   banking:
     url: ${SERVICE_BANKING_URL:http://localhost:8082}

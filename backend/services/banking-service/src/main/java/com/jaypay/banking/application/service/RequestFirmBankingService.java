@@ -1,5 +1,6 @@
 package com.jaypay.banking.application.service;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.banking.adapter.axon.command.CreateFirmBankingRequestCommand;
 import com.jaypay.banking.adapter.axon.command.UpdateFirmBankingRequestCommand;
 import com.jaypay.banking.adapter.out.external.bank.ExternalFirmBankingRequest;
@@ -23,6 +24,7 @@ import java.util.UUID;
 @UseCase
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class RequestFirmBankingService implements RequestFirmBankingUseCase, UpdateFirmBankingUseCase {
 
     private final FirmBankingRequestMapper mapper;
@@ -75,9 +77,9 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
         commandGateway.send(eventCommand).whenComplete(
                 (result, throwable) -> {
                     if (throwable != null) {
-                        System.out.println(throwable.getMessage());
+                        log.warn("{}", throwable.getMessage());
                     } else {
-                        System.out.println("CreateFirmBankingRequestCommand completed, Aggregate ID: " + result.toString());
+                        log.info("CreateFirmBankingRequestCommand completed, Aggregate ID: {}", result);
 
                         FirmBankingRequestJpaEntity requestedEntity = requestFirmBankingPort.createFirmBankingRequest(
                                 new FirmBankingRequest.FromBankName(command.getFromBankName()),
@@ -120,9 +122,9 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
         commandGateway.send(updateFirmBankingRequestCommand).whenComplete(
                 (result, throwable) -> {
                         if (throwable != null) {
-                            System.out.println(throwable.getMessage());
+                            log.warn("{}", throwable.getMessage());
                         } else {
-                            System.out.println("UpdateFirmBankingRequestCommand completed, Aggregate ID: " + result.toString());
+                            log.info("UpdateFirmBankingRequestCommand completed, Aggregate ID: {}", result);
                             FirmBankingRequestJpaEntity entity = requestFirmBankingPort.getFirmBankingRequest(
                                     new FirmBankingRequest.FirmBankingAggregateIdentifier(command.getFirmBankingAggregateIdentifier()));
 

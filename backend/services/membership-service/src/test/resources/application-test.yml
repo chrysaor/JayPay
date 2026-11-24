@@ -3,6 +3,10 @@ spring:
     url: jdbc:tc:postgresql:19.0-alpine:///jaypay
     username: test
     password: test
+  kafka:
+    producer:
+      properties:
+        "[max.block.ms]": 1000
   cloud:
     vault:
       token: test-only-vault-token

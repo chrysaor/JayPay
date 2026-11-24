@@ -1,6 +1,8 @@
 spring:
   application:
     name: membership-service
+  config:
+    import: classpath:jaypay-common.yml
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jaypay}
     username: ${SPRING_DATASOURCE_USERNAME:jaypay}
@@ -14,20 +16,6 @@ spring:
       scheme: ${SPRING_CLOUD_VAULT_SCHEME:http}
       host: ${SPRING_CLOUD_VAULT_HOST:localhost}
       port: ${SPRING_CLOUD_VAULT_PORT:8200}
-  jackson:
-    use-jackson2-defaults: true
-axon:
-  axonserver:
-    servers: ${AXON_AXONSERVER_SERVERS:localhost:8124}
-  serializer:
-    general: ${AXON_SERIALIZER_GENERAL:xstream}
-    events: ${AXON_SERIALIZER_EVENTS:jackson}
-    messages: ${AXON_SERIALIZER_MESSAGES:jackson}
-kafka:
-  clusters:
-    bootstrapservers: ${KAFKA_CLUSTERS_BOOTSTRAPSERVERS:localhost:9092}
-logging:
-  topic: ${LOGGING_TOPIC:jaypay.logging.out.stdout}
 jwt:
   secret: ${JWT_SECRET}
 encryption:

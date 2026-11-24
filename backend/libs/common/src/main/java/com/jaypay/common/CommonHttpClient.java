@@ -1,5 +1,8 @@
 package com.jaypay.common;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.java11.instrument.binder.jdk.MicrometerHttpClient;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -12,8 +15,10 @@ import java.net.http.HttpResponse;
 public class CommonHttpClient {
     private final HttpClient httpClient;
 
-    public CommonHttpClient() {
-        httpClient = HttpClient.newBuilder().build();
+    public CommonHttpClient(MeterRegistry meterRegistry, ObservationRegistry observationRegistry) {
+        httpClient = MicrometerHttpClient.instrumentationBuilder(HttpClient.newHttpClient(), meterRegistry)
+                .observationRegistry(observationRegistry)
+                .build();
     }
 
     public HttpResponse<String> sendGetRequest(String url) throws Exception {

@@ -1,5 +1,6 @@
 package com.jaypay.banking.adapter.axon.aggregate;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.banking.adapter.axon.command.CreateFirmBankingRequestCommand;
 import com.jaypay.banking.adapter.axon.command.UpdateFirmBankingRequestCommand;
 import com.jaypay.banking.adapter.axon.event.FirmBankingRequestCreatedEvent;
@@ -26,6 +27,7 @@ import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 
 @Aggregate()
 @Data
+@Slf4j
 public class FirmBankingRequestAggregate {
 
     @AggregateIdentifier
@@ -43,14 +45,14 @@ public class FirmBankingRequestAggregate {
 
     @CommandHandler
     public FirmBankingRequestAggregate(CreateFirmBankingRequestCommand command) {
-        System.out.println("CreateFirmBankingRequestCommand Handler");
+        log.info("CreateFirmBankingRequestCommand Handler");
 
         apply(new FirmBankingRequestCreatedEvent(command.getFromBankName(), command.getFromBankAccountNumber(), command.getToBankName(), command.getToBankAccountNumber(), command.getMoneyAmount()));
     }
 
     @CommandHandler
     public FirmBankingRequestAggregate(RequestFirmBankingCommand command, RequestFirmBankingPort firmbankingPort, RequestExternalFirmBankingPort externalFirmbankingPort) {
-        System.out.println("FirmbankingRequestAggregate Handler");
+        log.info("FirmbankingRequestAggregate Handler");
         id = command.getAggregateIdentifier();
 
         firmbankingPort.createFirmBankingRequest(
@@ -87,7 +89,7 @@ public class FirmBankingRequestAggregate {
 
     @CommandHandler
     public FirmBankingRequestAggregate(@NotNull RollbackFirmBankingRequestCommand command, RequestFirmBankingPort firmbankingPort, RequestExternalFirmBankingPort externalFirmbankingPort) {
-        System.out.println("RollbackFirmbankingRequestCommand Handler");
+        log.info("RollbackFirmbankingRequestCommand Handler");
         id = UUID.randomUUID().toString();
 
         firmbankingPort.createFirmBankingRequest(
@@ -111,9 +113,9 @@ public class FirmBankingRequestAggregate {
         int res = result.getResultCode();
 
         if (res == 0) {
-            System.out.println("ExternalFirmBankingRequest success");
+            log.info("ExternalFirmBankingRequest success");
         } else {
-            System.out.println("ExternalFirmBankingRequest failed");
+            log.warn("ExternalFirmBankingRequest failed");
         }
 
         apply(new RollbackFirmBankingFinishedEvent(
@@ -125,7 +127,7 @@ public class FirmBankingRequestAggregate {
 
     @CommandHandler
     public String handle(UpdateFirmBankingRequestCommand command) {
-        System.out.println("UpdateFirmBankingRequestCommand Handler");
+        log.info("UpdateFirmBankingRequestCommand Handler");
 
         id = command.getAggregateIdentifier();
         apply(new FirmBankingRequestUpdatedEvent(command.getFirmbankingStatus()));
@@ -135,7 +137,7 @@ public class FirmBankingRequestAggregate {
 
     @EventSourcingHandler
     public void on(FirmBankingRequestCreatedEvent event) {
-        System.out.println("FirmBankingRequestCreatedEvent Sourcing Handler");
+        log.info("FirmBankingRequestCreatedEvent Sourcing Handler");
 
         id = UUID.randomUUID().toString();
         fromBankName = event.getFromBankName();
@@ -146,7 +148,7 @@ public class FirmBankingRequestAggregate {
 
     @EventSourcingHandler
     public void on(FirmBankingRequestUpdatedEvent event) {
-        System.out.println("FirmBankingRequestUpdatedEvent Sourcing Handler");
+        log.info("FirmBankingRequestUpdatedEvent Sourcing Handler");
 
         firmbankingStatus = event.getFirmBankingStatus();
     }

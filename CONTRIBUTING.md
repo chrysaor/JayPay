@@ -47,6 +47,6 @@ make up
 make down
 ```
 
-Fill in every value in `infra/docker/.env` first. `make up` and `make down` stop with a message while the file is missing.
+The first `make up` writes `infra/docker/.env` with random secrets. `make smoke` drives the running stack end to end.
 
 `make scan` runs the Trivy filesystem scan and the gitleaks history scan from `SECURITY.md`.

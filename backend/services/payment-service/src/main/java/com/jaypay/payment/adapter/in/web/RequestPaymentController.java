@@ -1,5 +1,6 @@
 package com.jaypay.payment.adapter.in.web;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.payment.application.port.in.FinishSettlementCommand;
 import com.jaypay.payment.application.port.in.FinishSettlementUseCase;
 import com.jaypay.payment.application.port.in.RequestPaymentCommand;
@@ -17,6 +18,7 @@ import java.util.List;
 @WebAdapter
 @RestController
 @RequiredArgsConstructor
+@Slf4j
 public class RequestPaymentController {
 
     private final RequestPaymentUseCase requestPaymentUseCase;
@@ -41,7 +43,7 @@ public class RequestPaymentController {
 
     @PostMapping(path = "/payment/finish-settlement")
     void finishSettlement(@RequestBody FinishSettlementRequest request) {
-        System.out.println("request.getPaymentId() = " + request.getPaymentId());
+        log.info("request.getPaymentId() = {}", request.getPaymentId());
         finishSettlementUseCase.finishPayment(
                 new FinishSettlementCommand(request.getPaymentId())
         );

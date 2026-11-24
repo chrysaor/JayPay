@@ -22,7 +22,7 @@ public class MembershipServiceAdapter implements GetMembershipPort {
 
     @Override
     public MembershipStatus getMembership(String membershipId) {
-        String url = String.join("/", membershipServiceUrl, "membership", membershipId);
+        String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
         try {
             String jsonResponse = commonHttpClient.sendGetRequest(url).body();
 

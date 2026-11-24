@@ -1,5 +1,6 @@
 package com.jaypay.banking.application.service;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.banking.adapter.axon.command.CreateRegisteredBankAccountCommand;
 import com.jaypay.banking.adapter.out.external.bank.BankAccount;
 import com.jaypay.banking.adapter.out.external.bank.GetBankAccountRequest;
@@ -20,6 +21,7 @@ import jakarta.transaction.Transactional;
 @UseCase
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class RegisterBankAccountService implements RegisterBankAccountUseCase, GetRegisteredBankAccountUseCase {
 
     private final GetMembershipPort getMembershipPort;
@@ -62,7 +64,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
                 .whenComplete(
                         (result, throwable) -> {
                             if (throwable != null) {
-                                System.out.println(throwable.getMessage());
+                                log.warn("{}", throwable.getMessage());
                             } else {
                                 registerBankAccountPort.createRegisteredBankAccount(
                                         new RegisteredBankAccount.MembershipId(String.format("%s", command.getMembershipId())),
@@ -79,8 +81,8 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
 
     @Override
     public RegisteredBankAccount getRegisteredBankAccount(GetRegisteredBankAccountCommand command) {
-        System.out.println("getRegisteredBankAccount");
-        System.out.println(command.toString());
+        log.info("getRegisteredBankAccount");
+        log.info("{}", command);
         return mapper.mapToDomainEntity(getRegisteredBankAccountPort.getRegisteredBankAccount(command));
     }
 }

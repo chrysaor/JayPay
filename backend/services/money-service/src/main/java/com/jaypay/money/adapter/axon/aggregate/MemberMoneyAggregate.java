@@ -1,5 +1,6 @@
 package com.jaypay.money.adapter.axon.aggregate;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.money.adapter.axon.command.IncreaseMemberMoneyCommand;
 import com.jaypay.money.adapter.axon.command.MemberMoneyCreatedCommand;
 import com.jaypay.money.adapter.axon.command.RechargingMoneyRequestCreateCommand;
@@ -21,6 +22,7 @@ import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 
 @Aggregate
 @Data
+@Slf4j
 public class MemberMoneyAggregate {
 
     @AggregateIdentifier
@@ -30,14 +32,14 @@ public class MemberMoneyAggregate {
 
     @CommandHandler
     public MemberMoneyAggregate(MemberMoneyCreatedCommand command) {
-        System.out.println("MemberMoneyCreatedCommand Handler");
+        log.info("MemberMoneyCreatedCommand Handler");
 
         apply(new MemberMoneyCreatedEvent(command.getMembershipId()));
     }
 
     @CommandHandler
     public String handler(@NotNull IncreaseMemberMoneyCommand command) {
-        System.out.println("IncreaseMemberMoneyCommand Handler");
+        log.info("IncreaseMemberMoneyCommand Handler");
         id = command.getAggregateIdentifier();
 
         apply(new IncreaseMemberMoneyEvent(id, command.getMembershipId(), command.getAmount()));
@@ -46,7 +48,7 @@ public class MemberMoneyAggregate {
 
     @CommandHandler
     public void handler(RechargingMoneyRequestCreateCommand command, GetRegisteredBankAccountPort getRegisteredBankAccountPort) {
-        System.out.println("RechargingMoneyRequestCreateCommand Handler");
+        log.info("RechargingMoneyRequestCreateCommand Handler");
         id = command.getAggregateIdentifier();
 
         RegisteredBankAccountAggregateIdentifier aggregateIdentifier = getRegisteredBankAccountPort.getRegisteredBankAccount(
@@ -66,7 +68,7 @@ public class MemberMoneyAggregate {
 
     @EventSourcingHandler
     public void on(MemberMoneyCreatedEvent event) {
-        System.out.println("MemberMoneyCreatedEvent Sourcing Handler");
+        log.info("MemberMoneyCreatedEvent Sourcing Handler");
         id = UUID.randomUUID().toString();
         membershipId = Long.parseLong(event.getMembershipId());
         balance = 0;
@@ -74,7 +76,7 @@ public class MemberMoneyAggregate {
 
     @EventSourcingHandler
     public void on(IncreaseMemberMoneyEvent event) {
-        System.out.println("IncreaseMemberMoneyEvent Sourcing Handler");
+        log.info("IncreaseMemberMoneyEvent Sourcing Handler");
         id = event.getAggregateIdentifier();
         membershipId = Long.parseLong(event.getTargetMembershipId());
         balance = event.getAmount();

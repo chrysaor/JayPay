@@ -1,5 +1,6 @@
 package com.jaypay.money.query.adapter.out.aws.dynamodb;
 
+import lombok.extern.slf4j.Slf4j;
 import com.jaypay.money.query.adapter.axon.QueryMoneySumByAddress;
 import com.jaypay.money.query.application.port.out.GetMoneySumByAddressPort;
 import com.jaypay.money.query.application.port.out.InsertMoneyIncreaseEventByAddress;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
+@Slf4j
 public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyIncreaseEventByAddress {
     private static final String TABLE_NAME = "MoneyIncreaseEventByRegion";
     private final DynamoDbClient dynamoDbClient;
@@ -50,7 +52,7 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
 
             dynamoDbClient.putItem(request);
         } catch (DynamoDbException e) {
-            System.err.println("Error adding an item to the table: " + e.getMessage());
+            log.warn("Error adding an item to the table: {}", e.getMessage());
         }
     }
 
@@ -67,11 +69,11 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
 
             GetItemResponse response = dynamoDbClient.getItem(request);
             if (response.hasItem()) {
-                response.item().forEach((key, value) -> System.out.println(key + ": " + value));
+                response.item().forEach((key, value) -> log.info("{}: {}", key, value));
                 return moneySumByAddressMapper.mapToMoneySumByAddress(response.item());
             }
         } catch (DynamoDbException e) {
-            System.err.println("Error getting an item from the table: " + e.getMessage());
+            log.warn("Error getting an item from the table: {}", e.getMessage());
         }
         return new MoneySumByAddress("", "", 0);
     }
@@ -90,9 +92,9 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
                     .build();
 
             QueryResponse response = dynamoDbClient.query(request);
-            response.items().forEach(System.out::println);
+            response.items().forEach(item -> log.info("{}", item));
         } catch (DynamoDbException e) {
-            System.err.println("Error getting an item from the table: " + e.getMessage());
+            log.warn("Error getting an item from the table: {}", e.getMessage());
         }
     }
 
@@ -154,13 +156,13 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
                 for (Map.Entry<String, AttributeValue> entry : attributes.entrySet()) {
                     String attributeName = entry.getKey();
                     AttributeValue attributeValue = entry.getValue();
-                    System.out.println(attributeName + ": " + attributeValue);
+                    log.info("{}: {}", attributeName, attributeValue);
                 }
             } else {
-                System.out.println("Item was updated, but no attributes were returned.");
+                log.info("Item was updated, but no attributes were returned.");
             }
         } catch (DynamoDbException e) {
-            System.err.println("Error getting an item from the table: " + e.getMessage());
+            log.warn("Error getting an item from the table: {}", e.getMessage());
         }
     }
 

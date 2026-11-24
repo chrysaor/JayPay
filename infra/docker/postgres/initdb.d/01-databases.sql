@@ -1,0 +1,8 @@
+CREATE DATABASE membership;
+CREATE DATABASE banking;
+CREATE DATABASE money;
+CREATE DATABASE remittance;
+CREATE DATABASE payment;
+CREATE DATABASE money_aggregation;
+CREATE DATABASE money_query;
+CREATE DATABASE settlement;
