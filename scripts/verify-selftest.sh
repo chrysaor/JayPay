@@ -20,36 +20,35 @@ copy_repo() {
 }
 
 expect() {
-  local name=$1 want=$2 dir=$3
-  shift 3
+  local step=$1 want=$2 dir=$3 planted=${4:-}
   local out status=0
-  out=$("$dir/scripts/verify.sh" "$@" 2>&1) || status=$?
+  out=$("$dir/scripts/verify.sh" "$step" 2>&1) || status=$?
   if [ "$want" = pass ] && [ "$status" -eq 0 ]; then
-    echo "ok   $name"
-  elif [ "$want" = fail ] && [ "$status" -ne 0 ] && grep -Eq "^FAILED:( .*)? $name( |$)" <<<"$out"; then
-    echo "ok   $name"
+    echo "ok   $step passes on a clean copy"
+  elif [ "$want" = fail ] && [ "$status" -ne 0 ] && grep -q "^FAILED: $step$" <<<"$out" && grep -q "$planted" <<<"$out"; then
+    echo "ok   $step fails on the planted $planted"
   else
-    echo "FAIL $name (exit $status, wanted $want)"
+    echo "FAIL $step (exit $status, wanted $want)"
     echo "$out" | tail -20
     failures=$((failures + 1))
   fi
 }
 
 clean=$(copy_repo clean)
-expect contract pass "$clean" contract
-expect actionlint pass "$clean" actionlint
+expect contract pass "$clean"
+expect actionlint pass "$clean"
 
 dir=$(copy_repo contract)
-echo '| banking-service | GET | `/banking/not-in-code` |' >>"$dir/docs/api-contract.md"
-expect contract fail "$dir" contract
+echo '| banking-service | GET | /banking/not-in-code |' >>"$dir/docs/api-contract.md"
+expect contract fail "$dir" not-in-code
 
 dir=$(copy_repo terraform)
 printf 'locals {\n  selftest   = 1\n}\n' >>"$dir/infra/terraform/envs/dev/main.tf"
-expect terraform fail "$dir" terraform
+expect terraform fail "$dir" selftest
 
 dir=$(copy_repo actionlint)
 printf 'on: push\njobs:\n  broken:\n    steps:\n      - run: "true"\n' >"$dir/.github/workflows/broken.yml"
-expect actionlint fail "$dir" actionlint
+expect actionlint fail "$dir" broken.yml
 
 [ "$failures" -eq 0 ] || { echo "$failures self-test case(s) failed"; exit 1; }
 echo "verify.sh catches every planted failure"
