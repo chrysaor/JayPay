@@ -1,50 +1,39 @@
 package com.jaypay.membership;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jaypay.membership.adapter.in.web.RegisterMembershipRequest;
-import com.jaypay.membership.domain.Membership;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
-@RunWith(SpringRunner.class)
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 @SpringBootTest
 @AutoConfigureMockMvc
-public class RegisterMembershipControllerTest {
+@ActiveProfiles("test")
+class RegisterMembershipControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper mapper;
-
     @Test
-    public void testRegisterMembership() throws Exception {
-        RegisterMembershipRequest request = new RegisterMembershipRequest(
-                "name", "email", "address", false
-        );
-        Membership membership = Membership.generateMember(
-                new Membership.MembershipId("1"),
-                new Membership.MembershipName("name"),
-                new Membership.MembershipEmail("email"),
-                new Membership.MembershipAddress("address"),
-                new Membership.MembershipIsValid(true),
-                new Membership.MembershipIsCorp(false),
-                new Membership.MembershipRefreshToken("")
-        );
-        mockMvc.perform(
-                        MockMvcRequestBuilders.post("/memberships/register")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(mapper.writeValueAsString(request))
-                )
-                .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.content().string(mapper.writeValueAsString(membership)));
+    void registersMembershipAndReturnsItWithPlainEmail() throws Exception {
+        mockMvc.perform(post("/memberships")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "name", "email": "email", "address": "address", "corp": false}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.membershipId").isNotEmpty())
+                .andExpect(jsonPath("$.name").value("name"))
+                .andExpect(jsonPath("$.email").value("email"))
+                .andExpect(jsonPath("$.address").value("address"))
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.corp").value(false))
+                .andExpect(jsonPath("$.refreshToken").value(""));
     }
 }

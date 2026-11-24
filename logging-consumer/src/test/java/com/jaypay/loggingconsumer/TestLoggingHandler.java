@@ -10,7 +10,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -21,7 +20,6 @@ import java.util.stream.Stream;
 
 import static org.mockito.Mockito.*;
 
-@SpringBootTest
 public class TestLoggingHandler {
 
     @InjectMocks
@@ -46,7 +44,6 @@ public class TestLoggingHandler {
     @ParameterizedTest
     @MethodSource("provideStringForConsumer")
     public void testConsumeHandler(String consumedString) {
-        // Mocking Kafka Consumer
         when(loggingConsumer.poll(any(Duration.class)))
                 .thenReturn(createMockRecordsFromString(consumedString));
 
