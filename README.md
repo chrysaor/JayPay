@@ -61,14 +61,15 @@ Every command runs from the repository root. Run `make` to list them. Docker mus
 | --- | --- |
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs backend tests (PostgreSQL through Testcontainers) and frontend tests |
-| `make verify` | The gate CI runs: contract diff, terraform, actionlint, frontend, backend |
+| `make verify` | The gate CI runs: contract diff, English-only and env checks, terraform, actionlint, frontend, backend |
 | `make images` | Builds `jaypay/<service>` for every service, `jaypay/frontend-web` and `jaypay/frontend-admin` |
-| `make up` / `make down` | Starts or stops the stack in `infra/docker` |
+| `make up` / `make down` | Starts the stack in `infra/docker` and waits until it is healthy, or stops it |
+| `make smoke` | Drives the running stack end to end, see [infra/docker/README.md](infra/docker/README.md) |
 | `make scan`, `make scan-images` | Trivy and gitleaks, see [SECURITY.md](SECURITY.md) |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
 
-Before `make up`, run `cp infra/docker/.env.example infra/docker/.env` and fill in every value. Secrets have no defaults, so `make up` stops while the file is missing.
+Run `make images` before `make up`. The first `make up` writes `infra/docker/.env` from `.env.example` with random secrets. The file is git-ignored.
 
 `docs/api-contract.md` lists every HTTP endpoint, and `make verify` fails when the code no longer matches it.
 

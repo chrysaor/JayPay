@@ -8,7 +8,7 @@ Rules for agents working in this repository. Every command runs from the reposit
 | --- | --- | --- |
 | Backend, Gradle 9, Java 25, Spring Boot 4 | `backend/` | `make build`, `make test`, `make images`, `make lock`, `make contract` |
 | Frontend, React, Vite, npm workspaces `apps/web`, `apps/admin`, `packages/*` | `frontend/` | `make build`, `make test`, `make images` |
-| Local stack, Docker Compose | `infra/docker/` | `make up`, `make down` |
+| Local stack, Docker Compose | `infra/docker/` | `make images`, `make up`, `make smoke`, `make down` |
 | AWS, Terraform | `infra/terraform/` | `make verify STEPS=terraform`, see `infra/terraform/README.md` |
 
 Docker must be running. Backend tests start PostgreSQL through Testcontainers, and terraform, actionlint, trivy and gitleaks run from their official images.

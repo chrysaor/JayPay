@@ -13,7 +13,7 @@ FRONTEND_DEPS := frontend/node_modules/.package-lock.json
 GIT_COMMON_DIR := $(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test verify verify-selftest images scan scan-images push up down lock contract release-branch
+.PHONY: help build test verify verify-selftest images scan scan-images push up smoke down lock contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
@@ -71,13 +71,15 @@ push:
 	done
 
 infra/docker/.env:
-	@echo "infra/docker/.env is missing. Run: cp infra/docker/.env.example infra/docker/.env, then fill in every value."
-	@exit 1
+	python3 scripts/init-env.py
 
 up: infra/docker/.env
-	cd infra/docker && docker compose up -d
+	cd infra/docker && docker compose up -d --wait
 
-down: infra/docker/.env
+smoke:
+	scripts/smoke.sh
+
+down:
 	cd infra/docker && docker compose down
 
 lock:
