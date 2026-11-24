@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -50,6 +51,39 @@ class RegisterBankAccountControllerTest {
                 .andExpect(jsonPath("$.bankAccountNumber").value("12345"))
                 .andExpect(jsonPath("$.linkedStatusIsValid").value(true))
                 .andExpect(jsonPath("$.aggregateIdentifier").isNotEmpty());
+    }
+
+    @Test
+    void findsTheRegisteredBankAccountOfAMembership() throws Exception {
+        when(getMembershipPort.getMembership("3")).thenReturn(new MembershipStatus("3", true));
+        mockMvc.perform(post("/banking/account/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"membershipId": "3", "bankName": "Woori bank", "bankAccountNumber": "13579", "valid": true}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/banking/account/3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.registeredBankAccountId").isNotEmpty())
+                .andExpect(jsonPath("$.membershipId").value("3"))
+                .andExpect(jsonPath("$.bankName").value("Woori bank"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("13579"))
+                .andExpect(jsonPath("$.linkedStatusIsValid").value(true))
+                .andExpect(jsonPath("$.aggregateIdentifier").isNotEmpty());
+    }
+
+    @Test
+    void reportsExternalBankAccountInfo() throws Exception {
+        mockMvc.perform(post("/banking/info")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"bankName": "Hana bank", "bankAccountNumber": "24680"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankName").value("Hana bank"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("24680"))
+                .andExpect(jsonPath("$.valid").value(true));
     }
 
     @Test
