@@ -1,10 +1,9 @@
 package com.jaypay.banking.application.port.out;
 
-import com.jaypay.banking.adapter.out.external.bank.BankAccount;
-import com.jaypay.banking.adapter.out.external.bank.GetBankAccountRequest;
+import com.jaypay.banking.domain.ExternalBankingInfo;
 
 public interface RequestBankAccountInfoPort {
 
-    BankAccount getBankAccountInfo(GetBankAccountRequest request) ;
+    ExternalBankingInfo getBankAccountInfo(String bankName, String bankAccountNumber);
 
 }

@@ -1,26 +1,23 @@
-package com.jaypay.banking.adapter.axon.aggregate;
+package com.jaypay.banking.adapter.in.axon;
 
-import lombok.extern.slf4j.Slf4j;
 import com.jaypay.banking.adapter.axon.command.CreateFirmBankingRequestCommand;
 import com.jaypay.banking.adapter.axon.command.UpdateFirmBankingRequestCommand;
 import com.jaypay.banking.adapter.axon.event.FirmBankingRequestCreatedEvent;
 import com.jaypay.banking.adapter.axon.event.FirmBankingRequestUpdatedEvent;
-import com.jaypay.banking.adapter.out.external.bank.ExternalFirmBankingRequest;
-import com.jaypay.banking.adapter.out.external.bank.FirmBankingResult;
-import com.jaypay.banking.application.port.out.RequestExternalFirmBankingPort;
-import com.jaypay.banking.application.port.out.RequestFirmBankingPort;
-import com.jaypay.banking.domain.FirmBankingRequest;
-import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
+import com.jaypay.banking.application.port.in.ExecuteFirmBankingCommand;
+import com.jaypay.banking.application.port.in.ExecuteFirmBankingUseCase;
+import com.jaypay.banking.domain.FirmBankingTransfer;
 import com.jaypay.common.event.RequestFirmBankingCommand;
+import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
-import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
@@ -29,6 +26,9 @@ import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 @Data
 @Slf4j
 public class FirmBankingRequestAggregate {
+
+    private static final String COMPANY_BANK_NAME = "jaypay-company";
+    private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123-333-9999";
 
     @AggregateIdentifier
     private String id;
@@ -51,29 +51,25 @@ public class FirmBankingRequestAggregate {
     }
 
     @CommandHandler
-    public FirmBankingRequestAggregate(RequestFirmBankingCommand command, RequestFirmBankingPort firmbankingPort, RequestExternalFirmBankingPort externalFirmbankingPort) {
+    public FirmBankingRequestAggregate(RequestFirmBankingCommand command, ExecuteFirmBankingUseCase executeFirmBankingUseCase) {
         log.info("FirmbankingRequestAggregate Handler");
         id = command.getAggregateIdentifier();
 
-        firmbankingPort.createFirmBankingRequest(
-                new FirmBankingRequest.FromBankName(command.getToBankName()),
-                new FirmBankingRequest.FromBankAccountNumber(command.getToBankAccountNumber()),
-                new FirmBankingRequest.ToBankName("jaypay-company"),
-                new FirmBankingRequest.ToBankAccountNumber("123-333-9999"),
-                new FirmBankingRequest.MoneyAmount(command.getMoneyAmount()),
-                new FirmBankingRequest.FirmBankingStatus(0),
-                new FirmBankingRequest.FirmBankingAggregateIdentifier(id));
-
-        FirmBankingResult firmbankingResult = externalFirmbankingPort.requestExternalFirmBanking(
-                new ExternalFirmBankingRequest(
+        int resultCode = executeFirmBankingUseCase.executeFirmBanking(new ExecuteFirmBankingCommand(
+                id,
+                new FirmBankingTransfer(
+                        command.getToBankName(),
+                        command.getToBankAccountNumber(),
+                        COMPANY_BANK_NAME,
+                        COMPANY_BANK_ACCOUNT_NUMBER,
+                        command.getMoneyAmount()),
+                new FirmBankingTransfer(
                         command.getFromBankName(),
                         command.getFromBankAccountNumber(),
                         command.getToBankName(),
                         command.getToBankAccountNumber(),
-                        command.getMoneyAmount()
-                ));
-
-        int resultCode = firmbankingResult.getResultCode();
+                        command.getMoneyAmount())
+        ));
 
         apply(new RequestFirmBankingFinishedEvent(
                 command.getRequestFirmBankingId(),
@@ -88,31 +84,20 @@ public class FirmBankingRequestAggregate {
     }
 
     @CommandHandler
-    public FirmBankingRequestAggregate(@NotNull RollbackFirmBankingRequestCommand command, RequestFirmBankingPort firmbankingPort, RequestExternalFirmBankingPort externalFirmbankingPort) {
+    public FirmBankingRequestAggregate(RollbackFirmBankingRequestCommand command, ExecuteFirmBankingUseCase executeFirmBankingUseCase) {
         log.info("RollbackFirmbankingRequestCommand Handler");
         id = UUID.randomUUID().toString();
 
-        firmbankingPort.createFirmBankingRequest(
-                new FirmBankingRequest.FromBankName("jaypay-company"),
-                new FirmBankingRequest.FromBankAccountNumber("123-333-9999"),
-                new FirmBankingRequest.ToBankName(command.getBankName()),
-                new FirmBankingRequest.ToBankAccountNumber(command.getBankAccountNumber()),
-                new FirmBankingRequest.MoneyAmount(command.getMoneyAmount()),
-                new FirmBankingRequest.FirmBankingStatus(0),
-                new FirmBankingRequest.FirmBankingAggregateIdentifier(id));
+        FirmBankingTransfer refund = new FirmBankingTransfer(
+                COMPANY_BANK_NAME,
+                COMPANY_BANK_ACCOUNT_NUMBER,
+                command.getBankName(),
+                command.getBankAccountNumber(),
+                command.getMoneyAmount());
 
-        FirmBankingResult result = externalFirmbankingPort.requestExternalFirmBanking(
-                new ExternalFirmBankingRequest(
-                        "jaypay-company",
-                        "123-333-9999",
-                        command.getBankName(),
-                        command.getBankAccountNumber(),
-                        command.getMoneyAmount()
-                ));
+        int resultCode = executeFirmBankingUseCase.executeFirmBanking(new ExecuteFirmBankingCommand(id, refund, refund));
 
-        int res = result.getResultCode();
-
-        if (res == 0) {
+        if (resultCode == 0) {
             log.info("ExternalFirmBankingRequest success");
         } else {
             log.warn("ExternalFirmBankingRequest failed");
