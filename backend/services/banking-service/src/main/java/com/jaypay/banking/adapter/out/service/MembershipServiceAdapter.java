@@ -3,7 +3,7 @@ package com.jaypay.banking.adapter.out.service;
 import com.jaypay.banking.application.port.out.GetMembershipPort;
 import com.jaypay.banking.application.port.out.MembershipStatus;
 import com.jaypay.common.CommonHttpClient;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jaypay.common.membership.MembershipResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -23,20 +23,8 @@ public class MembershipServiceAdapter implements GetMembershipPort {
     @Override
     public MembershipStatus getMembership(String membershipId) {
         String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
-
-        try {
-            String jsonResponse = commonHttpClient.sendGetRequest(url).body();
-            ObjectMapper mapper = new ObjectMapper();
-            Membership membership = mapper.readValue(jsonResponse, Membership.class);
-
-            if (membership.isValid()) {
-                return new MembershipStatus(membership.getMembershipId(), true);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
-        return null;
+        MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class);
+        return membership.valid() ? new MembershipStatus(membership.membershipId(), true) : null;
     }
 
 }
