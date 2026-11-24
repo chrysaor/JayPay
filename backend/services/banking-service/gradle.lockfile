@@ -34,6 +34,7 @@ com.squareup.okio:okio-jvm:3.18.1=productionRuntimeClasspath,runtimeClasspath,te
 com.squareup.okio:okio:3.18.1=productionRuntimeClasspath,runtimeClasspath,testRuntimeClasspath
 com.sun.istack:istack-commons-runtime:4.1.2=productionRuntimeClasspath,runtimeClasspath,testRuntimeClasspath
 com.thoughtworks.xstream:xstream:1.4.21=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.tngtech.archunit:archunit:1.5.1=testCompileClasspath,testRuntimeClasspath
 com.vaadin.external.google:android-json:0.0.20131108.vaadin1=testCompileClasspath,testRuntimeClasspath
 com.zaxxer:HikariCP:7.1.0=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 commons-codec:commons-codec:1.22.1=testRuntimeClasspath
