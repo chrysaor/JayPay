@@ -14,7 +14,7 @@ Report vulnerabilities privately through GitHub's "Report a vulnerability" butto
 | gitleaks secret scan | `security.yml` | PR (PR commits only), push to a long-lived branch (pushed commits only), weekly (full history) |
 | Trivy image scan of every service image and both frontend images, fails on HIGH or CRITICAL | `release.yml` | Push to `release/**`, push of a `v*` tag |
 | Dependabot version updates (gradle, npm, github-actions, docker, docker-compose, terraform) | `dependabot.yml` | Weekly, grouped, PRs into `develop` |
-| `make verify` steps: contract diff, terraform, actionlint, backend, frontend | `ci.yml` | PR and push to a long-lived branch; backend and frontend only when they change |
+| `make verify` steps: contract diff, English-only and env checks, terraform, actionlint, backend, frontend | `ci.yml` | PR and push to a long-lived branch; backend and frontend only when they change |
 
 Long-lived branches are `master`, `develop` and `release/**`.
 
