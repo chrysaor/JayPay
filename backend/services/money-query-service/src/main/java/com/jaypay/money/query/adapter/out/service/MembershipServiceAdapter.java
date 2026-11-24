@@ -1,7 +1,7 @@
 package com.jaypay.money.query.adapter.out.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CommonHttpClient;
+import com.jaypay.common.membership.MembershipResponse;
 import com.jaypay.money.query.application.port.out.GetMemberAddressInfoPort;
 import com.jaypay.money.query.application.port.out.MemberAddressInfo;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,14 +23,7 @@ public class MembershipServiceAdapter implements GetMemberAddressInfoPort {
     @Override
     public MemberAddressInfo getMemberAddressInfo(String membershipId) {
         String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
-        try {
-            String jsonResponse = commonHttpClient.sendGetRequest(url).body();
-
-            ObjectMapper mapper = new ObjectMapper();
-            Membership membership = mapper.readValue(jsonResponse, Membership.class);
-            return new MemberAddressInfo(membership.getMembershipId(), membership.getAddress());
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class);
+        return new MemberAddressInfo(membership.membershipId(), membership.address());
     }
 }

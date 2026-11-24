@@ -1,11 +1,8 @@
 package com.jaypay.money.query.adapter.out.aws.dynamodb;
 
 import lombok.extern.slf4j.Slf4j;
-import com.jaypay.money.query.adapter.axon.QueryMoneySumByAddress;
 import com.jaypay.money.query.application.port.out.GetMoneySumByAddressPort;
 import com.jaypay.money.query.application.port.out.InsertMoneyIncreaseEventByAddress;
-import com.jaypay.money.query.domain.MoneySumByRegion;
-import org.axonframework.queryhandling.QueryHandler;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -16,7 +13,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @Component
 @Slf4j
@@ -76,26 +72,6 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
             log.warn("Error getting an item from the table: {}", e.getMessage());
         }
         return new MoneySumByAddress("", "", 0);
-    }
-
-    private void queryItem(String id) {
-        try {
-            HashMap<String, Condition> attrMap = new HashMap<>();
-            attrMap.put("PK", Condition.builder()
-                    .attributeValueList(AttributeValue.builder().s(id).build())
-                    .comparisonOperator(ComparisonOperator.EQ)
-                    .build());
-
-            QueryRequest request = QueryRequest.builder()
-                    .tableName(TABLE_NAME)
-                    .keyConditions(attrMap)
-                    .build();
-
-            QueryResponse response = dynamoDbClient.query(request);
-            response.items().forEach(item -> log.info("{}", item));
-        } catch (DynamoDbException e) {
-            log.warn("Error getting an item from the table: {}", e.getMessage());
-        }
     }
 
     @Override
@@ -164,15 +140,6 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
         } catch (DynamoDbException e) {
             log.warn("Error getting an item from the table: {}", e.getMessage());
         }
-    }
-
-    @QueryHandler
-    public MoneySumByRegion query (QueryMoneySumByAddress query){
-        return MoneySumByRegion.generateMoneySumByRegion(
-                new MoneySumByRegion.MoneySumByRegionId(UUID.randomUUID().toString()),
-                new MoneySumByRegion.RegionName(query.getAddress()),
-                new MoneySumByRegion.MoneySum(this.getMoneySumByAddressPort(query.getAddress()))
-        );
     }
 
 }
