@@ -12,7 +12,7 @@ Report vulnerabilities privately through GitHub's "Report a vulnerability" butto
 | Dependency review | `security.yml` | PR |
 | Trivy filesystem scan (vulnerabilities and misconfigurations, SARIF to code scanning) | `security.yml` | PR, push to a long-lived branch, weekly |
 | gitleaks secret scan | `security.yml` | PR (PR commits only), push to a long-lived branch (pushed commits only), weekly (full history) |
-| Trivy image scan of every service image and the frontend image, fails on HIGH or CRITICAL | `release.yml` | Push to `release/**`, push of a `v*` tag |
+| Trivy image scan of every service image and both frontend images, fails on HIGH or CRITICAL | `release.yml` | Push to `release/**`, push of a `v*` tag |
 | Dependabot version updates (gradle, npm, github-actions, docker, docker-compose, terraform) | `dependabot.yml` | Weekly, grouped, PRs into `develop` |
 | `make verify` steps: contract diff, terraform, actionlint, backend, frontend | `ci.yml` | PR and push to a long-lived branch; backend and frontend only when they change |
 

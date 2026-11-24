@@ -6,10 +6,14 @@ cd "$root" || exit 1
 
 TERRAFORM_IMAGE=hashicorp/terraform:1.17.2@sha256:6e9c1e647c31a960dc9b59e13272f9111d90010c10b717f77ffb324767660475
 ACTIONLINT_IMAGE=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
-ALL_STEPS=(contract terraform actionlint frontend backend)
+ALL_STEPS=(contract english terraform actionlint frontend backend)
 
 step_contract() {
   python3 scripts/extract-endpoints.py backend | diff -u docs/api-contract.md -
+}
+
+step_english() {
+  python3 scripts/check-english.py .
 }
 
 terraform_run() {

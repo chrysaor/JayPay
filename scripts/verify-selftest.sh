@@ -37,10 +37,15 @@ expect() {
 clean=$(copy_repo clean)
 expect contract pass "$clean"
 expect actionlint pass "$clean"
+expect english pass "$clean"
 
 dir=$(copy_repo contract)
 echo '| banking-service | GET | /banking/not-in-code |' >>"$dir/docs/api-contract.md"
 expect contract fail "$dir" not-in-code
+
+dir=$(copy_repo english)
+printf '\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-hangul.md"
+expect english fail "$dir" planted-hangul.md
 
 dir=$(copy_repo terraform)
 printf 'locals {\n  selftest   = 1\n}\n' >>"$dir/infra/terraform/envs/dev/main.tf"

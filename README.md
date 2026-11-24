@@ -62,7 +62,7 @@ Every command runs from the repository root. Run `make` to list them. Docker mus
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs backend tests (PostgreSQL through Testcontainers) and frontend tests |
 | `make verify` | The gate CI runs: contract diff, terraform, actionlint, frontend, backend |
-| `make images` | Builds `jaypay/<service>` for every service and `jaypay/frontend` |
+| `make images` | Builds `jaypay/<service>` for every service, `jaypay/frontend-web` and `jaypay/frontend-admin` |
 | `make up` / `make down` | Starts or stops the stack in `infra/docker` |
 | `make scan`, `make scan-images` | Trivy and gitleaks, see [SECURITY.md](SECURITY.md) |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |

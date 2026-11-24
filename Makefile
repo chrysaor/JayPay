@@ -1,5 +1,6 @@
 SERVICES := $(notdir $(wildcard backend/services/*))
-IMAGES ?= $(SERVICES) frontend
+FRONTEND_APPS := web admin
+IMAGES ?= $(SERVICES) $(addprefix frontend-,$(FRONTEND_APPS))
 REGISTRY ?= ghcr.io/chrysaor
 TAG ?=
 VERSION ?=
@@ -19,7 +20,7 @@ help:
 	@echo "make test                      run backend and frontend tests"
 	@echo "make verify [STEPS=...]        the gate: $$(sed -n 's/^ALL_STEPS=(\(.*\))/\1/p' scripts/verify.sh)"
 	@echo "make verify-selftest           prove the gate fails on planted errors"
-	@echo "make images                    build jaypay/<service> and jaypay/frontend"
+	@echo "make images                    build jaypay/<service> and jaypay/frontend-<app>"
 	@echo "make scan                      trivy fs scan and gitleaks history scan"
 	@echo "make scan-images [IMAGES=...]  trivy image scan, fails on HIGH or CRITICAL"
 	@echo "make push TAG=<tag>            push images to $(REGISTRY)/jaypay-<name>:<tag>"
@@ -47,7 +48,9 @@ verify-selftest:
 
 images:
 	cd backend && ./gradlew dockerBuild
-	docker build --pull --tag jaypay/frontend frontend
+	@for app in $(FRONTEND_APPS); do \
+	  docker build --pull --build-arg APP=$$app --tag jaypay/frontend-$$app frontend || exit 1; \
+	done
 
 scan:
 	docker run --rm $(TRIVY_CACHE) -v "$(CURDIR):/repo" -w /repo $(TRIVY_IMAGE) fs --scanners vuln,misconfig .

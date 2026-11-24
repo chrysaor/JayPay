@@ -7,7 +7,7 @@ Rules for agents working in this repository. Every command runs from the reposit
 | Area | Path | Commands |
 | --- | --- | --- |
 | Backend, Gradle 9, Java 25, Spring Boot 4 | `backend/` | `make build`, `make test`, `make images`, `make lock`, `make contract` |
-| Frontend, React, Vite, npm | `frontend/` | `make build`, `make test`, `make images` |
+| Frontend, React, Vite, npm workspaces `apps/web`, `apps/admin`, `packages/*` | `frontend/` | `make build`, `make test`, `make images` |
 | Local stack, Docker Compose | `infra/docker/` | `make up`, `make down` |
 | AWS, Terraform | `infra/terraform/` | `make verify STEPS=terraform`, see `infra/terraform/README.md` |
 
@@ -15,7 +15,7 @@ Docker must be running. Backend tests start PostgreSQL through Testcontainers, a
 
 ## The gate
 
-`make verify` runs the endpoint contract diff, terraform fmt and validate, actionlint, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
+`make verify` runs the endpoint contract diff, the English-only check, terraform fmt and validate, actionlint, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
 
 Do not report work as done until `make verify` passes. Changed an HTTP endpoint on purpose? Run `make contract` and commit `docs/api-contract.md`.
 
@@ -47,7 +47,7 @@ Merging into `master` and creating a `vX.Y.Z` tag need the user's explicit confi
 ## Dependencies
 
 - Backend versions live in one place, `backend/gradle/libs.versions.toml`. Build scripts and convention plugins in `backend/build-logic/` read the catalog and never hard-code a version.
-- After changing the catalog or `frontend/package.json`, run `make lock` and commit every changed `gradle.lockfile` and `package-lock.json`.
+- After changing the catalog or any `package.json` under `frontend/`, run `make lock` and commit every changed `gradle.lockfile` and `package-lock.json`.
 
 ## Language
 
