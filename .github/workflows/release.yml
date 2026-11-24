@@ -34,8 +34,8 @@ jobs:
           if [ "$REF_TYPE" = tag ]; then
             version=${REF_NAME#v}
             image_tag=$REF_NAME
-            if ! git branch --remotes --contains HEAD | grep -Eq '^\s*origin/(main|master)$'; then
-              echo "::error::$REF_NAME must point at a commit on main"
+            if ! git branch --remotes --contains HEAD | grep -Eq '^\s*origin/master$'; then
+              echo "::error::$REF_NAME must point at a commit on master"
               exit 1
             fi
           else

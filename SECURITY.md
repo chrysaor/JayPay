@@ -16,7 +16,7 @@ Report vulnerabilities privately through GitHub's "Report a vulnerability" butto
 | Dependabot version updates (gradle, npm, github-actions, docker, docker-compose, terraform) | `dependabot.yml` | Weekly, grouped, PRs into `develop` |
 | `make verify` steps: contract diff, terraform, actionlint, backend, frontend | `ci.yml` | PR and push to a long-lived branch; backend and frontend only when they change |
 
-Long-lived branches are `main` (currently `master`), `develop` and `release/**`.
+Long-lived branches are `master`, `develop` and `release/**`.
 
 The weekly run is Monday 03:00 KST.
 
