@@ -81,6 +81,16 @@ button {
   margin: 0;
 }
 
+.result dl > div {
+  display: contents;
+}
+
+.result dl + dl {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #d9e2ec;
+}
+
 .result dt {
   color: #627d98;
 }
@@ -91,6 +101,7 @@ button {
 }
 
 .error {
+  white-space: pre-wrap;
   color: #ab091e;
   background: #ffe3e3;
   border-color: #ffbdbd;

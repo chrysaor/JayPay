@@ -1,10 +1,11 @@
 import type { ReactElement } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router'
+import { MembershipScreen } from './screens/MembershipScreen'
 
 type Screen = { path: string; label: string; element: ReactElement }
 
 // One entry per screen. The nav, the home page and the routes all read this list.
-const screens: Screen[] = []
+const screens: Screen[] = [{ path: '/membership', label: '회원', element: <MembershipScreen /> }]
 
 function Home() {
   return (
