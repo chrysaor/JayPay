@@ -1,19 +1,11 @@
 package com.jaypay.money.adapter.axon.event;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-public class RechargingRequestCreatedEvent {
-    private String rechargingRequestId;
-    private String membershipId;
-    private int amount;
-    private String registeredBankAccountAggregateIdentifier;
-    private String bankName;
-    private String bankAccountNumber;
-
+public record RechargingRequestCreatedEvent(
+        String rechargingRequestId,
+        String membershipId,
+        int amount,
+        String registeredBankAccountAggregateIdentifier,
+        String bankName,
+        String bankAccountNumber
+) {
 }

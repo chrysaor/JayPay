@@ -1,9 +1,8 @@
 package com.jaypay.money.adapter.out.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CommonHttpClient;
-import com.jaypay.money.application.port.in.GetRegisteredBankAccountPort;
-import com.jaypay.money.application.port.in.RegisteredBankAccountAggregateIdentifier;
+import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
+import com.jaypay.money.application.port.out.RegisteredBankAccount;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,30 +15,15 @@ public class BankingServiceAdapter implements GetRegisteredBankAccountPort {
     private final String bankingServiceUrl;
 
     public BankingServiceAdapter(CommonHttpClient commonHttpClient,
-                                 @Value("${service.banking.url}") String membershipServiceUrl) {
+                                 @Value("${service.banking.url}") String bankingServiceUrl) {
         this.commonHttpClient = commonHttpClient;
-        this.bankingServiceUrl = membershipServiceUrl;
+        this.bankingServiceUrl = bankingServiceUrl;
     }
 
     @Override
-    public RegisteredBankAccountAggregateIdentifier getRegisteredBankAccount(String membershipId){
+    public RegisteredBankAccount getRegisteredBankAccount(String membershipId) {
         String url = String.join("/", bankingServiceUrl, "banking/account", membershipId);
-        try {
-            String jsonResponse = commonHttpClient.sendGetRequest(url).body();
-
-            ObjectMapper mapper = new ObjectMapper();
-            RegisteredBankAccount registeredBankAccount = mapper.readValue(jsonResponse, RegisteredBankAccount.class);
-
-            return new RegisteredBankAccountAggregateIdentifier(
-                    registeredBankAccount.getRegisteredBankAccountId(),
-                    registeredBankAccount.getAggregateIdentifier(),
-                    registeredBankAccount.getMembershipId(),
-                    registeredBankAccount.getBankName(),
-                    registeredBankAccount.getBankAccountNumber()
-            );
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return commonHttpClient.get(url, RegisteredBankAccount.class);
     }
 
 }

@@ -1,10 +1,10 @@
-package com.jaypay.money.adapter.axon.saga;
+package com.jaypay.money.adapter.in.axon;
 
 import lombok.extern.slf4j.Slf4j;
 import com.jaypay.common.event.*;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
-import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
-import com.jaypay.money.application.port.out.IncreaseMoneyPort;
+import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
+import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
 import com.jaypay.money.domain.MemberMoney;
 import lombok.NoArgsConstructor;
 import org.axonframework.commandhandling.gateway.CommandGateway;
@@ -39,13 +39,13 @@ public class MoneyRechargeSaga {
         SagaLifecycle.associateWith("checkRegisteredBankAccountId", checkRegisteredBankAccountId);
 
         commandGateway.send(new CheckRegisteredBankAccountCommand(
-                event.getRegisteredBankAccountAggregateIdentifier(),
-                event.getRechargingRequestId(),
-                event.getMembershipId(),
+                event.registeredBankAccountAggregateIdentifier(),
+                event.rechargingRequestId(),
+                event.membershipId(),
                 checkRegisteredBankAccountId,
-                event.getBankName(),
-                event.getBankAccountNumber(),
-                event.getAmount())
+                event.bankName(),
+                event.bankAccountNumber(),
+                event.amount())
         ).whenComplete(
                 (result, throwable) -> {
                     if (throwable != null) {
@@ -95,7 +95,7 @@ public class MoneyRechargeSaga {
     }
 
     @SagaEventHandler(associationProperty = "requestFirmBankingId")
-    public void handle(RequestFirmBankingFinishedEvent event, IncreaseMoneyPort increaseMoneyPort) {
+    public void handle(RequestFirmBankingFinishedEvent event, IncreaseMoneyRequestUseCase increaseMoneyRequestUseCase) {
         log.info("RequestFirmBankingFinishedEvent saga: {}", event);
 
         boolean status = event.getStatus() == 0;
@@ -105,13 +105,11 @@ public class MoneyRechargeSaga {
             log.warn("RequestFirmBankingFinishedEvent event Failed");
         }
 
-        MemberMoneyJpaEntity resultEntity =
-                increaseMoneyPort.increaseMoney(
-                        new MemberMoney.MembershipId(event.getMembershipId()),
-                        event.getMoneyAmount()
-                );
+        MemberMoney increased = increaseMoneyRequestUseCase.increaseMoney(
+                new IncreaseMoneyRequestCommand(event.getMembershipId(), event.getMoneyAmount())
+        );
 
-        if (resultEntity == null) {
+        if (increased == null) {
             String rollbackFirmBankingId = UUID.randomUUID().toString();
             SagaLifecycle.associateWith("rollbackFirmBankingId", rollbackFirmBankingId);
             commandGateway.send(new RollbackFirmBankingRequestCommand(

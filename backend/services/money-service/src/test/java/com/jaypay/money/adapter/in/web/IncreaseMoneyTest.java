@@ -112,11 +112,11 @@ class IncreaseMoneyTest {
                 .reduce((first, second) -> second).orElseThrow().getPayload();
         assertThat(lastEvent).isInstanceOf(RechargingRequestCreatedEvent.class);
         RechargingRequestCreatedEvent recharging = (RechargingRequestCreatedEvent) lastEvent;
-        assertThat(recharging.getRechargingRequestId()).isNotBlank();
-        assertThat(List.of(recharging.getMembershipId(), recharging.getRegisteredBankAccountAggregateIdentifier(),
-                recharging.getBankName(), recharging.getBankAccountNumber()))
+        assertThat(recharging.rechargingRequestId()).isNotBlank();
+        assertThat(List.of(recharging.membershipId(), recharging.registeredBankAccountAggregateIdentifier(),
+                recharging.bankName(), recharging.bankAccountNumber()))
                 .containsExactly("9", "bank-aggregate-9", "jay-bank", "1002-9");
-        assertThat(recharging.getAmount()).isEqualTo(500);
+        assertThat(recharging.amount()).isEqualTo(500);
     }
 
     private static String member(String membershipId, boolean valid) {

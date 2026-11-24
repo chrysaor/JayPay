@@ -5,18 +5,21 @@ import com.jaypay.common.CountDownLatchManager;
 import com.jaypay.common.RechargingMoneyTask;
 import com.jaypay.common.SubTask;
 import com.jaypay.common.UseCase;
-import com.jaypay.money.adapter.axon.command.MemberMoneyCreatedCommand;
-import com.jaypay.money.adapter.axon.command.RechargingMoneyRequestCreateCommand;
-import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
-import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestMapper;
-import com.jaypay.money.application.port.in.*;
+import com.jaypay.money.application.port.in.CreateMemberMoneyCommand;
+import com.jaypay.money.application.port.in.CreateMemberMoneyUseCase;
+import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
+import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
+import com.jaypay.money.application.port.out.CreateMemberMoneyAggregatePort;
+import com.jaypay.money.application.port.out.CreateMemberMoneyPort;
+import com.jaypay.money.application.port.out.GetMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMembershipPort;
+import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
 import com.jaypay.money.application.port.out.IncreaseMoneyPort;
+import com.jaypay.money.application.port.out.RequestMoneyRechargingPort;
 import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import lombok.RequiredArgsConstructor;
-import org.axonframework.commandhandling.gateway.CommandGateway;
 
 import jakarta.transaction.Transactional;
 import java.util.ArrayList;
@@ -35,40 +38,34 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
     private final IncreaseMoneyPort increaseMoneyPort;
     private final CreateMemberMoneyPort createMemberMoneyPort;
     private final GetMemberMoneyPort getMemberMoneyPort;
-    private final MoneyChangingRequestMapper mapper;
-    private final CommandGateway commandGateway;
+    private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
+    private final CreateMemberMoneyAggregatePort createMemberMoneyAggregatePort;
+    private final RequestMoneyRechargingPort requestMoneyRechargingPort;
 
     @Override
     public MoneyChangingRequest increaseMoneyRequest(IncreaseMoneyRequestCommand command) {
-        boolean validMember = getMembershipPort.getMembership(command.getTargetMembershipId()).isValid();
+        boolean validMember = getMembershipPort.getMembership(command.targetMembershipId()).isValid();
         if (validMember) {
-            increaseMoneyPort.increaseMoney(
-                    new MemberMoney.MembershipId(command.getTargetMembershipId()),
-                    command.getAmount()
-            );
+            increaseMoney(command);
         }
 
-        return mapper.mapToDomainEntity(increaseMoneyPort.createMoneyChangingRequest(
-                new MoneyChangingRequest.TargetMembershipId(command.getTargetMembershipId()),
-                new MoneyChangingRequest.MoneyChangingType(1),
-                new MoneyChangingRequest.ChangingMoneyAmount(command.getAmount()),
-                validMember ? MoneyChangingRequest.MoneyChangingStatus.SUCCEEDED : MoneyChangingRequest.MoneyChangingStatus.FAILED,
-                new MoneyChangingRequest.Uuid(UUID.randomUUID().toString()))
-        );
+        return recordIncrease(command, validMember
+                ? MoneyChangingRequest.MoneyChangingStatus.SUCCEEDED
+                : MoneyChangingRequest.MoneyChangingStatus.FAILED);
     }
 
     @Override
     public MoneyChangingRequest increaseMoneyRequestAsync(IncreaseMoneyRequestCommand command) {
         SubTask validMemberTask = SubTask.builder()
                 .subTaskName("validMemberTask : " + "Validation of the membership")
-                .membershipID(command.getTargetMembershipId())
+                .membershipID(command.targetMembershipId())
                 .taskType("membership")
                 .status("ready")
                 .build();
 
         SubTask validBankingAccountTask = SubTask.builder()
                 .subTaskName("validBankingAccountTask : " + "check validation of account")
-                .membershipID(command.getTargetMembershipId())
+                .membershipID(command.targetMembershipId())
                 .taskType("banking")
                 .status("ready")
                 .build();
@@ -81,8 +78,8 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
                 .taskID(UUID.randomUUID().toString())
                 .taskName("Increase Money Task")
                 .subTaskList(subTaskList)
-                .moneyAmount(command.getAmount())
-                .membershipID(command.getTargetMembershipId())
+                .moneyAmount(command.amount())
+                .membershipID(command.targetMembershipId())
                 .toBankName("jay")
                 .build();
 
@@ -97,22 +94,8 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
 
         String result = countDownLatchManager.getDataForKey(task.getTaskID());
         if (result.equals("success")) {
-            MemberMoneyJpaEntity memberMoneyJpaEntity = increaseMoneyPort.increaseMoney(
-                    new MemberMoney.MembershipId(command.getTargetMembershipId()),
-                    command.getAmount()
-            );
-
-            if (memberMoneyJpaEntity != null) {
-                return mapper.mapToDomainEntity(increaseMoneyPort.createMoneyChangingRequest(
-                        new MoneyChangingRequest.TargetMembershipId(command.getTargetMembershipId()),
-                        new MoneyChangingRequest.MoneyChangingType(1),
-                        new MoneyChangingRequest.ChangingMoneyAmount(command.getAmount()),
-                        new MoneyChangingRequest.MoneyChangingStatus(1),
-                        new MoneyChangingRequest.Uuid(UUID.randomUUID().toString()))
-                );
-            }
-        } else {
-            return null;
+            increaseMoney(command);
+            return recordIncrease(command, MoneyChangingRequest.MoneyChangingStatus.SUCCEEDED);
         }
 
         return null;
@@ -120,41 +103,40 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
 
     @Override
     public void createMemberMoney(CreateMemberMoneyCommand command) {
-        MemberMoneyCreatedCommand axonCommand = new MemberMoneyCreatedCommand(command.getMembershipId());
-        commandGateway.send(axonCommand).whenComplete((result, throwable) -> {
+        MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.membershipId());
+        createMemberMoneyAggregatePort.createMemberMoneyAggregate(membershipId).whenComplete((aggregateIdentifier, throwable) -> {
             if (throwable != null) {
                 log.warn("throwable: {}", throwable);
-                throw new RuntimeException(throwable);
+                return;
             }
-            log.info("result: {}", result);
-            createMemberMoneyPort.createMemberMoney(
-                    new MemberMoney.MembershipId(command.getMembershipId()),
-                    new MemberMoney.MoneyAggregateIdentifier(result.toString())
-            );
+            log.info("result: {}", aggregateIdentifier.getAggregateIdentifier());
+            createMemberMoneyPort.createMemberMoney(membershipId, aggregateIdentifier);
         });
     }
 
     @Override
     public void increaseMoneyRequestByEvent(IncreaseMoneyRequestCommand command) {
-        MemberMoneyJpaEntity memberMoneyJpaEntity = getMemberMoneyPort.getMemberMoney(
-                new MemberMoney.MembershipId(command.getTargetMembershipId())
+        MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.targetMembershipId());
+        requestMoneyRechargingPort.requestMoneyRecharging(
+                getMemberMoneyPort.getMoneyAggregateIdentifier(membershipId),
+                membershipId,
+                command.amount(),
+                getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId())
         );
+    }
 
-        String memberMoneyAggregateIdentifier = memberMoneyJpaEntity.getAggregateIdentifier();
+    @Override
+    public MemberMoney increaseMoney(IncreaseMoneyRequestCommand command) {
+        return increaseMoneyPort.increaseMoney(new MemberMoney.MembershipId(command.targetMembershipId()), command.amount());
+    }
 
-        commandGateway.send(new RechargingMoneyRequestCreateCommand(
-                memberMoneyAggregateIdentifier,
-                UUID.randomUUID().toString(),
-                command.getTargetMembershipId(),
-                command.getAmount())
-        ).whenComplete(
-                (result, throwable) -> {
-                    if (throwable != null) {
-                        log.warn("{}", throwable.getMessage());
-                    } else {
-                        log.info("result: {}", result);
-                    }
-                }
+    private MoneyChangingRequest recordIncrease(IncreaseMoneyRequestCommand command, MoneyChangingRequest.MoneyChangingStatus status) {
+        return increaseMoneyPort.createMoneyChangingRequest(
+                new MoneyChangingRequest.TargetMembershipId(command.targetMembershipId()),
+                new MoneyChangingRequest.MoneyChangingType(1),
+                new MoneyChangingRequest.ChangingMoneyAmount(command.amount()),
+                status,
+                new MoneyChangingRequest.Uuid(UUID.randomUUID().toString())
         );
     }
 

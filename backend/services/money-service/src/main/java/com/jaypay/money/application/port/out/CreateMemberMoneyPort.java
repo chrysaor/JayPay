@@ -1,4 +1,4 @@
-package com.jaypay.money.application.port.in;
+package com.jaypay.money.application.port.out;
 
 import com.jaypay.money.domain.MemberMoney;
 

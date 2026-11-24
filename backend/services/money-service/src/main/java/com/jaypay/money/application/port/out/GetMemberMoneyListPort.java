@@ -1,11 +1,11 @@
 package com.jaypay.money.application.port.out;
 
-import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
+import com.jaypay.money.domain.MemberMoney;
 
 import java.util.List;
 
 public interface GetMemberMoneyListPort {
 
-    List<MemberMoneyJpaEntity> getMemberMoneys(List<String> membershipIds);
+    List<MemberMoney> getMemberMoneys(List<String> membershipIds);
 
 }
