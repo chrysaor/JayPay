@@ -1,22 +1,21 @@
 package com.jaypay.banking.application.service;
 
-import lombok.extern.slf4j.Slf4j;
-import com.jaypay.banking.adapter.axon.command.CreateRegisteredBankAccountCommand;
-import com.jaypay.banking.adapter.out.external.bank.BankAccount;
-import com.jaypay.banking.adapter.out.external.bank.GetBankAccountRequest;
-import com.jaypay.banking.adapter.out.persistence.RegisteredBankAccountJpaEntity;
-import com.jaypay.banking.adapter.out.persistence.RegisteredBankAccountMapper;
 import com.jaypay.banking.application.port.in.GetRegisteredBankAccountCommand;
 import com.jaypay.banking.application.port.in.GetRegisteredBankAccountUseCase;
 import com.jaypay.banking.application.port.in.RegisterBankAccountCommand;
 import com.jaypay.banking.application.port.in.RegisterBankAccountUseCase;
-import com.jaypay.banking.application.port.out.*;
+import com.jaypay.banking.application.port.out.GetMembershipPort;
+import com.jaypay.banking.application.port.out.GetRegisteredBankAccountPort;
+import com.jaypay.banking.application.port.out.MembershipStatus;
+import com.jaypay.banking.application.port.out.RegisterBankAccountPort;
+import com.jaypay.banking.application.port.out.RegisteredBankAccountAggregatePort;
+import com.jaypay.banking.application.port.out.RequestBankAccountInfoPort;
+import com.jaypay.banking.domain.ExternalBankingInfo;
 import com.jaypay.banking.domain.RegisteredBankAccount;
 import com.jaypay.common.UseCase;
-import lombok.RequiredArgsConstructor;
-import org.axonframework.commandhandling.gateway.CommandGateway;
-
 import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @UseCase
 @RequiredArgsConstructor
@@ -28,61 +27,51 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
     private final RegisterBankAccountPort registerBankAccountPort;
     private final RequestBankAccountInfoPort requestBankAccountInfoPort;
     private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
-    private final RegisteredBankAccountMapper mapper;
-    private final CommandGateway commandGateway;
+    private final RegisteredBankAccountAggregatePort registeredBankAccountAggregatePort;
 
     @Override
     public RegisteredBankAccount registerBankAccount(RegisterBankAccountCommand command) {
-
-        MembershipStatus membershipStatus = getMembershipPort.getMembership(command.getMembershipId());
+        MembershipStatus membershipStatus = getMembershipPort.getMembership(command.membershipId());
         if (!membershipStatus.isValid()) {
             return null;
         }
 
-        BankAccount accountInfo = requestBankAccountInfoPort.getBankAccountInfo(new GetBankAccountRequest(
-                command.getBankName(), command.getBankAccountNumber())
-        );
-
-        if(accountInfo.isValid()) {
-            RegisteredBankAccountJpaEntity savedAccountInfo = registerBankAccountPort.createRegisteredBankAccount(
-                    new RegisteredBankAccount.MembershipId(String.format("%s", command.getMembershipId())),
-                    new RegisteredBankAccount.BankName(command.getBankName()),
-                    new RegisteredBankAccount.BankAccountNumber(command.getBankAccountNumber()),
-                    new RegisteredBankAccount.LinkedStatusIsValid(command.isValid()),
-                    new RegisteredBankAccount.AggregateIdentifier("")
-            );
-            return mapper.mapToDomainEntity(savedAccountInfo);
-        } else {
+        ExternalBankingInfo accountInfo = requestBankAccountInfoPort.getBankAccountInfo(command.bankName(), command.bankAccountNumber());
+        if (!accountInfo.isValid()) {
             return null;
         }
+
+        String aggregateIdentifier = registeredBankAccountAggregatePort.createRegisteredBankAccountAggregate(
+                command.membershipId(), command.bankName(), command.bankAccountNumber()).join();
+        return createRegisteredBankAccount(command, aggregateIdentifier);
     }
 
     @Override
     public void registerBankAccountByEvent(RegisterBankAccountCommand command) {
-
-        commandGateway.send(new CreateRegisteredBankAccountCommand(command.getMembershipId(), command.getBankName(), command.getBankAccountNumber()))
-                .whenComplete(
-                        (result, throwable) -> {
-                            if (throwable != null) {
-                                log.warn("{}", throwable.getMessage());
-                            } else {
-                                registerBankAccountPort.createRegisteredBankAccount(
-                                        new RegisteredBankAccount.MembershipId(String.format("%s", command.getMembershipId())),
-                                        new RegisteredBankAccount.BankName(command.getBankName()),
-                                        new RegisteredBankAccount.BankAccountNumber(command.getBankAccountNumber()),
-                                        new RegisteredBankAccount.LinkedStatusIsValid(command.isValid()),
-                                        new RegisteredBankAccount.AggregateIdentifier(result.toString())
-                                );
-                            }
-                        }
-                );
-
+        registeredBankAccountAggregatePort.createRegisteredBankAccountAggregate(command.membershipId(), command.bankName(), command.bankAccountNumber())
+                .whenComplete((aggregateIdentifier, throwable) -> {
+                    if (throwable != null) {
+                        log.warn("{}", throwable.getMessage());
+                    } else {
+                        createRegisteredBankAccount(command, aggregateIdentifier);
+                    }
+                });
     }
 
     @Override
     public RegisteredBankAccount getRegisteredBankAccount(GetRegisteredBankAccountCommand command) {
         log.info("getRegisteredBankAccount");
         log.info("{}", command);
-        return mapper.mapToDomainEntity(getRegisteredBankAccountPort.getRegisteredBankAccount(command));
+        return getRegisteredBankAccountPort.getRegisteredBankAccount(command.membershipId()).orElseThrow();
+    }
+
+    private RegisteredBankAccount createRegisteredBankAccount(RegisterBankAccountCommand command, String aggregateIdentifier) {
+        return registerBankAccountPort.createRegisteredBankAccount(
+                new RegisteredBankAccount.MembershipId(command.membershipId()),
+                new RegisteredBankAccount.BankName(command.bankName()),
+                new RegisteredBankAccount.BankAccountNumber(command.bankAccountNumber()),
+                new RegisteredBankAccount.LinkedStatusIsValid(command.isValid()),
+                new RegisteredBankAccount.AggregateIdentifier(aggregateIdentifier)
+        );
     }
 }

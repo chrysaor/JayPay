@@ -1,22 +1,10 @@
 package com.jaypay.banking.adapter.axon.event;
 
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
-
-
-@EqualsAndHashCode(callSuper = false)
-@AllArgsConstructor
-@NoArgsConstructor
-@Data
-public class FirmBankingRequestCreatedEvent {
-
-    private String fromBankName;
-    private String fromBankAccountNumber;
-    private String toBankName;
-    private String toBankAccountNumber;
-    private int moneyAmount;
-
+public record FirmBankingRequestCreatedEvent(
+        String fromBankName,
+        String fromBankAccountNumber,
+        String toBankName,
+        String toBankAccountNumber,
+        int moneyAmount
+) {
 }
