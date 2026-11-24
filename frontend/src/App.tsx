@@ -2,12 +2,14 @@ import type { ReactElement } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router'
 import { BankingScreen } from './screens/BankingScreen'
 import { MembershipScreen } from './screens/MembershipScreen'
+import { MoneyScreen } from './screens/MoneyScreen'
 
 type Screen = { path: string; label: string; element: ReactElement }
 
 const screens: Screen[] = [
   { path: '/membership', label: '회원', element: <MembershipScreen /> },
   { path: '/banking', label: '계좌', element: <BankingScreen /> },
+  { path: '/money', label: '머니', element: <MoneyScreen /> },
 ]
 
 function Home() {
