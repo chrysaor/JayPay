@@ -12,7 +12,6 @@ import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestMapper;
 import com.jaypay.money.application.port.in.*;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.IncreaseMoneyPort;
-import com.jaypay.money.application.port.out.MembershipStatus;
 import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
@@ -41,27 +40,21 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
 
     @Override
     public MoneyChangingRequest increaseMoneyRequest(IncreaseMoneyRequestCommand command) {
-        MembershipStatus membershipStatus = getMembershipPort.getMembership(command.getTargetMembershipId());
-        if (!membershipStatus.isValid()) {
-            return null;
-        }
-
-        MemberMoneyJpaEntity memberMoneyJpaEntity = increaseMoneyPort.increaseMoney(
-                new MemberMoney.MembershipId(command.getTargetMembershipId()),
-                command.getAmount()
-        );
-
-        if (memberMoneyJpaEntity != null) {
-            return mapper.mapToDomainEntity(increaseMoneyPort.createMoneyChangingRequest(
-                    new MoneyChangingRequest.TargetMembershipId(command.getTargetMembershipId()),
-                    new MoneyChangingRequest.MoneyChangingType(1),
-                    new MoneyChangingRequest.ChangingMoneyAmount(command.getAmount()),
-                    new MoneyChangingRequest.MoneyChangingStatus(1),
-                    new MoneyChangingRequest.Uuid(UUID.randomUUID().toString()))
+        boolean validMember = getMembershipPort.getMembership(command.getTargetMembershipId()).isValid();
+        if (validMember) {
+            increaseMoneyPort.increaseMoney(
+                    new MemberMoney.MembershipId(command.getTargetMembershipId()),
+                    command.getAmount()
             );
         }
 
-        return null;
+        return mapper.mapToDomainEntity(increaseMoneyPort.createMoneyChangingRequest(
+                new MoneyChangingRequest.TargetMembershipId(command.getTargetMembershipId()),
+                new MoneyChangingRequest.MoneyChangingType(1),
+                new MoneyChangingRequest.ChangingMoneyAmount(command.getAmount()),
+                validMember ? MoneyChangingRequest.MoneyChangingStatus.SUCCEEDED : MoneyChangingRequest.MoneyChangingStatus.FAILED,
+                new MoneyChangingRequest.Uuid(UUID.randomUUID().toString()))
+        );
     }
 
     @Override
