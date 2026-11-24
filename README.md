@@ -5,19 +5,33 @@
 It consists of six services: Membership, Banking, Money, Remittance, Payment, and Settlement, each configured as an independent project.
 Each service implemented basic functionalities using Hexagonal Architecture, and then incorporates features such as EDA, CQRS, Event Sourcing, and the Saga Pattern.
 
-The projects are primarily based on Spring Boot and Java 11, and the Axon Framework v4.6.0 is used to implement EDA.
+The projects are primarily based on Spring Boot 4 and Java 25, and the Axon Framework v4.13 is used to implement EDA.
 ```
 
 ## Using Stack in this project
-- Java 11
-- Spring Boot, Spring Data JPA
+- Java 25
+- Spring Boot 4, Spring Data JPA, Spring Batch
 - Lombok
-- Gradle
+- Gradle 9 (version catalog, convention plugins, dependency locking)
 - JWT
-- Axon Framework
+- Axon Framework 4
 - Docker, Docker Compose
-- Mysql, H2
+- PostgreSQL
 - AWS DynamoDB
+
+## Repository layout
+```
+backend/            Gradle build root
+  build-logic/      convention plugins (jaypay.java, jaypay.service, jaypay.jpa-service)
+  gradle/libs.versions.toml
+  libs/common/
+  services/         one directory per Spring Boot service
+  tools/utility/    dummy data generators
+  Dockerfile        one image recipe for every service
+infra/docker/       compose.yaml, .env.example, PostgreSQL init scripts
+docs/               diagrams and the HTTP API contract
+scripts/            extract-endpoints.py
+```
 
 ## Sequence Diagram Examples
 
@@ -39,11 +53,32 @@ The projects are primarily based on Spring Boot and Java 11, and the Axon Framew
 ### Settlement service
 ![Settlement Sequence Example](docs/sequences/6_settlement.png)
 
+## Build and test
+```
+cd backend
+./gradlew build
+```
+Tests start PostgreSQL through Testcontainers, so Docker must be running.
+
 ## Execution
 ```
-./gradlew docker
-docker-compose up -d
+cd backend
+./gradlew dockerBuild
+cd ../infra/docker
+cp .env.example .env
+docker compose up -d
 ```
+`./gradlew dockerBuild` builds `jaypay/<service>` for every service. Fill in every value in `.env` before starting compose; secrets have no defaults.
+
+## Dependency locks
+Every project commits a `gradle.lockfile`. After changing `gradle/libs.versions.toml`, refresh them with
+```
+cd backend
+./gradlew resolveAndLockAll --write-locks
+```
+
+## API contract
+`docs/api-contract.md` lists every HTTP endpoint. `python3 scripts/extract-endpoints.py backend | diff docs/api-contract.md -` must print nothing.
 
 ## Service Endpoint & Swagger UI
 - Membership Service
@@ -70,11 +105,10 @@ docker-compose up -d
 - Settlement Service
   - http://localhost:8088/settlement
   - http://localhost:8088/swagger-ui.html  
-- Mysql
-  - http://localhost:3306
-  - root password: rootpassword
+- PostgreSQL
+  - localhost:5432
   - database: jaypay
-  - User/PW : mysqluser / mysqlpw
+  - user/password: `POSTGRES_USER` / `POSTGRES_PASSWORD` from `infra/docker/.env`
 - Kafka UI
   - http://localhost:8989
 - Axon Server Dashboard
@@ -82,8 +116,4 @@ docker-compose up -d
 
 ## Trouble Shooting
 ### 1. It needs connection information to use dynamo db.
-[MoneyQueryService: DynamoDBAdapter.java]
-```
-private static final String ACCESS_KEY = "";
-private static final String SECRET_KEY = "";
-```
+money-query-service uses the AWS SDK default credentials chain. Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the environment that runs it.
