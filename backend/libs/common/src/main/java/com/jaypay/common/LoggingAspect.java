@@ -1,12 +1,9 @@
 package com.jaypay.common;
 
-
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.stereotype.Component;
-
-import jakarta.validation.constraints.NotNull;
 
 @Aspect
 @Component
@@ -18,8 +15,8 @@ public class LoggingAspect {
         this.loggingProducer = loggingProducer;
     }
 
-    @Before("execution(* com.jaypay.*.adapter.in.web.*.*(..))")
-    public void beforeMethodExecution(@NotNull JoinPoint joinPoint) {
+    @Before("execution(* com.jaypay..adapter.in.web.*.*(..))")
+    public void beforeMethodExecution(JoinPoint joinPoint) {
         String methodName = joinPoint.getSignature().getName();
         loggingProducer.sendMessage("logging", "Before executing method: " + methodName);
     }
