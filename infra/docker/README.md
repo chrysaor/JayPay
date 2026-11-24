@@ -31,7 +31,7 @@ membership-service encrypts member emails with AES-GCM and cannot read rows writ
 | Grafana, no login | http://localhost:3030 |
 | Prometheus | http://localhost:9090 |
 | Kafka UI | http://localhost:8989 |
-| Axon Server | http://localhost:8024 |
+| Axon Server | http://localhost:8024, gRPC on 8124 |
 | ClickHouse HTTP, user `otel` | http://localhost:8123 |
 | Vault, dev mode | http://localhost:8200 |
 | DynamoDB Local | http://localhost:8000 |

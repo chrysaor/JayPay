@@ -25,6 +25,7 @@ help:
 	@echo "make scan-images [IMAGES=...]  trivy image scan, fails on HIGH or CRITICAL"
 	@echo "make push TAG=<tag>            push images to $(REGISTRY)/jaypay-<name>:<tag>"
 	@echo "make up | down                 start or stop the local stack in infra/docker"
+	@echo "make smoke                     drive the running stack end to end"
 	@echo "make lock                      refresh gradle.lockfile and package-lock.json"
 	@echo "make contract                  regenerate docs/api-contract.md"
 	@echo "make release-branch VERSION=X.Y.Z  create release/X.Y.Z from origin/develop"

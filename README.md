@@ -1,114 +1,244 @@
-# JayPay Project Overview
-![Overall Architecture](docs/architecture/jaypay_overall_architecture.png)
+# JayPay
 
+JayPay is a study project for a small payment service: members sign up, register a bank account, top up a wallet, send money and pay merchants, and a batch job settles the payments. The repository shows how to build that as Spring Boot services in a hexagonal layout and connect them with HTTP, Kafka and Axon Framework commands, events, sagas and queries. It also ships two React sites, a Docker Compose stack with logs, traces and metrics, and one `make` gate that CI runs. The project started in 2024 and was rebuilt on Java 25 and Spring Boot 4. The documents from before the rebuild are in [docs/legacy](docs/legacy/README.md).
+
+## Architecture
+
+Ten Spring Boot services run in Docker Compose. Eight of them have a host port and their own PostgreSQL database. Seven of those eight serve the HTTP endpoints, and settlement-service runs a batch job instead. task-consumer and logging-consumer only consume Kafka topics. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services.
+
+### Request path
+
+The browser calls only its own site. nginx strips `/api/<service>` and forwards the rest of the path to that service. The services then call each other over HTTP.
+
+```mermaid
+flowchart TB
+    subgraph sites["nginx, proxies /api/&lt;service&gt;/"]
+        web["frontend-web<br/>customer site"]
+        admin["frontend-admin<br/>admin console"]
+    end
+
+    settlement["settlement-service<br/>batch every 30 s"]
+    remittance["remittance-service"]
+    aggregation["money-aggregation-service"]
+    query["money-query-service"]
+    payment["payment-service"]
+    money["money-service"]
+    banking["banking-service"]
+    membership["membership-service"]
+
+    web --> membership & banking & money & remittance & payment
+    admin --> membership & payment & aggregation & query
+
+    banking -- "member check" --> membership
+    money -- "member check" --> membership
+    money -- "registered account" --> banking
+    remittance -- "member check" --> membership
+    remittance -- "/banking/info" --> banking
+    payment -- "member check" --> membership
+    aggregation -- "members by address" --> membership
+    aggregation -- "balances" --> money
+    query -- "member address" --> membership
+    settlement -- "unsettled payments,<br/>finish settlement" --> payment
+    settlement -- "merchant account,<br/>firm banking" --> banking
 ```
-It consists of six services: Membership, Banking, Money, Remittance, Payment, and Settlement, each configured as an independent project.
-Each service implemented basic functionalities using Hexagonal Architecture, and then incorporates features such as EDA, CQRS, Event Sourcing, and the Saga Pattern.
 
-The projects are primarily based on Spring Boot 4 and Java 25, and the Axon Framework v4.13 is used to implement EDA.
+`docs/api-contract.md` lists every endpoint, and `make verify` fails when the code no longer matches it.
+
+### Messaging and storage
+
+Kafka carries the task top-up and a log line for each web request. Axon Server routes the commands, events and queries of the money top-up saga and stores the events of the Axon aggregates.
+
+```mermaid
+flowchart LR
+    subgraph services["Services with a PostgreSQL database"]
+        membership["membership-service"]
+        banking["banking-service"]
+        money["money-service"]
+        remittance["remittance-service"]
+        payment["payment-service"]
+        aggregation["money-aggregation-service"]
+        query["money-query-service"]
+        settlement["settlement-service"]
+    end
+
+    subgraph kafka["Kafka"]
+        task(["jaypay.task.topic"])
+        result(["jaypay.task.result.topic"])
+        logs(["jaypay.logging.out.stdout<br/>one record per web request"])
+    end
+
+    taskConsumer["task-consumer"]
+    loggingConsumer["logging-consumer"]
+    axon["Axon Server<br/>commands, events, queries"]
+    postgres[("PostgreSQL<br/>one database per service")]
+    dynamodb[("DynamoDB<br/>MoneyIncreaseEventByRegion")]
+    vault[("Vault<br/>email encryption key")]
+
+    money -- "top-up task" --> task --> taskConsumer
+    taskConsumer -- "task result" --> result --> money
+    membership & banking & money & remittance & payment --> logs --> loggingConsumer
+
+    money <-- "saga: commands out, events in" --> axon
+    banking <-- "commands in, events out" --> axon
+    query <-- "events in, money sum query" --> axon
+
+    services --> postgres
+    query -- "money sum by region" --> dynamodb
+    membership -- "AES key" --> vault
 ```
 
-## Using Stack in this project
-- Java 25
-- Spring Boot 4, Spring Data JPA, Spring Batch
-- Lombok
-- Gradle 9 (version catalog, convention plugins, dependency locking)
-- JWT
-- Axon Framework 4
-- Docker, Docker Compose
-- PostgreSQL
-- AWS DynamoDB
+[docs/architecture.md](docs/architecture.md) walks through the saga top-up step by step and shows the layers inside a service.
 
 ## Repository layout
+
+| Path | What it holds |
+| --- | --- |
+| `backend/` | Gradle 9 build: `services/` with one directory per service, `libs/common/` with the shared Kafka, Axon, HTTP client and observability setup, `tools/utility/` with dummy data generators, `build-logic/` with the convention plugins, and one `Dockerfile` for every service image |
+| `backend/gradle/libs.versions.toml` | Every backend dependency version |
+| `frontend/` | npm workspace with the two sites and their shared packages, see [frontend/README.md](frontend/README.md) |
+| `infra/docker/` | `compose.yaml` for the local stack and the configuration of every container in it, see [infra/docker/README.md](infra/docker/README.md) |
+| `infra/terraform/` | The AWS DynamoDB table that money-query-service uses, see [infra/terraform/README.md](infra/terraform/README.md) |
+| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke`, `init-env.py` that writes `infra/docker/.env`, and the checks that `make verify` runs |
+| `docs/` | The HTTP API contract, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
+
+## Quick start
+
+You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 is needed only to build and test the frontend outside Docker.
+
+Run these from the repository root:
+
+```sh
+make images
+make up
+make smoke
 ```
-backend/            Gradle build root
-  build-logic/      convention plugins (jaypay.java, jaypay.service, jaypay.jpa-service)
-  gradle/libs.versions.toml
-  libs/common/
-  services/         one directory per Spring Boot service
-  tools/utility/    dummy data generators
-  Dockerfile        one image recipe for every service
-infra/docker/       compose.yaml, .env.example, PostgreSQL init scripts
-docs/               diagrams and the HTTP API contract
-scripts/            verify.sh, verify-selftest.sh, extract-endpoints.py
-Makefile            the single entry point for build, test, verify, images and the local stack
+
+1. `make images` builds `jaypay/<service>` for every backend service, and `jaypay/frontend-web` and `jaypay/frontend-admin`.
+2. `make up` writes `infra/docker/.env` with random secrets the first time, starts the Compose project `jaypay`, and waits until every container is healthy. The first start also builds the OpenTelemetry Collector image.
+3. `make smoke` signs a member up through the customer site, registers a bank account, tops the wallet up through the saga and through the Kafka task, pays, and checks that logs, traces and metrics arrived. It prints the cause and exits non-zero on the first failure.
+
+Stop the stack with `make down`.
+
+Every host port binds to `127.0.0.1`.
+
+| What | Address |
+| --- | --- |
+| Customer site | http://localhost:8090 |
+| Admin console | http://localhost:8091 |
+| Grafana, no login | http://localhost:3030 |
+| Prometheus | http://localhost:9090 |
+| Kafka UI | http://localhost:8989 |
+| Axon Server dashboard | http://localhost:8024 |
+| Axon Server gRPC | `localhost:8124` |
+| ClickHouse HTTP, user `otel` | http://localhost:8123 |
+| Vault, dev mode | http://localhost:8200 |
+| DynamoDB Local | http://localhost:8000 |
+| PostgreSQL, user `jaypay` | `localhost:5432` |
+| Kafka | `localhost:9092` |
+| OTLP gRPC and HTTP | `localhost:4317`, `localhost:4318` |
+| Services | `localhost:8081` to `localhost:8088`, listed in the next table, with Swagger UI at `/swagger-ui.html` |
+
+The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/README.md) describes every key in it.
+
+## Services
+
+| Service | Host port | Responsibility | Storage and messaging |
+| --- | --- | --- | --- |
+| membership-service | 8081 | Sign up, look members up by id or address, edit members, and issue and check JWTs | PostgreSQL `membership`, Vault for the key that encrypts member email |
+| banking-service | 8082 | Register bank accounts and run firm banking requests against a fake bank | PostgreSQL `banking`, Axon aggregates for bank accounts and firm banking |
+| money-service | 8083 | Wallet balances and top-ups: synchronous, through a Kafka task, or through the Axon saga | PostgreSQL `money`, Axon aggregate and recharge saga, Kafka task topics |
+| remittance-service | 8084 | Send money to a member or a bank account, and keep the history | PostgreSQL `remittance` |
+| payment-service | 8085 | Record payments to merchants, list unsettled payments, and mark them settled | PostgreSQL `payment` |
+| money-aggregation-service | 8086 | Sum the wallet balances of the members at one address | PostgreSQL `money_aggregation` |
+| money-query-service | 8087 | Read model of top-ups per region, answered through an Axon query | PostgreSQL `money_query`, DynamoDB `MoneyIncreaseEventByRegion`, Axon event handler and query handler |
+| settlement-service | 8088 | Spring Batch job every 30 seconds that pays merchants their share through firm banking and marks the payments settled | PostgreSQL `settlement` for the batch tables |
+| task-consumer | none | Reads top-up tasks, marks every subtask done, and writes the result | Kafka `jaypay.task.topic` in, `jaypay.task.result.topic` out |
+| logging-consumer | none | Writes each message from the logging topic to its own log | Kafka `jaypay.logging.out.stdout` in |
+
+Inside Compose every service listens on port 8080 and is reached by its service name, for example `http://membership-service:8080`.
+
+The stack pins Java 25, Spring Boot 4.2.0 and Axon Framework 4.13.3 in `backend/gradle/libs.versions.toml`, and React 19 with Vite 8 in the frontend packages. Axon Server, Kafka, PostgreSQL and the other containers are pinned by digest in `infra/docker/compose.yaml`.
+
+## Observability
+
+Every Spring Boot service sends its logs and traces to the OpenTelemetry Collector over OTLP HTTP. Prometheus scrapes the metrics. Grafana reads both stores.
+
+```mermaid
+flowchart LR
+    services["Ten Spring Boot services"]
+    collector["OpenTelemetry Collector<br/>drops /actuator spans"]
+    clickhouse[("ClickHouse<br/>otel.otel_logs, otel.otel_traces<br/>kept 72 hours")]
+    prometheus[("Prometheus<br/>kept 3 days")]
+    grafana["Grafana"]
+
+    services -- "logs and traces, OTLP HTTP :4318" --> collector
+    collector --> clickhouse
+    prometheus -- "scrapes /actuator/prometheus every 10 s" --> services
+    grafana --> clickhouse & prometheus
 ```
 
-## Sequence Diagram Examples
+| Signal | Source | Store | Where to look |
+| --- | --- | --- | --- |
+| Logs | Logback through the OpenTelemetry appender | ClickHouse `otel.otel_logs` | Grafana dashboard **JayPay logs**, filtered by service, text or trace id |
+| Traces | Micrometer Tracing across HTTP, Kafka and Axon | ClickHouse `otel.otel_traces` | Grafana dashboard **JayPay traces**, with the waterfall of one trace and its logs |
+| Metrics | Micrometer, `/actuator/prometheus` | Prometheus | Grafana dashboard **JayPay service overview**, the Grafana home page |
 
-### Membership service
-![Membership Sequence Example](docs/sequences/1_membership.png)
+Each log record carries the trace id and span id of the request that wrote it, so a trace leads to its logs. Container output is ECS JSON because Compose sets `LOG_FORMAT=ecs`.
 
-### Banking service
-![Banking Sequence Example](docs/sequences/2_transfer_money.png)
+## Development
 
-### Money service
-![Money Sequence Example](docs/sequences/3_charge_money.png)
-
-### Remittance service
-![Remittance Sequence Example](docs/sequences/4_remittance.png)
-
-### Payment service
-![Payment Sequence Example](docs/sequences/5_payment.png)
-
-### Settlement service
-![Settlement Sequence Example](docs/sequences/6_settlement.png)
-
-## Build, test and run
-Every command runs from the repository root. Run `make` to list them. Docker must be running.
+Every command runs from the repository root. Run `make` to list them.
 
 | Command | What it does |
 | --- | --- |
 | `make build` | Compiles the backend and builds the frontend |
-| `make test` | Runs backend tests (PostgreSQL through Testcontainers) and frontend tests |
-| `make verify` | The gate CI runs: contract diff, English-only and env checks, terraform, actionlint, frontend, backend |
-| `make images` | Builds `jaypay/<service>` for every service, `jaypay/frontend-web` and `jaypay/frontend-admin` |
-| `make up` / `make down` | Starts the stack in `infra/docker` and waits until it is healthy, or stops it |
-| `make smoke` | Drives the running stack end to end, see [infra/docker/README.md](infra/docker/README.md) |
-| `make scan`, `make scan-images` | Trivy and gitleaks, see [SECURITY.md](SECURITY.md) |
+| `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
+| `make verify` | Runs the gate that CI runs: `contract english env terraform actionlint frontend backend` |
+| `make verify STEPS="contract backend"` | Runs only the named steps |
+| `make verify-selftest` | Proves that the gate fails on planted errors |
+| `make images` | Builds every service image and both frontend images |
+| `make up`, `make down` | Starts the local stack and waits until it is healthy, or stops it |
+| `make smoke` | Drives the running stack end to end |
+| `make scan`, `make scan-images` | Runs the Trivy and gitleaks scans, or the Trivy image scan |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
+| `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` |
 
-Run `make images` before `make up`. The first `make up` writes `infra/docker/.env` from `.env.example` with random secrets. The file is git-ignored.
+Docker must be running for `make test` and `make verify`. The terraform, actionlint, Trivy and gitleaks checks run from their official images, so you install none of them.
 
-`docs/api-contract.md` lists every HTTP endpoint, and `make verify` fails when the code no longer matches it.
+### Branches and releases
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, PR and release flow, and [CLAUDE.md](CLAUDE.md) for the rules agents follow.
+`master` holds released code and `develop` is the integration branch. Every change reaches them through a pull request.
 
-## Service Endpoint & Swagger UI
-- Membership Service
-  - http://localhost:8081/memberships
-  - http://localhost:8081/swagger-ui.html
-- Banking Service
-  - http://localhost:8082/banking
-  - http://localhost:8082/swagger-ui.html
-- Money Service
-  - http://localhost:8083/money
-  - http://localhost:8083/swagger-ui.html
-- Remittance Service
-  - http://localhost:8084/remittance
-  - http://localhost:8084/swagger-ui.html
-- Payment Service
-  - http://localhost:8085/payment
-  - http://localhost:8085/swagger-ui.html
-- Money Aggregation Service
-  - http://localhost:8086/money/aggregation
-  - http://localhost:8086/swagger-ui.html
-- Money Query Service
-  - http://localhost:8087/money/query
-  - http://localhost:8087/swagger-ui.html
-- Settlement Service
-  - http://localhost:8088/settlement
-  - http://localhost:8088/swagger-ui.html  
-- PostgreSQL
-  - localhost:5432
-  - database: jaypay
-  - user/password: `POSTGRES_USER` / `POSTGRES_PASSWORD` from `infra/docker/.env`
-- Kafka UI
-  - http://localhost:8989
-- Axon Server Dashboard
-  - http://localhost:8024
+```mermaid
+flowchart LR
+    feature["feature/&lt;issue&gt;-&lt;name&gt;"] -- "PR, ci.yml" --> develop
+    develop -- "make release-branch" --> release["release/X.Y.Z"]
+    release -- "PR, owner confirms" --> master
+    master -- "owner confirms tag" --> tag["vX.Y.Z"]
+    release -- "merge back" --> develop
+    release -- "release.yml pushes X.Y.Z-rc.&lt;sha&gt;" --> ghcr[("ghcr.io/chrysaor/jaypay-&lt;name&gt;")]
+    tag -- "release.yml pushes vX.Y.Z,<br/>creates the GitHub Release" --> ghcr
+```
 
-## Trouble Shooting
-### 1. It needs connection information to use dynamo db.
-money-query-service uses the AWS SDK default credentials chain. Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the environment that runs it.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the branch table, the steps for a change, the release steps and the hotfix flow. [CLAUDE.md](CLAUDE.md) has the rules that coding agents follow in this repository.
+
+### Security
+
+[SECURITY.md](SECURITY.md) explains how to report a vulnerability and lists the CodeQL, Trivy, gitleaks and Dependabot checks and when each one runs.
+
+### AWS
+
+The local stack uses DynamoDB Local. [infra/terraform/README.md](infra/terraform/README.md) creates the real DynamoDB table for money-query-service and runs Terraform from its official image.
+
+## Known limitations
+
+JayPay is a study project and is not safe to run with real money or real users.
+
+- The admin console has no authentication. Anyone who can reach it can read and edit members.
+- Login takes a member id only, with no password or other credential.
+- The fake bank in banking-service accepts every account and every transfer.
+- remittance-service does not move money yet. Its money-service client returns no data, so a remittance request fails.
+- The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
+
+[Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.

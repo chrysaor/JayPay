@@ -42,8 +42,8 @@ Who merges:
 
 ```
 make images
-cp infra/docker/.env.example infra/docker/.env
 make up
+make smoke
 make down
 ```
 
