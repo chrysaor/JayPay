@@ -12,7 +12,10 @@ dependencies {
     implementation(lib("spring-boot-starter-webmvc"))
     implementation(lib("spring-boot-starter-actuator"))
     implementation(lib("springdoc-openapi-starter-webmvc-ui"))
+    runtimeOnly(lib("micrometer-registry-prometheus"))
+    runtimeOnly(lib("axon-tracing-opentelemetry"))
     testImplementation(lib("spring-boot-starter-webmvc-test"))
+    testImplementation(lib("opentelemetry-sdk-testing"))
 }
 
 tasks.jar {
