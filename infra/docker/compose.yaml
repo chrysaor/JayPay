@@ -344,7 +344,6 @@ services:
       <<: *jpa-service-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment
       SERVICE_MEMBERSHIP_URL: http://membership-service:8080
-      SERVICE_BANKING_URL: http://banking-service:8080
     depends_on: *jpa-service-depends-on
 
   money-aggregation-service:
