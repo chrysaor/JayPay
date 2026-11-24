@@ -46,7 +46,7 @@ verify-selftest:
 
 images:
 	cd backend && ./gradlew dockerBuild
-	docker build --tag jaypay/frontend frontend
+	docker build --pull --tag jaypay/frontend frontend
 
 scan:
 	docker run --rm $(TRIVY_CACHE) -v "$(CURDIR):/repo" -w /repo $(TRIVY_IMAGE) fs --scanners vuln,misconfig .
