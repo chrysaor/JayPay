@@ -20,6 +20,8 @@ scripts/smoke.sh
 
 Stop the stack with `docker compose -f infra/docker/compose.yaml down`. Add `-v` to drop the named volumes as well.
 
+membership-service encrypts member emails with AES-GCM and cannot read rows written by its earlier ECB-mode code, so looking those members up fails. If your `jaypay_postgres-data` volume holds such rows, run `docker volume rm jaypay_postgres-data` after `make down`.
+
 ## Addresses
 
 | What | Address |

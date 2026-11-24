@@ -10,6 +10,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -126,7 +127,7 @@ public class DummyMoneyDataSimulator {
 
     private static String generateRandomAccountNumber() {
         StringBuilder sb = new StringBuilder();
-        Random random = new Random();
+        SecureRandom random = new SecureRandom();
 
         for (int i = 0; i < 10; i++) {
             int digit = random.nextInt(10);
