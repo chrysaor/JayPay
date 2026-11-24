@@ -37,8 +37,6 @@ spring-boot-starter-opentelemetry = { module = "org.springframework.boot:spring-
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
 micrometer-java11 = { module = "io.micrometer:micrometer-java11" }
 opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
-spring-web = { module = "org.springframework:spring-web" }
-jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api" }
 jackson2-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
 jackson2-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310" }
 axon-spring-boot-starter = { module = "org.axonframework:axon-spring-boot-starter" }

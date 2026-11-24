@@ -14,8 +14,6 @@ dependencies {
     api(libs.axon.spring.boot.starter)
     implementation(libs.micrometer.java11)
     implementation(libs.opentelemetry.logback.appender)
-    compileOnly(libs.spring.web)
-    compileOnly(libs.jakarta.servlet.api)
 
     testFixturesImplementation(platform(libs.spring.boot.dependencies))
     testFixturesImplementation(platform(libs.axon.bom))
