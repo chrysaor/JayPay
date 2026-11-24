@@ -10,7 +10,7 @@ failures=0
 copy_repo() {
   local dest="$work/$1"
   mkdir -p "$dest"
-  git -C "$root" ls-files -co --exclude-standard -- scripts docs/api-contract.md backend infra/terraform .github |
+  git -C "$root" ls-files -co --exclude-standard -- scripts docs/api-contract.md backend infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
     while IFS= read -r path; do
       [ -e "$root/$path" ] || continue
       mkdir -p "$dest/$(dirname "$path")"
@@ -38,6 +38,7 @@ clean=$(copy_repo clean)
 expect contract pass "$clean"
 expect actionlint pass "$clean"
 expect english pass "$clean"
+expect env pass "$clean"
 
 dir=$(copy_repo contract)
 echo '| banking-service | GET | /banking/not-in-code |' >>"$dir/docs/api-contract.md"
@@ -46,6 +47,14 @@ expect contract fail "$dir" not-in-code
 dir=$(copy_repo english)
 printf '\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-hangul.md"
 expect english fail "$dir" planted-hangul.md
+
+dir=$(copy_repo env-example)
+echo 'DOCKER_HOST_IP=127.0.0.1' >>"$dir/infra/docker/.env.example"
+expect env fail "$dir" DOCKER_HOST_IP
+
+dir=$(copy_repo env-service)
+perl -0pi -e 's/(\n      SERVICE_BANKING_URL: [^\n]*)/$1\n      ZOOKEEPER_CONNECT: zookeeper:2181/' "$dir/infra/docker/compose.yaml"
+expect env fail "$dir" ZOOKEEPER_CONNECT
 
 dir=$(copy_repo terraform)
 printf 'locals {\n  selftest   = 1\n}\n' >>"$dir/infra/terraform/envs/dev/main.tf"
