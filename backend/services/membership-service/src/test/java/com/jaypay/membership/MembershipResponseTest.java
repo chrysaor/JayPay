@@ -30,7 +30,7 @@ class MembershipResponseTest {
 
     @Test
     void findByIdReturnsOnlyThePublicFields() throws Exception {
-        String membershipId = register("seoul");
+        String membershipId = register(uniqueAddress());
 
         mockMvc.perform(get("/memberships/{membershipId}", membershipId))
                 .andExpect(status().isOk())
@@ -40,7 +40,7 @@ class MembershipResponseTest {
 
     @Test
     void findByAddressReturnsOnlyThePublicFields() throws Exception {
-        String address = "address-" + UUID.randomUUID();
+        String address = uniqueAddress();
         register(address);
 
         mockMvc.perform(get("/memberships/address/{addressName}", address))
@@ -51,7 +51,7 @@ class MembershipResponseTest {
 
     @Test
     void modifyReturnsOnlyThePublicFields() throws Exception {
-        String membershipId = register("seoul");
+        String membershipId = register(uniqueAddress());
 
         mockMvc.perform(put("/memberships/{membershipId}", membershipId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -66,7 +66,7 @@ class MembershipResponseTest {
 
     @Test
     void authReturnsOnlyThePublicFields() throws Exception {
-        String membershipId = register("seoul");
+        String membershipId = register(uniqueAddress());
         String login = mockMvc.perform(post("/memberships/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -96,6 +96,10 @@ class MembershipResponseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.membershipId");
+    }
+
+    private static String uniqueAddress() {
+        return "address-" + UUID.randomUUID();
     }
 
     private static ResultMatcher onlyPublicFields(String path) {

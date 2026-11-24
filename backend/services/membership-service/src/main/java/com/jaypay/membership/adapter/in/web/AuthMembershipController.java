@@ -1,6 +1,7 @@
 package com.jaypay.membership.adapter.in.web;
 
 import com.jaypay.common.WebAdapter;
+import com.jaypay.common.membership.MembershipResponse;
 import com.jaypay.membership.application.port.in.AuthMembershipUseCase;
 import com.jaypay.membership.application.port.in.LoginMembershipCommand;
 import com.jaypay.membership.application.port.in.RefreshTokenCommand;
@@ -46,12 +47,13 @@ public class AuthMembershipController {
     }
 
     @PostMapping(path = "/memberships/auth")
-    Membership authenticatedMembershipByToken(@RequestBody ValidateTokenRequest request) {
+    MembershipResponse authenticatedMembershipByToken(@RequestBody ValidateTokenRequest request) {
         ValidateTokenCommand command = ValidateTokenCommand.builder()
                 .jwtToken(request.getJwtToken())
                 .build();
 
-        return authMembershipUseCase.getMembershipByJwtToken(command);
+        Membership membership = authMembershipUseCase.getMembershipByJwtToken(command);
+        return membership == null ? null : MembershipResponseMapper.toResponse(membership);
     }
 
 }
