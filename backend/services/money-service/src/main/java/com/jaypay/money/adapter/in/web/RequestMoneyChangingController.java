@@ -25,10 +25,7 @@ public class RequestMoneyChangingController {
 
     @PostMapping(path = "/money/increase")
     MoneyChangingResultDetail increaseMoneyChangingRequest(@RequestBody IncreaseMoneyChangingRequest request) {
-        IncreaseMoneyRequestCommand command = IncreaseMoneyRequestCommand.builder()
-                .targetMembershipId(request.getTargetMembershipId())
-                .amount(request.getAmount())
-                .build();
+        IncreaseMoneyRequestCommand command = new IncreaseMoneyRequestCommand(request.getTargetMembershipId(), request.getAmount());
 
         MoneyChangingRequest moneyChangingRequest = increaseMoneyRequestUseCase.increaseMoneyRequest(command);
 
@@ -42,10 +39,7 @@ public class RequestMoneyChangingController {
 
     @PostMapping(path = "/money/increase-async")
     MoneyChangingResultDetail increaseMoneyChangingRequestAsync(@RequestBody IncreaseMoneyChangingRequest request) {
-        IncreaseMoneyRequestCommand command = IncreaseMoneyRequestCommand.builder()
-                .targetMembershipId(request.getTargetMembershipId())
-                .amount(request.getAmount())
-                .build();
+        IncreaseMoneyRequestCommand command = new IncreaseMoneyRequestCommand(request.getTargetMembershipId(), request.getAmount());
 
         MoneyChangingRequest moneyChangingRequest = increaseMoneyRequestUseCase.increaseMoneyRequestAsync(command);
 
@@ -65,10 +59,7 @@ public class RequestMoneyChangingController {
 
     @PostMapping(path = "/money/decrease-eda")
     MoneyChangingResultDetail decreaseMoneyChangingRequestByEvent(@RequestBody DecreaseMoneyChangingRequest request) {
-        IncreaseMoneyRequestCommand command = IncreaseMoneyRequestCommand.builder()
-                .targetMembershipId(request.getTargetMembershipId())
-                .amount(request.getAmount() * -1)
-                .build();
+        IncreaseMoneyRequestCommand command = new IncreaseMoneyRequestCommand(request.getTargetMembershipId(), request.getAmount() * -1);
 
         increaseMoneyRequestUseCase.increaseMoneyRequestByEvent(command);
         return null;
@@ -76,27 +67,19 @@ public class RequestMoneyChangingController {
 
     @PostMapping(path = "/money/create-member-money")
     void createMemberMoney(@RequestBody CreateMemberMoneyRequest request) {
-        createMemberMoneyUseCase.createMemberMoney(CreateMemberMoneyCommand.builder()
-                .membershipId(request.getMembershipId())
-                .build()
-        );
+        createMemberMoneyUseCase.createMemberMoney(new CreateMemberMoneyCommand(request.getMembershipId()));
     }
 
     @PostMapping(path = "/money/increase-eda")
     void increaseMoneyChangingRequestByEvent(@RequestBody IncreaseMoneyChangingRequest request) {
-        IncreaseMoneyRequestCommand command = IncreaseMoneyRequestCommand.builder()
-                .targetMembershipId(request.getTargetMembershipId())
-                .amount(request.getAmount())
-                .build();
+        IncreaseMoneyRequestCommand command = new IncreaseMoneyRequestCommand(request.getTargetMembershipId(), request.getAmount());
 
         increaseMoneyRequestUseCase.increaseMoneyRequestByEvent(command);
     }
 
     @PostMapping(path = "/money/member-money")
     List<MemberMoney> findMemberMoneyListByMembershipIdsRequest(@RequestBody FindMemberMoneyListByMembershipIdsRequest request) {
-        FindMemberMoneyListByMembershipIdsQuery query = FindMemberMoneyListByMembershipIdsQuery.builder()
-                .membershipIds(request.getTargetMembershipIds())
-                .build();
+        FindMemberMoneyListByMembershipIdsQuery query = new FindMemberMoneyListByMembershipIdsQuery(request.getTargetMembershipIds());
 
         return findMemberMoneyQueryUseCase.findMemberMoneyListByMembershipIds(query);
     }

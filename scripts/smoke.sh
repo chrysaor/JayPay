@@ -52,6 +52,13 @@ print("" if value is None else value)
 PY
 }
 
+json_has() {
+  python3 - "$work/body" "$1" <<'PY' 2>/dev/null
+import json, sys
+sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1])) else 1)
+PY
+}
+
 eventually() {
   local seconds=$1 what=$2
   shift 2
@@ -68,16 +75,16 @@ clickhouse_query() {
 }
 
 wallet_balance_is() {
-  local balance=""
-  call POST "$web/api/money/money/member-money" "$(hex 16)" "{\"targetMembershipIds\":[\"$membership_id\"]}"
+  local member=$1 expected=$2 balance=""
+  call POST "$web/api/money/money/member-money" "$(hex 16)" "{\"targetMembershipIds\":[\"$member\"]}"
   [ "$http_status" != 200 ] || balance=$(json_field 0.balance)
   observed "HTTP $http_status, balance ${balance:-none}: $(response)"
-  [ "$balance" = "$1" ]
+  [ "$balance" = "$expected" ]
 }
 
 bank_account_registered() {
   local aggregate=""
-  call GET "$web/api/banking/banking/account/$membership_id" "$(hex 16)"
+  call GET "$web/api/banking/banking/account/$1" "$(hex 16)"
   [ "$http_status" != 200 ] || aggregate=$(json_field aggregateIdentifier)
   observed "HTTP $http_status, aggregate ${aggregate:-none}: $(response)"
   [ -n "$aggregate" ]
@@ -142,35 +149,73 @@ for site in "$web" "$admin"; do
   request "GET $site/" GET "$site/" "$(hex 16)"
 done
 
+sign_up() {
+  local name=$1 email=$2
+  request "sign up of $name" POST "$web/api/membership/memberships" "$(hex 16)" \
+    '{"name":"'"$name"'","email":"'"$email"'","address":"Gangnam","corp":false}'
+  signed_up=$(json_field membershipId)
+  [ -n "$signed_up" ] || fail "sign up of $name answered without a membershipId: $(response)"
+  ! json_has refreshToken || fail "sign up of $name answered with a refresh token: $(response)"
+}
+
+open_wallet() {
+  request "wallet creation for member $1" POST "$web/api/money/money/create-member-money" "$(hex 16)" '{"membershipId":"'"$1"'"}'
+  eventually 60 "the wallet of member $1 never appeared" wallet_balance_is "$1" 0
+}
+
 log "sign up through the web site"
-signup='{"name":"Smoke Tester","email":"smoke-'$run'@example.com","address":"Gangnam","corp":false}'
-request "sign up" POST "$web/api/membership/memberships" "$(hex 16)" "$signup"
-membership_id=$(json_field membershipId)
-[ -n "$membership_id" ] || fail "sign up answered without a membershipId: $(response)"
+sign_up "Smoke Tester" "smoke-$run@example.com"
+membership_id=$signed_up
 log "member $membership_id"
 
 log "look the member up through the admin console"
 request "admin member lookup" GET "$admin/api/membership/memberships/$membership_id" "$(hex 16)"
 [ "$(json_field membershipId)" = "$membership_id" ] || fail "admin member lookup returned $(response)"
+! json_has refreshToken || fail "admin member lookup answered with a refresh token: $(response)"
 
 log "register a bank account"
 account='{"membershipId":"'$membership_id'","bankName":"Jay Bank","bankAccountNumber":"1002-'$run'","valid":true}'
 request "bank account registration" POST "$web/api/banking/banking/account/register-eda" "$(hex 16)" "$account"
-eventually 60 "the bank account never got an aggregate" bank_account_registered
+eventually 60 "the bank account never got an aggregate" bank_account_registered "$membership_id"
 
 log "open a wallet"
-request "wallet creation" POST "$web/api/money/money/create-member-money" "$(hex 16)" '{"membershipId":"'$membership_id'"}'
-eventually 60 "the wallet never appeared" wallet_balance_is 0
+open_wallet "$membership_id"
 
 log "top up 10000 through the Axon saga"
 saga_trace=$(hex 16)
 request "saga top-up" POST "$web/api/money/money/increase-eda" "$saga_trace" '{"targetMembershipId":"'$membership_id'","amount":10000}'
-eventually 90 "the saga top-up never reached the wallet" wallet_balance_is 10000
+eventually 90 "the saga top-up never reached the wallet" wallet_balance_is "$membership_id" 10000
 
 log "top up 5000 through the Kafka task"
 task_trace=$(hex 16)
 request "Kafka task top-up" POST "$web/api/money/money/increase-async" "$task_trace" '{"targetMembershipId":"'$membership_id'","amount":5000}'
-eventually 60 "the Kafka task top-up never reached the wallet" wallet_balance_is 15000
+eventually 60 "the Kafka task top-up never reached the wallet" wallet_balance_is "$membership_id" 15000
+
+log "top up 2000 directly, the way the wallet page does"
+request "direct top-up" POST "$web/api/money/money/increase" "$(hex 16)" '{"targetMembershipId":"'$membership_id'","amount":2000}'
+[ -n "$(json_field moneyChangingRequestId)" ] || fail "direct top-up returned $(response)"
+eventually 30 "the direct top-up never reached the wallet" wallet_balance_is "$membership_id" 17000
+
+log "send 5000 to another member"
+sign_up "Smoke Receiver" "smoke-receiver-$run@example.com"
+receiver=$signed_up
+open_wallet "$receiver"
+request "remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
+  '{"fromMembershipId":"'$membership_id'","toMembershipId":"'$receiver'","remittanceType":0,"amount":5000}'
+[ "$(json_field remittanceStatus)" = success ] || fail "remittance returned $(response)"
+eventually 30 "the remittance never left the sender's wallet" wallet_balance_is "$membership_id" 12000
+eventually 30 "the remittance never reached the receiver's wallet" wallet_balance_is "$receiver" 5000
+
+log "register a second member's bank account synchronously, the way the web site does, and top it up through the saga"
+sign_up "Smoke Sync" "smoke-sync-$run@example.com"
+sync_member=$signed_up
+request "synchronous bank account registration" POST "$web/api/banking/banking/account/register" "$(hex 16)" \
+  '{"membershipId":"'$sync_member'","bankName":"Jay Bank","bankAccountNumber":"2002-'$run'","valid":true}'
+[ -n "$(json_field aggregateIdentifier)" ] || fail "synchronous registration stored no aggregate: $(response)"
+open_wallet "$sync_member"
+request "saga top-up of the synchronously registered account" POST "$web/api/money/money/increase-eda" "$(hex 16)" \
+  '{"targetMembershipId":"'$sync_member'","amount":4000}'
+eventually 90 "the saga top-up of the synchronously registered account never reached the wallet" wallet_balance_is "$sync_member" 4000
 
 log "pay a merchant"
 payment_trace=$(hex 16)

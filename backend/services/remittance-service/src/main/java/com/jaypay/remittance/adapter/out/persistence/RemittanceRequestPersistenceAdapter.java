@@ -1,10 +1,10 @@
 package com.jaypay.remittance.adapter.out.persistence;
 
 import com.jaypay.common.PersistenceAdapter;
-import com.jaypay.remittance.application.port.in.FindRemittanceCommand;
-import com.jaypay.remittance.application.port.in.RequestRemittanceCommand;
 import com.jaypay.remittance.application.port.out.FindRemittancePort;
+import com.jaypay.remittance.application.port.out.NewRemittanceRequest;
 import com.jaypay.remittance.application.port.out.RequestRemittancePort;
+import com.jaypay.remittance.domain.RemittanceRequest;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -17,26 +17,39 @@ public class RemittanceRequestPersistenceAdapter implements RequestRemittancePor
     private final SpringDataRemittanceRequestRepository remittanceRequestRepository;
 
     @Override
-    public RemittanceRequestJpaEntity createRemittanceRequestHistory(RequestRemittanceCommand command) {
+    public long createRemittanceRequestHistory(NewRemittanceRequest request) {
         return remittanceRequestRepository.save(RemittanceRequestJpaEntity.builder()
-                .fromMembershipId(command.getFromMembershipId())
-                .toMembershipId(command.getToMembershipId())
-                .toBankName(command.getToBankName())
-                .toBankAccountNumber(command.getToBankAccountNumber())
-                .amount(command.getAmount())
-                .remittanceType(command.getRemittanceType())
+                .fromMembershipId(request.fromMembershipId())
+                .toMembershipId(request.toMembershipId())
+                .toBankName(request.toBankName())
+                .toBankAccountNumber(request.toBankAccountNumber())
+                .amount(request.amount())
+                .remittanceType(request.remittanceType())
                 .build()
-        );
+        ).getRemittanceRequestId();
     }
 
     @Override
-    public boolean saveRemittanceRequestHistory(RemittanceRequestJpaEntity entity) {
-        remittanceRequestRepository.save(entity);
-        return true;
+    public RemittanceRequest saveRemittanceRequestStatus(long remittanceRequestHistoryId, String remittanceStatus) {
+        RemittanceRequestJpaEntity entity = remittanceRequestRepository.getReferenceById(remittanceRequestHistoryId);
+        entity.setRemittanceStatus(remittanceStatus);
+        return toDomain(remittanceRequestRepository.save(entity));
     }
 
     @Override
-    public List<RemittanceRequestJpaEntity> findRemittanceHistory(FindRemittanceCommand command) {
+    public List<RemittanceRequest> findRemittanceHistory(String membershipId) {
         return null;
+    }
+
+    private static RemittanceRequest toDomain(RemittanceRequestJpaEntity entity) {
+        return RemittanceRequest.generateRemittanceRequest(
+                new RemittanceRequest.RemittanceRequestId(entity.getFromMembershipId()),
+                new RemittanceRequest.RemittanceFromMembershipId(entity.getFromMembershipId()),
+                new RemittanceRequest.ToBankName(entity.getToBankName()),
+                new RemittanceRequest.ToBankAccountNumber(entity.getToBankAccountNumber()),
+                new RemittanceRequest.RemittanceType(entity.getRemittanceType()),
+                new RemittanceRequest.Amount(entity.getAmount()),
+                new RemittanceRequest.RemittanceStatus(entity.getRemittanceStatus())
+        );
     }
 }

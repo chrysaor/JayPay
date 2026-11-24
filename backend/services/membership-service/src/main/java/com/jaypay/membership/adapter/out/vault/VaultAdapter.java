@@ -1,5 +1,6 @@
 package com.jaypay.membership.adapter.out.vault;
 
+import com.jaypay.membership.application.port.out.EncryptionPort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -7,9 +8,11 @@ import org.springframework.vault.core.VaultKeyValueOperations;
 import org.springframework.vault.core.VaultKeyValueOperationsSupport;
 import org.springframework.vault.core.VaultTemplate;
 
+import java.security.GeneralSecurityException;
+
 @Component
 @Slf4j
-public class VaultAdapter {
+public class VaultAdapter implements EncryptionPort {
     private final AESProvider encryptionProvider;
 
     public VaultAdapter(VaultTemplate vaultTemplate, @Value("${encryption.fallback-key}") String fallbackKey) {
@@ -23,19 +26,21 @@ public class VaultAdapter {
         encryptionProvider = new AESProvider(key);
     }
 
-    public String encryptData (String plainText) {
+    @Override
+    public String encrypt(String plainText) {
         try {
             return encryptionProvider.encrypt(plainText);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
         }
     }
 
-    public String decryptData (String encryptedText) {
+    @Override
+    public String decrypt(String encryptedText) {
         try {
             return encryptionProvider.decrypt(encryptedText);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
         }
     }
 

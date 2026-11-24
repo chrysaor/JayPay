@@ -72,6 +72,9 @@ public class MoneyChangingRequest {
 
     @Value
     public static class MoneyChangingStatus {
+        public static final MoneyChangingStatus SUCCEEDED = new MoneyChangingStatus(1);
+        public static final MoneyChangingStatus FAILED = new MoneyChangingStatus(2);
+
         public MoneyChangingStatus(int value) {
             this.changingMoneyStatus = value;
         }

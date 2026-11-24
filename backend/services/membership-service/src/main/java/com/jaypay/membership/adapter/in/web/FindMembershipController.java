@@ -1,10 +1,10 @@
 package com.jaypay.membership.adapter.in.web;
 
 import com.jaypay.common.WebAdapter;
+import com.jaypay.common.membership.MembershipResponse;
 import com.jaypay.membership.application.port.in.FindMembershipCommand;
 import com.jaypay.membership.application.port.in.FindMembershipListByAddressCommand;
 import com.jaypay.membership.application.port.in.FindMembershipUseCase;
-import com.jaypay.membership.domain.Membership;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,23 +21,25 @@ public class FindMembershipController {
     private final FindMembershipUseCase findMembershipUseCase;
 
     @GetMapping(path = "/memberships/{membershipId}")
-    ResponseEntity<Membership> findMembershipByMemberId(@PathVariable String membershipId) {
+    ResponseEntity<MembershipResponse> findMembershipByMemberId(@PathVariable String membershipId) {
 
         FindMembershipCommand command = FindMembershipCommand.builder()
                 .membershipId(membershipId)
                 .build();
 
-        return ResponseEntity.ok(findMembershipUseCase.findMembership(command));
+        return ResponseEntity.ok(MembershipResponseMapper.toResponse(findMembershipUseCase.findMembership(command)));
     }
 
     @GetMapping(path = "/memberships/address/{addressName}")
-    ResponseEntity<List<Membership>> findMembershipListByAddress(@PathVariable String addressName) {
+    ResponseEntity<List<MembershipResponse>> findMembershipListByAddress(@PathVariable String addressName) {
 
         FindMembershipListByAddressCommand command = FindMembershipListByAddressCommand.builder()
                 .addressName(addressName)
                 .build();
 
-        return ResponseEntity.ok(findMembershipUseCase.findMembershipListByAddress(command));
+        return ResponseEntity.ok(findMembershipUseCase.findMembershipListByAddress(command).stream()
+                .map(MembershipResponseMapper::toResponse)
+                .toList());
     }
 
 }

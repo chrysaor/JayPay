@@ -1,8 +1,5 @@
 package com.jaypay.banking.application.service;
 
-
-import com.jaypay.banking.adapter.out.external.bank.BankAccount;
-import com.jaypay.banking.adapter.out.external.bank.GetBankAccountRequest;
 import com.jaypay.banking.application.port.in.RequestBankingInfoCommand;
 import com.jaypay.banking.application.port.in.RequestBankingInfoUseCase;
 import com.jaypay.banking.application.port.out.RequestBankAccountInfoPort;
@@ -18,18 +15,7 @@ public class RequestBankingInfoService implements RequestBankingInfoUseCase {
 
     @Override
     public ExternalBankingInfo requestExternalBankingInfo(RequestBankingInfoCommand command) {
-        BankAccount bankAccount = requestBankingInfoPort.getBankAccountInfo(
-                new GetBankAccountRequest(command.getBankName(), command.getBankAccountNumber())
-        );
-
-        if (!bankAccount.isValid()) {
-            return null;
-        }
-
-        return ExternalBankingInfo.generatedExternalBankingInfo(
-                new ExternalBankingInfo.BankName(bankAccount.getBankName()),
-                new ExternalBankingInfo.BankAccountNumber(bankAccount.getBankAccountNumber()),
-                new ExternalBankingInfo.IsValid(true)
-        );
+        ExternalBankingInfo bankAccount = requestBankingInfoPort.getBankAccountInfo(command.bankName(), command.bankAccountNumber());
+        return bankAccount.isValid() ? bankAccount : null;
     }
 }

@@ -1,10 +1,11 @@
 package com.jaypay.banking.application.port.out;
 
-import com.jaypay.banking.adapter.out.persistence.RegisteredBankAccountJpaEntity;
-import com.jaypay.banking.application.port.in.GetRegisteredBankAccountCommand;
+import com.jaypay.banking.domain.RegisteredBankAccount;
+
+import java.util.Optional;
 
 public interface GetRegisteredBankAccountPort {
 
-    RegisteredBankAccountJpaEntity getRegisteredBankAccount(GetRegisteredBankAccountCommand command);
+    Optional<RegisteredBankAccount> getRegisteredBankAccount(String membershipId);
 
 }

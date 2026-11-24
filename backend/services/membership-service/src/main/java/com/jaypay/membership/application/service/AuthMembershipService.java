@@ -1,13 +1,12 @@
 package com.jaypay.membership.application.service;
 
 import com.jaypay.common.UseCase;
-import com.jaypay.membership.adapter.out.persistence.MembershipJpaEntity;
-import com.jaypay.membership.adapter.out.persistence.MembershipMapper;
 import com.jaypay.membership.application.port.in.AuthMembershipUseCase;
 import com.jaypay.membership.application.port.in.LoginMembershipCommand;
 import com.jaypay.membership.application.port.in.RefreshTokenCommand;
 import com.jaypay.membership.application.port.in.ValidateTokenCommand;
 import com.jaypay.membership.application.port.out.AuthMembershipPort;
+import com.jaypay.membership.application.port.out.EncryptionPort;
 import com.jaypay.membership.application.port.out.FindMembershipPort;
 import com.jaypay.membership.application.port.out.ModifyMembershipPort;
 import com.jaypay.membership.domain.JwtToken;
@@ -23,17 +22,17 @@ public class AuthMembershipService implements AuthMembershipUseCase {
     private final AuthMembershipPort authMembershipPort;
     private final FindMembershipPort findMembershipPort;
     private final ModifyMembershipPort modifyMembershipPort;
-    private final MembershipMapper mapper;
+    private final EncryptionPort encryptionPort;
 
     @Override
     public JwtToken loginMembership(LoginMembershipCommand command) {
 
-        String membershipId = command.getMembershipId();
-        MembershipJpaEntity membershipJpaEntity = findMembershipPort.findMembership(
+        String membershipId = command.membershipId();
+        Membership membership = findMembershipPort.findMembership(
                 new Membership.MembershipId(membershipId)
         );
 
-        if (membershipJpaEntity.isValid()) {
+        if (membership.isValid()) {
             String jwtToken = authMembershipPort.generateJwtToken(
                     new Membership.MembershipId(membershipId)
             );
@@ -43,11 +42,11 @@ public class AuthMembershipService implements AuthMembershipUseCase {
 
             modifyMembershipPort.modifyMembership(
                     new Membership.MembershipId(membershipId),
-                    new Membership.MembershipName(membershipJpaEntity.getName()),
-                    new Membership.MembershipEmail(membershipJpaEntity.getEmail()),
-                    new Membership.MembershipAddress(membershipJpaEntity.getAddress()),
-                    new Membership.MembershipIsValid(membershipJpaEntity.isValid()),
-                    new Membership.MembershipIsCorp(membershipJpaEntity.isCorp()),
+                    new Membership.MembershipName(membership.getName()),
+                    new Membership.MembershipEmail(membership.getEmail()),
+                    new Membership.MembershipAddress(membership.getAddress()),
+                    new Membership.MembershipIsValid(membership.isValid()),
+                    new Membership.MembershipIsCorp(membership.isCorp()),
                     new Membership.MembershipRefreshToken(refreshToken)
             );
 
@@ -63,21 +62,21 @@ public class AuthMembershipService implements AuthMembershipUseCase {
 
     @Override
     public JwtToken refreshJwtTokenByRefreshToken(RefreshTokenCommand command) {
-        String requestedRefreshToken = command.getRefreshToken();
+        String requestedRefreshToken = command.refreshToken();
         boolean isValid = authMembershipPort.validateJwtToken(requestedRefreshToken);
 
         if(isValid) {
             Membership.MembershipId membershipId = authMembershipPort.parseMembershipIdFromToken(requestedRefreshToken);
             String membershipIdString = membershipId.getMembershipId();
 
-            MembershipJpaEntity membershipJpaEntity = findMembershipPort.findMembership(membershipId);
-            if(!membershipJpaEntity.getRefreshToken().equals(
-                    command.getRefreshToken()
+            Membership membership = findMembershipPort.findMembership(membershipId);
+            if(!membership.getRefreshToken().equals(
+                    command.refreshToken()
             )) {
                 return null;
             }
 
-            if (membershipJpaEntity.isValid()){
+            if (membership.isValid()){
                 String newJwtToken = authMembershipPort.generateJwtToken(
                         new Membership.MembershipId(membershipIdString)
                 );
@@ -95,24 +94,24 @@ public class AuthMembershipService implements AuthMembershipUseCase {
 
     @Override
     public boolean validateJwtToken(ValidateTokenCommand command) {
-        String jwtToken = command.getJwtToken();
+        String jwtToken = command.jwtToken();
         return authMembershipPort.validateJwtToken(jwtToken);
     }
 
     @Override
     public Membership getMembershipByJwtToken(ValidateTokenCommand command) {
-        String jwtToken = command.getJwtToken();
+        String jwtToken = command.jwtToken();
         boolean isValid = authMembershipPort.validateJwtToken(jwtToken);
 
         if(isValid) {
             Membership.MembershipId membershipId = authMembershipPort.parseMembershipIdFromToken(jwtToken);
-            MembershipJpaEntity membershipJpaEntity = findMembershipPort.findMembership(membershipId);
+            Membership membership = findMembershipPort.findMembership(membershipId);
 
-            if (!membershipJpaEntity.getRefreshToken().equals(command.getJwtToken())) {
+            if (!membership.getRefreshToken().equals(command.jwtToken())) {
                 return null;
             }
 
-            return mapper.mapToDomainEntity(membershipJpaEntity);
+            return membership.withEmail(encryptionPort.decrypt(membership.getEmail()));
         }
         return null;
     }

@@ -1,41 +1,19 @@
 package com.jaypay.membership.application.port.in;
 
-import com.jaypay.common.SelfValidating;
 import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 
-import jakarta.validation.constraints.AssertTrue;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import java.util.Objects;
 
 @Builder
-@Data
-@EqualsAndHashCode(callSuper = false)
-public class RegisterMembershipCommand extends SelfValidating<RegisterMembershipCommand> {
-
-    @NotNull
-    private final String name;
-
-    @NotNull
-    private final String email;
-
-    @NotNull
-    @NotBlank
-    private final String address;
-
-    @AssertTrue
-    private final boolean isValid;
-
-    private final boolean isCorp;
-
-    public RegisterMembershipCommand(String name, String email, String address, boolean isValid, boolean isCorp) {
-        this.name = name;
-        this.email = email;
-        this.address = address;
-        this.isValid = isValid;
-        this.isCorp = isCorp;
-
-        this.validateSelf();
+public record RegisterMembershipCommand(String name, String email, String address, boolean isValid, boolean isCorp) {
+    public RegisterMembershipCommand {
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(email, "email");
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("address must not be blank");
+        }
+        if (!isValid) {
+            throw new IllegalArgumentException("a new membership must be valid");
+        }
     }
 }

@@ -17,10 +17,6 @@ public class MoneyQueryController {
     private final QueryMoneySumByRegionUseCase useCase;
     @GetMapping(path = "/money/query/get-money-sum-by-address/{address}")
     long getMoneySumByAddress(@PathVariable String address) {
-        QueryMoneySumByRegionQuery query = QueryMoneySumByRegionQuery.builder()
-                .address(address)
-                .build();
-
-        return useCase.queryMoneySumByRegion(query).getMoneySum();
+        return useCase.queryMoneySumByRegion(new QueryMoneySumByRegionQuery(address)).getMoneySum();
     }
 }

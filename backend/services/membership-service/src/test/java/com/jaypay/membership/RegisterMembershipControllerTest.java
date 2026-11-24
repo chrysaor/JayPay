@@ -34,6 +34,6 @@ class RegisterMembershipControllerTest {
                 .andExpect(jsonPath("$.address").value("address"))
                 .andExpect(jsonPath("$.valid").value(true))
                 .andExpect(jsonPath("$.corp").value(false))
-                .andExpect(jsonPath("$.refreshToken").value(""));
+                .andExpect(jsonPath("$.refreshToken").doesNotExist());
     }
 }

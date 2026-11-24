@@ -3,7 +3,7 @@ package com.jaypay.membership.adapter.in.web;
 import com.jaypay.common.WebAdapter;
 import com.jaypay.membership.application.port.in.ModifyMembershipCommand;
 import com.jaypay.membership.application.port.in.ModifyMembershipUseCase;
-import com.jaypay.membership.domain.Membership;
+import com.jaypay.common.membership.MembershipResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,7 +16,7 @@ public class ModifyMembershipController {
     private final ModifyMembershipUseCase modifyMembershipUseCase;
 
     @PutMapping(path = "/memberships/{membershipId}")
-    ResponseEntity<Membership> ModifyMembershipByMemberId(@RequestBody ModifyMembershipRequest request) {
+    ResponseEntity<MembershipResponse> ModifyMembershipByMemberId(@RequestBody ModifyMembershipRequest request) {
 
         ModifyMembershipCommand command = ModifyMembershipCommand.builder()
                 .membershipId(request.getMembershipId())
@@ -27,7 +27,7 @@ public class ModifyMembershipController {
                 .isCorp(request.isCorp())
                 .build();
 
-        return ResponseEntity.ok(modifyMembershipUseCase.modifyMembership(command));
+        return ResponseEntity.ok(MembershipResponseMapper.toResponse(modifyMembershipUseCase.modifyMembership(command)));
     }
 
 }

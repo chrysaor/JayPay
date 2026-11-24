@@ -1,26 +1,19 @@
 package com.jaypay.banking.application.port.out;
 
-import com.jaypay.banking.adapter.out.persistence.FirmBankingRequestJpaEntity;
 import com.jaypay.banking.domain.FirmBankingRequest;
+import com.jaypay.banking.domain.FirmBankingTransfer;
 
 public interface RequestFirmBankingPort {
 
-    FirmBankingRequestJpaEntity createFirmBankingRequest(
-            FirmBankingRequest.FromBankName fromBankName,
-            FirmBankingRequest.FromBankAccountNumber fromBankAccountNumber,
-            FirmBankingRequest.ToBankName toBankName,
-            FirmBankingRequest.ToBankAccountNumber toBankAccountNumber,
-            FirmBankingRequest.MoneyAmount moneyAmount,
+    FirmBankingRequest createFirmBankingRequest(
+            FirmBankingTransfer transfer,
             FirmBankingRequest.FirmBankingStatus firmBankingStatus,
             FirmBankingRequest.FirmBankingAggregateIdentifier firmBankingAggregateIdentifier
     );
 
-    FirmBankingRequestJpaEntity modifyFirmBankingRequest(
-            FirmBankingRequestJpaEntity entity
-    );
-
-    FirmBankingRequestJpaEntity getFirmBankingRequest(
-            FirmBankingRequest.FirmBankingAggregateIdentifier firmBankingAggregateIdentifier
+    void updateFirmBankingStatus(
+            FirmBankingRequest.FirmBankingAggregateIdentifier firmBankingAggregateIdentifier,
+            FirmBankingRequest.FirmBankingStatus firmBankingStatus
     );
 
 }

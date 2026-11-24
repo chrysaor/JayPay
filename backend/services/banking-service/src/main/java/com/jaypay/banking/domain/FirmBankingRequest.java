@@ -99,6 +99,10 @@ public class FirmBankingRequest {
             this.firmBankingStatus = value;
         }
         int firmBankingStatus;
+
+        public static FirmBankingStatus fromResultCode(int resultCode) {
+            return new FirmBankingStatus(resultCode == 0 ? 1 : 2);
+        }
     }
 
     @Value

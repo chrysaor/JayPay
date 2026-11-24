@@ -1,24 +1,11 @@
 package com.jaypay.money.application.port.in;
 
-import com.jaypay.common.SelfValidating;
-import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-
-import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import java.util.Objects;
 
-@Builder
-@Data
-@EqualsAndHashCode(callSuper = false)
-public class FindMemberMoneyListByMembershipIdsQuery extends SelfValidating<FindMemberMoneyListByMembershipIdsQuery> {
+public record FindMemberMoneyListByMembershipIdsQuery(List<String> membershipIds) {
 
-    @NotNull
-    private final List<String> membershipIds;
-
-    public FindMemberMoneyListByMembershipIdsQuery(@NotNull List<String> membershipIds) {
-        this.membershipIds = membershipIds;
-        this.validateSelf();
+    public FindMemberMoneyListByMembershipIdsQuery {
+        Objects.requireNonNull(membershipIds, "membershipIds");
     }
-
 }

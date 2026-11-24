@@ -1,12 +1,9 @@
 package com.jaypay.remittance.adapter.out.service.banking;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.CommonHttpClient;
 import com.jaypay.common.ExternalSystemAdapter;
-import com.jaypay.remittance.adapter.out.service.membership.Membership;
 import com.jaypay.remittance.application.port.out.banking.BankingInfo;
 import com.jaypay.remittance.application.port.out.banking.BankingPort;
-import com.jaypay.remittance.application.port.out.membership.MembershipStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -15,6 +12,10 @@ import org.springframework.beans.factory.annotation.Value;
 @RequiredArgsConstructor
 public class BankingServiceAdapter implements BankingPort {
 
+    private static final String JAYPAY_BANK_NAME = "jaypay-company";
+    private static final String JAYPAY_BANK_ACCOUNT_NUMBER = "123456789";
+    private static final int FIRM_BANKING_SUCCEEDED = 1;
+
     private final CommonHttpClient bankingServiceHttpClient;
 
     @Value("${service.banking.url}")
@@ -22,21 +23,35 @@ public class BankingServiceAdapter implements BankingPort {
 
     @Override
     public BankingInfo getMembershipBankingInfo(String bankName, String bankAccountNumber) {
-        String buildUrl = String.join("/", this.bankingServiceEndpoint, "banking", "info");
-
-        try {
-            String jsonResponse = bankingServiceHttpClient.sendGetRequest(buildUrl).body();
-            ObjectMapper mapper = new ObjectMapper();
-
-            return mapper.readValue(jsonResponse, BankingInfo.class);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        BankingInfo bankingInfo = bankingServiceHttpClient.post(
+                url("info"),
+                new BankingInfoRequest(bankName, bankAccountNumber),
+                BankingInfo.class
+        );
+        return bankingInfo == null ? new BankingInfo(bankName, bankAccountNumber, false) : bankingInfo;
     }
 
     @Override
     public boolean requestFirmbanking(String bankName, String bankAccountNumber, int amount) {
-        return false;
+        FirmBankingResult result = bankingServiceHttpClient.post(
+                url("firmbanking", "request"),
+                new FirmBankingRequest(JAYPAY_BANK_NAME, JAYPAY_BANK_ACCOUNT_NUMBER, bankName, bankAccountNumber, amount),
+                FirmBankingResult.class
+        );
+        return result != null && result.firmBankingStatus() == FIRM_BANKING_SUCCEEDED;
+    }
+
+    private String url(String... path) {
+        return String.join("/", bankingServiceEndpoint, "banking", String.join("/", path));
+    }
+
+    record BankingInfoRequest(String bankName, String bankAccountNumber) {
+    }
+
+    record FirmBankingRequest(String fromBankName, String fromBankAccountNumber, String toBankName, String toBankAccountNumber, int moneyAmount) {
+    }
+
+    record FirmBankingResult(int firmBankingStatus) {
     }
 
 }
