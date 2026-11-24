@@ -26,6 +26,11 @@ tasks.register<Exec>("dockerBuild") {
     group = "build"
     description = "Builds the jaypay/${project.name} container image from backend/Dockerfile."
     dependsOn(tasks.bootJar)
-    workingDir = rootDir
-    commandLine("docker", "build", "--build-arg", "SERVICE=${project.name}", "--tag", "jaypay/${project.name}", ".")
+    val context = tasks.bootJar.flatMap { it.destinationDirectory }
+    val dockerfile = rootProject.file("Dockerfile")
+    val image = "jaypay/${project.name}"
+    inputs.file(dockerfile)
+    doFirst {
+        commandLine("docker", "build", "--file", dockerfile.path, "--tag", image, context.get().asFile.path)
+    }
 }
