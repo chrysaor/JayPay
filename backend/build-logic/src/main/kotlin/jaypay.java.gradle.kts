@@ -33,6 +33,12 @@ dependencies {
 
     testImplementation(lib("spring-boot-starter-test"))
     testRuntimeOnly(lib("junit-platform-launcher"))
+
+    constraints {
+        listOf("guava", "lz4-java", "snappy-java").forEach {
+            implementation(lib(it)) { because("the versions the parent libraries pull have HIGH CVEs") }
+        }
+    }
 }
 
 tasks.withType<JavaCompile>().configureEach {
