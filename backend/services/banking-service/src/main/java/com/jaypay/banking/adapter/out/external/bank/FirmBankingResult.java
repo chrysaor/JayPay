@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class FirmBankingResult {
 
-    private int resultCode; // 0: Success, 1: Failure
+    private int resultCode;
 
     public FirmBankingResult(int resultCode) {
         this.resultCode = resultCode;

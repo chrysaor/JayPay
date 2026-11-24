@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 @Builder
 @Data
@@ -24,7 +24,7 @@ public class RequestFirmBankingCommand extends SelfValidating<RequestFirmBanking
     @NotNull
     private final String toBankAccountNumber;
 
-    private final int moneyAmount; // won
+    private final int moneyAmount;
 
     public RequestFirmBankingCommand(String fromBankName, String fromBankAccountNumber, String toBankName, String toBankAccountNumber, int moneyAmount) {
         this.fromBankName = fromBankName;

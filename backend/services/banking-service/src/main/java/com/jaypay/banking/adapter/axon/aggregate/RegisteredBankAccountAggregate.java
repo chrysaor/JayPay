@@ -13,7 +13,7 @@ import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
@@ -44,15 +44,12 @@ public class RegisteredBankAccountAggregate {
     public void handle(@NotNull CheckRegisteredBankAccountCommand command, RequestBankAccountInfoPort requestBankAccountInfoPort) {
         System.out.println("CheckRegisteredBankAccountCommand Handler");
 
-        // Is registeredBankAccount aggregate valid
         id = command.getAggregateIdentifier();
 
-        // Check -> Registered Bank Account
         BankAccount bankAccount = requestBankAccountInfoPort.getBankAccountInfo(new GetBankAccountRequest(
                 command.getBankName(), command.getBankAccountNumber()
         ));
 
-        // CheckedRegisteredBankAccountEvent
         String firmBankingUUID = UUID.randomUUID().toString();
         apply(new CheckedRegisteredBankAccountEvent(
                 command.getRechargeRequestId(),

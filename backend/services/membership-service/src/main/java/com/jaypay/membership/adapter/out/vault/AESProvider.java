@@ -7,7 +7,7 @@ import java.util.Base64;
 
 public class AESProvider {
     private static final String ALGORITHM = "AES";
-    private static final String TRANSFORMATION = "AES/ECB/PKCS5Padding"; // ECB mode, PKCS5Padding
+    private static final String TRANSFORMATION = "AES/ECB/PKCS5Padding";
 
     private final SecretKeySpec secretKey;
 
@@ -30,10 +30,6 @@ public class AESProvider {
         return new String(decryptedBytes);
     }
 
-    // helper method for AES key generation
-    // 16byte = 128bit
-    // 24byte = 192bit
-    // 32byte = 256bit
     public static String generateRandomString(int length) {
         byte[] randomBytes = new byte[length];
         new SecureRandom().nextBytes(randomBytes);

@@ -9,8 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RechargingRequestCreatedEvent {
-    // "Charge" event created
-
     private String rechargingRequestId;
     private String membershipId;
     private int amount;

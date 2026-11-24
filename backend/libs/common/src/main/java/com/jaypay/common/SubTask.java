@@ -12,6 +12,6 @@ import lombok.NoArgsConstructor;
 public class SubTask {
     private String membershipID;
     private String subTaskName;
-    private String taskType; // "banking", "membership"
-    private String status; // "success", "fail", "ready"
+    private String taskType;
+    private String status;
 }

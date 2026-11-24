@@ -6,9 +6,7 @@ import java.util.List;
 
 public interface PaymentPort {
 
-    // membershipId = franchiseId -> temporary
     List<Payment> getNormalStatusPayments();
-    // Target account, amount
     void finishSettlement(Long paymentId);
 
 }

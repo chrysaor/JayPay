@@ -14,7 +14,7 @@ public class RequestFirmBankingFinishedEvent {
     private String membershipId;
     private String toBankName;
     private String toBankAccountNumber;
-    private int moneyAmount; // only won
+    private int moneyAmount;
     private int status;
     private String requestFirmbankingAggregateIdentifier;
 }

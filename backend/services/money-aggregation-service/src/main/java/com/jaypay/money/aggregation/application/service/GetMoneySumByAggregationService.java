@@ -8,7 +8,7 @@ import com.jaypay.money.aggregation.application.port.out.GetMoneySumPort;
 import com.jaypay.money.aggregation.application.port.out.MemberMoney;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -23,8 +23,6 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
 
     @Override
     public int getMoneySumByAddress(GetMoneySumByAddressCommand command) {
-        // Aggregation business logic
-        // Address name: 강남구, 서초구, 관악구
         String targetAddress = command.getAddress();
         List<String> membershipIds = getMembershipPort.getMembershipByAddress(targetAddress);
 
@@ -38,7 +36,6 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
 
         int sum = 0;
         for (List<String> partitionedList : membershipPartitionList) {
-            // Maximum 100 count
             List<MemberMoney> memberMoneyList = getMoneySumPort.getMoneySumByMembershipIds(partitionedList);
 
             for (MemberMoney memberMoney : memberMoneyList) {
@@ -49,7 +46,6 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
         return sum;
     }
 
-    // Creating List<List<T>> for grouping by n count
     private static <T> List<List<T>> partitionList(List<T> list, int partitionSize) {
         return IntStream.range(0, list.size())
                 .boxed()

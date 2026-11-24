@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: money-aggregation-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jaypay}
+    username: ${SPRING_DATASOURCE_USERNAME:jaypay}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+  jackson:
+    use-jackson2-defaults: true
+axon:
+  axonserver:
+    servers: ${AXON_AXONSERVER_SERVERS:localhost:8124}
+  serializer:
+    general: ${AXON_SERIALIZER_GENERAL:xstream}
+    events: ${AXON_SERIALIZER_EVENTS:jackson}
+    messages: ${AXON_SERIALIZER_MESSAGES:jackson}
+kafka:
+  clusters:
+    bootstrapservers: ${KAFKA_CLUSTERS_BOOTSTRAPSERVERS:localhost:9092}
+logging:
+  topic: ${LOGGING_TOPIC:jaypay.logging.out.stdout}
+service:
+  membership:
+    url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}
+  money:
+    url: ${SERVICE_MONEY_URL:http://localhost:8083}

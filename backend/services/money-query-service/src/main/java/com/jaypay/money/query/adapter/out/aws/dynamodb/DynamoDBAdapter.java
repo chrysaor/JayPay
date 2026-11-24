@@ -6,8 +6,6 @@ import com.jaypay.money.query.application.port.out.InsertMoneyIncreaseEventByAdd
 import com.jaypay.money.query.domain.MoneySumByRegion;
 import org.axonframework.queryhandling.QueryHandler;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
@@ -22,17 +20,13 @@ import java.util.UUID;
 @Component
 public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyIncreaseEventByAddress {
     private static final String TABLE_NAME = "MoneyIncreaseEventByRegion";
-    private static final String ACCESS_KEY = "";
-    private static final String SECRET_KEY = "";
     private final DynamoDbClient dynamoDbClient;
     private final MoneySumByAddressMapper moneySumByAddressMapper;
 
     public DynamoDBAdapter() {
         this.moneySumByAddressMapper = new MoneySumByAddressMapper();
-        AwsBasicCredentials credentials = AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY);
         this.dynamoDbClient = DynamoDbClient.builder()
                 .region(Region.AP_NORTHEAST_2)
-                .credentialsProvider(StaticCredentialsProvider.create(credentials))
                 .build();
     }
 
@@ -84,7 +78,6 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
 
     private void queryItem(String id) {
         try {
-            // PK 만 써도 돼요.
             HashMap<String, Condition> attrMap = new HashMap<>();
             attrMap.put("PK", Condition.builder()
                     .attributeValueList(AttributeValue.builder().s(id).build())
@@ -105,19 +98,14 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
 
     @Override
     public void insertMoneyIncreaseEventByAddress(String addressName, int moneyIncrease) {
-        // Date info
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
         String dateTime = now.format(formatter);
 
-        // 1. insert raw event
-        // Local/Event - PK: 강남구#230728, SK: 5000
         String pk = addressName + "#" + dateTime;
         String sk = String.valueOf(moneyIncrease);
         putItem(pk, sk, moneyIncrease);
 
-        // 2. query and update with two local events
-        // Local/Daily - PK: 강남구#230728#summary, SK: -1, balance: +5000
         String summaryPk = pk + "#summary";
         String summarySk = "-1";
         MoneySumByAddress moneySumByAddress = getItem(summaryPk, summarySk);
@@ -129,7 +117,6 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
             updateItem(summaryPk, summarySk, balance);
         }
 
-        // Local - PK: 강남구, balance: +5000
         String summarySk2 = "-1";
         MoneySumByAddress moneySumByAddress2 = getItem(addressName, summarySk2);
         if (moneySumByAddress2 == null) {
@@ -148,7 +135,6 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
             attrMap.put("SK", AttributeValue.builder().s(sk).build());
 
             String balanceStr = String.valueOf(balance);
-            // Create an UpdateItemRequest
             UpdateItemRequest updateItemRequest = UpdateItemRequest.builder()
                     .tableName(TABLE_NAME)
                     .key(attrMap)
@@ -163,7 +149,6 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
 
             UpdateItemResponse response = dynamoDbClient.updateItem(updateItemRequest);
 
-            // 결과 출력.
             Map<String, AttributeValue> attributes = response.attributes();
             if (attributes != null) {
                 for (Map.Entry<String, AttributeValue> entry : attributes.entrySet()) {

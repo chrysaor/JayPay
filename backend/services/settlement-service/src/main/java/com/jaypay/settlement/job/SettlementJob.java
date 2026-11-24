@@ -2,30 +2,33 @@ package com.jaypay.settlement.job;
 
 import com.jaypay.settlement.tasklet.SettlementTasklet;
 import lombok.RequiredArgsConstructor;
-import org.springframework.batch.core.*;
-import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
-import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.Step;
+import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Component
 @RequiredArgsConstructor
 public class SettlementJob {
 
-    private final JobBuilderFactory jobBuilderFactory;
-    private final StepBuilderFactory stepBuilderFactory;
+    private final JobRepository jobRepository;
+    private final PlatformTransactionManager transactionManager;
     private final SettlementTasklet settlementTasklet;
 
     @Bean
     public Job settlement() {
-        return jobBuilderFactory.get("settlement")
+        return new JobBuilder("settlement", jobRepository)
                 .start(settlementStep())
                 .build();
     }
 
     public Step settlementStep() {
-        return stepBuilderFactory.get("settlementStep")
-                .tasklet(settlementTasklet)
+        return new StepBuilder("settlementStep", jobRepository)
+                .tasklet(settlementTasklet, transactionManager)
                 .build();
     }
 

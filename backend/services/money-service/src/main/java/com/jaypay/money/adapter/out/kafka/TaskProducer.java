@@ -38,7 +38,6 @@ public class TaskProducer implements SendRechargingMoneyTaskPort {
     public void sendMessage(String key, RechargingMoneyTask value) {
         ObjectMapper mapper = new ObjectMapper();
         String jsonStringToProduce;
-        // Json String
         try {
             jsonStringToProduce = mapper.writeValueAsString(value);
         } catch (JsonProcessingException e) {
@@ -50,7 +49,6 @@ public class TaskProducer implements SendRechargingMoneyTaskPort {
             if (exception == null) {
                 System.out.println("Message sent successfully. Offset: " + metadata.offset());
             } else {
-                // exception.printStackTrace();
                 System.err.println("Failed to send message: " + exception.getMessage());
             }
         });

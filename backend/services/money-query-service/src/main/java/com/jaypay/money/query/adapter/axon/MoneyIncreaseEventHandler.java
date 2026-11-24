@@ -13,10 +13,8 @@ public class MoneyIncreaseEventHandler {
     public void handler(RequestFirmBankingFinishedEvent event, GetMemberAddressInfoPort getMemberAddressInfoPort, InsertMoneyIncreaseEventByAddress insertMoneyIncreaseEventByAddress) {
         System.out.println("Money Increase Event Received: "+ event.toString());
 
-        // Address information of the customer
         MemberAddressInfo memberAddressInfo = getMemberAddressInfoPort.getMemberAddressInfo(event.getMembershipId());
 
-        // Insert DynamoDB
         String address = memberAddressInfo.getAddress();
         int moneyIncrease = event.getMoneyAmount();
 

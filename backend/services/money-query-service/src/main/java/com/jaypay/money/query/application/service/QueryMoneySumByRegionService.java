@@ -8,7 +8,7 @@ import com.jaypay.money.query.domain.MoneySumByRegion;
 import lombok.RequiredArgsConstructor;
 import org.axonframework.queryhandling.QueryGateway;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.util.concurrent.ExecutionException;
 
 

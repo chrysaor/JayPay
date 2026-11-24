@@ -9,7 +9,7 @@ import com.jaypay.remittance.application.port.out.FindRemittancePort;
 import com.jaypay.remittance.domain.RemittanceRequest;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.util.List;
 
 @UseCase

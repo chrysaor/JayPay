@@ -30,7 +30,6 @@ public class MembershipPersistenceAdapter implements RegisterMembershipPort, Fin
         );
         membershipRepository.save(membershipJpaEntity);
 
-        // Make clone
         MembershipJpaEntity clone = membershipJpaEntity.clone();
         clone.setEmail(membershipEmail.getMembershipEmail());
 
@@ -39,7 +38,7 @@ public class MembershipPersistenceAdapter implements RegisterMembershipPort, Fin
 
     @Override
     public MembershipJpaEntity findMembership(Membership.MembershipId membershipId) {
-        MembershipJpaEntity membershipJpaEntity =  membershipRepository.getById(Long.parseLong(membershipId.getMembershipId()));
+        MembershipJpaEntity membershipJpaEntity =  membershipRepository.getReferenceById(Long.parseLong(membershipId.getMembershipId()));
         String encryptedEmailString = membershipJpaEntity.getEmail();
         String decryptedEmailString = vaultAdapter.decryptData(encryptedEmailString);
 
@@ -69,7 +68,7 @@ public class MembershipPersistenceAdapter implements RegisterMembershipPort, Fin
 
     @Override
     public MembershipJpaEntity modifyMembership(Membership.MembershipId membershipId, Membership.MembershipName membershipName, Membership.MembershipEmail membershipEmail, Membership.MembershipAddress membershipAddress, Membership.MembershipIsValid membershipIsValid, Membership.MembershipIsCorp membershipIsCorp, Membership.MembershipRefreshToken membershipRefreshToken) {
-        MembershipJpaEntity entity = membershipRepository.getById(Long.parseLong(membershipId.getMembershipId()));
+        MembershipJpaEntity entity = membershipRepository.getReferenceById(Long.parseLong(membershipId.getMembershipId()));
         String originalEmail = membershipEmail.getMembershipEmail();
 
         entity.setName(membershipName.getMembershipName());

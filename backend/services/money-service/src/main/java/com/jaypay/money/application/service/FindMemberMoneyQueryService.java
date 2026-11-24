@@ -9,7 +9,7 @@ import com.jaypay.money.application.port.out.GetMemberMoneyListPort;
 import com.jaypay.money.domain.MemberMoney;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,7 +24,6 @@ public class FindMemberMoneyQueryService implements FindMemberMoneyQueryUseCase 
 
     @Override
     public List<MemberMoney> findMemberMoneyListByMembershipIds(FindMemberMoneyListByMembershipIdsQuery query) {
-        // MemberMoney List from membership id list
         List<MemberMoneyJpaEntity> memberMoneyJpaEntities = getMemberMoneyListPort.getMemberMoneys(
                 query.getMembershipIds()
         );

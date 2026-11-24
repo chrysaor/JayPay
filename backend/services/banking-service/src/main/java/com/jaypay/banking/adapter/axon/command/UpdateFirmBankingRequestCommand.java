@@ -3,7 +3,7 @@ package com.jaypay.banking.adapter.axon.command;
 import lombok.*;
 import org.axonframework.modelling.command.TargetAggregateIdentifier;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 
 @EqualsAndHashCode(callSuper = false)

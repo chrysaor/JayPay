@@ -14,7 +14,7 @@ import com.jaypay.membership.domain.JwtToken;
 import com.jaypay.membership.domain.Membership;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 
 @RequiredArgsConstructor
 @UseCase
@@ -41,7 +41,6 @@ public class AuthMembershipService implements AuthMembershipUseCase {
                     new Membership.MembershipId(membershipId)
             );
 
-            // save refresh token in membership jpa
             modifyMembershipPort.modifyMembership(
                     new Membership.MembershipId(membershipId),
                     new Membership.MembershipName(membershipJpaEntity.getName()),
@@ -78,7 +77,6 @@ public class AuthMembershipService implements AuthMembershipUseCase {
                 return null;
             }
 
-            // customer refresh token == requested refresh token
             if (membershipJpaEntity.isValid()){
                 String newJwtToken = authMembershipPort.generateJwtToken(
                         new Membership.MembershipId(membershipIdString)

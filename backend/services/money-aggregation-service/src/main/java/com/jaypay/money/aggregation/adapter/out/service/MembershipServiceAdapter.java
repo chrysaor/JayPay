@@ -29,7 +29,6 @@ public class MembershipServiceAdapter implements GetMembershipPort {
         String url = String.join("/", membershipServiceUrl, "memberships/address", address);
         try {
             String jsonResponse = commonHttpClient.sendGetRequest(url).body();
-            // json Membership
 
             ObjectMapper mapper = new ObjectMapper();
             List<Membership> membershipList = mapper.readValue(jsonResponse, new TypeReference<>() {});

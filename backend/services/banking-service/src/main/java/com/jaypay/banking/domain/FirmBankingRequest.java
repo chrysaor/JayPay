@@ -17,7 +17,7 @@ public class FirmBankingRequest {
     private final String toBankName;
     private final String toBankAccountNumber;
     private final int moneyAmount;
-    private final int firmBankingStatus; // 0: request, 1: complete, 2: failed
+    private final int firmBankingStatus;
     private final UUID uuid;
     private final String aggregateIdentifier;
 

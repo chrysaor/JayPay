@@ -2,30 +2,30 @@ package com.jaypay.membership.adapter.out.jwt;
 
 import com.jaypay.membership.application.port.out.AuthMembershipPort;
 import com.jaypay.membership.domain.Membership;
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
 import java.util.Date;
 
 @Component
 public class JwtTokenProvider implements AuthMembershipPort {
 
-    private final Key signKey;
-    private final long jwtTokenExpirationInMs; // expired time of jwt token
-    private final long refreshTokenExpirationInMs; // expired time of refresh token
+    private final SecretKey signKey;
+    private final long jwtTokenExpirationInMs;
+    private final long refreshTokenExpirationInMs;
 
-    public JwtTokenProvider() {
-        // 512bit 알고리즘 지원을 위한 비밀키 입니다.
-        // 512 bit = 64 byte
-        // env 등을 통해서, 외부 환경변수로부터 데이터를 받아올 수도 있어요.
-        // inner secret key
-        String jwtSecret = "NYd4nEtyLtcU7cpS/1HTFVmQJd7MmrP+HafWoXZjWNOL7qKccOOUfQNEx5yvG6dfdpuBeyMs9eEbRmdBrPQCNg==";
+    public JwtTokenProvider(@Value("${jwt.secret}") String jwtSecret) {
         this.signKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        this.jwtTokenExpirationInMs = 1000L * 20; // 20초
-        this.refreshTokenExpirationInMs = 1000L * 60; // 60초
+        this.jwtTokenExpirationInMs = 1000L * 20;
+        this.refreshTokenExpirationInMs = 1000L * 60;
     }
 
     @Override
@@ -34,10 +34,10 @@ public class JwtTokenProvider implements AuthMembershipPort {
         Date expiryDate = new Date(now.getTime() + jwtTokenExpirationInMs);
 
         return Jwts.builder()
-                .setSubject(membershipId.getMembershipId())
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(signKey, SignatureAlgorithm.HS512)
+                .subject(membershipId.getMembershipId())
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(signKey, Jwts.SIG.HS512)
                 .compact();
     }
 
@@ -47,33 +47,26 @@ public class JwtTokenProvider implements AuthMembershipPort {
         Date expiryDate = new Date(now.getTime() + refreshTokenExpirationInMs);
 
         return Jwts.builder()
-                .setSubject(membershipId.getMembershipId())
-                .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(signKey, SignatureAlgorithm.HS512)
+                .subject(membershipId.getMembershipId())
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(signKey, Jwts.SIG.HS512)
                 .compact();
     }
 
     @Override
     public boolean validateJwtToken(String jwtToken) {
         try {
-            Jwts.parserBuilder().setSigningKey(signKey).build().parseClaimsJws(jwtToken);
+            Jwts.parser().verifyWith(signKey).build().parseSignedClaims(jwtToken);
             return true;
-        } catch (MalformedJwtException ex) {
-            // Invalid JWT token
-        } catch (ExpiredJwtException ex) {
-            // Expired JWT token
-        } catch (UnsupportedJwtException ex) {
-            // Unsupported JWT token
-        } catch (IllegalArgumentException ex) {
-            // JWT claims string is empty
+        } catch (MalformedJwtException | ExpiredJwtException | UnsupportedJwtException | IllegalArgumentException ex) {
+            return false;
         }
-        return false;
     }
 
     @Override
     public Membership.MembershipId parseMembershipIdFromToken(String jwtToken) {
-        Claims claims = Jwts.parserBuilder().setSigningKey(signKey).build().parseClaimsJws(jwtToken).getBody();
+        Claims claims = Jwts.parser().verifyWith(signKey).build().parseSignedClaims(jwtToken).getPayload();
         return new Membership.MembershipId(claims.getSubject());
     }
 }

@@ -39,7 +39,6 @@ public class LoggingConsumer {
 
         props.put("bootstrap.servers", bootstrapServers);
 
-        // consumer group
         props.put("group.id", "my-group");
 
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
@@ -52,7 +51,6 @@ public class LoggingConsumer {
                 while (true) {
                     ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
                     for (ConsumerRecord<String, String> record : records) {
-                        // print to Stdout
                         System.out.println("Received message: " + record.value());
                     }
                 }

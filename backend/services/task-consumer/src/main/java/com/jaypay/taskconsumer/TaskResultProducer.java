@@ -41,7 +41,6 @@ public class TaskResultProducer {
             if (exception == null) {
                  System.out.println("[TaskResultProducer] Message sent successfully. Offset: " + metadata.offset());
             } else {
-//                exception.printStackTrace();
                  System.err.println("[TaskResultProducer] Failed to send message: " + exception.getMessage());
             }
         });

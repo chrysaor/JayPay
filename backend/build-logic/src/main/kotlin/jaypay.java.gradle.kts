@@ -36,7 +36,7 @@ dependencies {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.add("-parameters")
+    options.compilerArgs.addAll(listOf("-parameters", "-Xlint:deprecation,removal"))
 }
 
 val dockerContextHost: String? = if (System.getenv("DOCKER_HOST") != null) null else runCatching {

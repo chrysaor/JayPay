@@ -1,7 +1,6 @@
 package com.jaypay.membership.adapter.out.vault;
 
-
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.vault.core.VaultKeyValueOperations;
 import org.springframework.vault.core.VaultKeyValueOperationsSupport;
@@ -11,11 +10,8 @@ import org.springframework.vault.core.VaultTemplate;
 public class VaultAdapter {
     private final AESProvider encryptionProvider;
 
-    @Autowired
-    public VaultAdapter(VaultTemplate vaultTemplate) {
-        // vault path: kv-v1/encrypt/data/dbkey
-        // key: QgOklUDRhvNfCex0/BIIsQ==
-        String key = "QgOklUDRhvNfCex0/BIIsQ==";
+    public VaultAdapter(VaultTemplate vaultTemplate, @Value("${encryption.fallback-key}") String fallbackKey) {
+        String key = fallbackKey;
         try {
             VaultKeyValueOperations ops = vaultTemplate.opsForKeyValue("kv-v1/data/encrypt", VaultKeyValueOperationsSupport.KeyValueBackend.KV_2);
             key = (String) ops.get("dbkey").getData().get("key");

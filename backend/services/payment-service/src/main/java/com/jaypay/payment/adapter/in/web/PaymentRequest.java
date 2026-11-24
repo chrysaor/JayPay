@@ -12,6 +12,4 @@ public class PaymentRequest {
     private String requestPrice;
     private String franchiseId;
     private String franchiseFeeRate;
-//    private int paymentStatus;
-//    private Date approvedAt;
 }

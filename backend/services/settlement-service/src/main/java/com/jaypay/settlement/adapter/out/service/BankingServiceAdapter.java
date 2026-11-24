@@ -25,7 +25,6 @@ public class BankingServiceAdapter implements GetRegisteredBankAccountPort {
         String url = String.join("/", bankingServiceUrl, "banking/account", membershipId);
         try {
             String jsonResponse = commonHttpClient.sendGetRequest(url).body();
-            // json RegisteredBankAccount
 
             ObjectMapper mapper = new ObjectMapper();
             RegisteredBankAccount registeredBankAccount = mapper.readValue(jsonResponse, RegisteredBankAccount.class);
@@ -55,7 +54,6 @@ public class BankingServiceAdapter implements GetRegisteredBankAccountPort {
                     moneyAmount);
 
             commonHttpClient.sendPostRequest(url, mapper.writeValueAsString(request)).body();
-            // FirmBankingRequest response = mapper.readValue(jsonResponse, new TypeReference<>() {});
 
         } catch (Exception e) {
             throw new RuntimeException(e);

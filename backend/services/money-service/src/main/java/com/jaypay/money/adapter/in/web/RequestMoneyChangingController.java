@@ -30,8 +30,6 @@ public class RequestMoneyChangingController {
 
         MoneyChangingRequest moneyChangingRequest = increaseMoneyRequestUseCase.increaseMoneyRequest(command);
 
-        // moneyChangingRequest -> MoneyCHangingResultDetail
-
         return new MoneyChangingResultDetail(
                 moneyChangingRequest.getMoneyChangingRequestId(),
                 1,
@@ -48,8 +46,6 @@ public class RequestMoneyChangingController {
                 .build();
 
         MoneyChangingRequest moneyChangingRequest = increaseMoneyRequestUseCase.increaseMoneyRequestAsync(command);
-
-        // moneyChangingRequest -> MoneyCHangingResultDetail
 
         return new MoneyChangingResultDetail(
                 moneyChangingRequest.getMoneyChangingRequestId(),

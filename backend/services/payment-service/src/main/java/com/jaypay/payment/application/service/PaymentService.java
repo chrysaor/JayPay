@@ -9,7 +9,7 @@ import com.jaypay.payment.application.port.out.*;
 import com.jaypay.payment.domain.Payment;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.util.List;
 
 @UseCase
@@ -22,20 +22,13 @@ public class PaymentService implements RequestPaymentUseCase, FinishSettlementUs
     private final FinishSettlementPort finishSettlementPort;
     private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
 
-    // Todo Money Service -> Member Money 정보를 가져오기 위한 Port
-
     @Override
     public Payment requestPayment(RequestPaymentCommand command) {
-        // Check membership status
         MembershipStatus membershipStatus = getMembershipPort.getMembership(command.getRequestMembershipId());
         if (!membershipStatus.isValid()) {
             return null;
         }
 
-        // Check bank account
-        //getRegisteredBankAccountPort.getRegisteredBankAccount(command.getRequestMembershipId());
-
-        // Create payment
         return createPaymentPort.createPayment(
                 command.getRequestMembershipId(),
                 command.getRequestPrice(),

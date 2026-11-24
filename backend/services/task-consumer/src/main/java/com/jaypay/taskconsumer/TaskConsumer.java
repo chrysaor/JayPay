@@ -28,7 +28,6 @@ public class TaskConsumer {
 
         props.put("bootstrap.servers", bootstrapServers);
 
-        // consumer group
         props.put("group.id", "my-group");
 
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
@@ -43,25 +42,18 @@ public class TaskConsumer {
                     ObjectMapper mapper = new ObjectMapper();
 
                     for (ConsumerRecord<String, String> record : records) {
-                        // record: RechargingMoneyTask (jsonString)
                         RechargingMoneyTask task;
 
-                        // Task run
                         try {
                             task = mapper.readValue(record.value(), RechargingMoneyTask.class);
                         } catch (JsonProcessingException e) {
                             throw new RuntimeException(e);
                         }
 
-                        // task result
                         for (SubTask subTask: task.getSubTaskList()) {
-                            // Check what type is, logic
-                            // external port, adapter, hexagonal architecture
-
                             subTask.setStatus("success");
                         }
 
-                        // produce TaskResult
                         this.taskResultProducer.sendTaskResult(task.getTaskID(), task);
                     }
                 }

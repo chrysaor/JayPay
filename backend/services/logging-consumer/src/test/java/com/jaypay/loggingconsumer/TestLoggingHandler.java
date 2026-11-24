@@ -60,6 +60,6 @@ public class TestLoggingHandler {
 
         Map<TopicPartition, List<ConsumerRecord<String, String>>> map = new HashMap<>();
         map.put(new TopicPartition("test", 0), list);
-        return new ConsumerRecords<>(map);
+        return new ConsumerRecords<>(map, Map.of());
     }
 }

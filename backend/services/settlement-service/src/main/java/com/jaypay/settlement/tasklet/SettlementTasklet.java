@@ -5,11 +5,10 @@ import com.jaypay.settlement.port.out.GetRegisteredBankAccountPort;
 import com.jaypay.settlement.port.out.PaymentPort;
 import com.jaypay.settlement.port.out.RegisteredBankAccountAggregateIdentifier;
 import lombok.RequiredArgsConstructor;
-import org.jetbrains.annotations.NotNull;
-import org.springframework.batch.core.StepContribution;
+import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
-import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -24,11 +23,9 @@ public class SettlementTasklet implements Tasklet {
     private final PaymentPort paymentPort;
 
     @Override
-    public RepeatStatus execute(@NotNull StepContribution contribution, @NotNull ChunkContext chunkContext){
-        // 1. read completed payment histories from payment service
+    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext){
         List<Payment> normalStatusPaymentList = paymentPort.getNormalStatusPayments();
 
-        // 2. read membershipId and banking info which does work with franchiseId from each payment histories
         Map<String, FirmBankingRequestInfo> franchiseIdToBankAccountMap = new HashMap<>();
         for (Payment payment : normalStatusPaymentList) {
             RegisteredBankAccountAggregateIdentifier entity = getRegisteredBankAccountPort.getRegisteredBankAccount(payment.getFranchiseId());
@@ -38,7 +35,6 @@ public class SettlementTasklet implements Tasklet {
             );
         }
 
-        // 3. calculate settlement amount by each franchise id
         for (Payment payment : normalStatusPaymentList) {
             FirmBankingRequestInfo firmbankingRequestInfo = franchiseIdToBankAccountMap.get(payment.getFranchiseId());
             double fee = Double.parseDouble(payment.getFranchiseFeeRate());
@@ -46,7 +42,6 @@ public class SettlementTasklet implements Tasklet {
             firmbankingRequestInfo.setMoneyAmount(firmbankingRequestInfo.getMoneyAmount() + calculatedPrice);
         }
 
-        // 4. request firm banking with calculated amount
         for (FirmBankingRequestInfo firmbankingRequestInfo : franchiseIdToBankAccountMap.values()) {
             getRegisteredBankAccountPort.requestFirmbanking(
                     firmbankingRequestInfo.getBankName(),
@@ -55,7 +50,6 @@ public class SettlementTasklet implements Tasklet {
             );
         }
 
-        // 5. modify settlement status to a completion
         for (Payment payment : normalStatusPaymentList) {
             paymentPort.finishSettlement(payment.getPaymentId());
         }

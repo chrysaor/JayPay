@@ -17,7 +17,7 @@ import com.jaypay.common.UseCase;
 import lombok.RequiredArgsConstructor;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.util.UUID;
 
 @UseCase
@@ -32,10 +32,6 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
 
     @Override
     public FirmBankingRequest requestFirmBanking(RequestFirmBankingCommand command) {
-        // Business logic
-        // a -> b 계좌
-
-        // 1. 요청에 대한 정보 획득
         FirmBankingRequestJpaEntity requestedEntity = requestFirmBankingPort.createFirmBankingRequest(
                 new FirmBankingRequest.FromBankName(command.getFromBankName()),
                 new FirmBankingRequest.FromBankAccountNumber(command.getFromBankAccountNumber()),
@@ -46,7 +42,6 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                 new FirmBankingRequest.FirmBankingAggregateIdentifier("")
         );
 
-        // 2. 외부 은행에 펌뱅킹 요청
         FirmBankingResult result = requestExternalFirmBankingPort.requestExternalFirmBanking(new ExternalFirmBankingRequest(
                 command.getFromBankName(),
                 command.getFromBankAccountNumber(),
@@ -55,20 +50,15 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                 command.getMoneyAmount()
         ));
 
-        // Transactional UUID
         UUID randomUUID = UUID.randomUUID();
         requestedEntity.setUuid(randomUUID.toString());
 
-        // 3. 결과에 따라서 1번에서 작성했던 FirmBankingRequest 정보를 업데이트
         if (result.getResultCode() == 0) {
-            // Success
             requestedEntity.setFirmBankingStatus(1);
         } else {
-            // Failure
             requestedEntity.setFirmBankingStatus(2);
         }
 
-        // 4. 바뀐 상태값 기준 save -> 리턴
         return mapper.mapToDomainEntity(requestFirmBankingPort.modifyFirmBankingRequest(requestedEntity), randomUUID);
     }
 
@@ -85,13 +75,10 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
         commandGateway.send(eventCommand).whenComplete(
                 (result, throwable) -> {
                     if (throwable != null) {
-                        // Failure
                         System.out.println(throwable.getMessage());
                     } else {
-                        // Success
                         System.out.println("CreateFirmBankingRequestCommand completed, Aggregate ID: " + result.toString());
 
-                        // 1. 요청에 대한 정보 획득
                         FirmBankingRequestJpaEntity requestedEntity = requestFirmBankingPort.createFirmBankingRequest(
                                 new FirmBankingRequest.FromBankName(command.getFromBankName()),
                                 new FirmBankingRequest.FromBankAccountNumber(command.getFromBankAccountNumber()),
@@ -102,7 +89,6 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                                 new FirmBankingRequest.FirmBankingAggregateIdentifier(result.toString())
                         );
 
-                        // 펌뱅킹 요청
                         FirmBankingResult firmBankingResult = requestExternalFirmBankingPort.requestExternalFirmBanking(new ExternalFirmBankingRequest(
                                 command.getFromBankName(),
                                 command.getFromBankAccountNumber(),
@@ -111,12 +97,9 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                                 command.getMoneyAmount()
                         ));
 
-                        // 3. 결과에 따라서 1번에서 작성했던 FirmBankingRequest 정보를 업데이트
                         if (firmBankingResult.getResultCode() == 0) {
-                            // Success
                             requestedEntity.setFirmBankingStatus(1);
                         } else {
-                            // Failure
                             requestedEntity.setFirmBankingStatus(2);
                         }
 
@@ -124,7 +107,6 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                     }
                 }
         );
-        // Command -> Event Sourcing
 
     }
 
@@ -144,8 +126,6 @@ public class RequestFirmBankingService implements RequestFirmBankingUseCase, Upd
                             FirmBankingRequestJpaEntity entity = requestFirmBankingPort.getFirmBankingRequest(
                                     new FirmBankingRequest.FirmBankingAggregateIdentifier(command.getFirmBankingAggregateIdentifier()));
 
-                            // 외부 은행과의 연동
-                            // 롤백의 경우 status 변경 가능
                             entity.setFirmBankingStatus(command.getFirmBankingStatus());
                             requestFirmBankingPort.modifyFirmBankingRequest(entity);
                         }

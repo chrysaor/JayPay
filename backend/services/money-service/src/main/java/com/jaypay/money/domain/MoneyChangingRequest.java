@@ -12,8 +12,8 @@ import java.util.Date;
 public class MoneyChangingRequest {
 
     private final String moneyChangingRequestId;
-    private final String targetMembershipId; // 고객 번호
-    private final int changingType; // enum 0: increase, 1: decrease
+    private final String targetMembershipId;
+    private final int changingType;
     private final int changingMoneyAmount;
     private final int moneyChangingStatus;
     private final String uuid;

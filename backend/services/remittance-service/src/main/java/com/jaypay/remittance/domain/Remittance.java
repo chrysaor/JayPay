@@ -7,7 +7,7 @@ import lombok.Value;
 
 @Getter
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class Remittance { // In completion of a remittance
+public class Remittance {
     private final String remittanceId;
 
     @Value

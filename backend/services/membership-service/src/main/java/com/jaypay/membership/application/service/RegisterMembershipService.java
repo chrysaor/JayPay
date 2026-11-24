@@ -10,7 +10,7 @@ import com.jaypay.membership.domain.Membership;
 
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 
 
 @UseCase

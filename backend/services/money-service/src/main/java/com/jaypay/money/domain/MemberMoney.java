@@ -12,7 +12,6 @@ public class MemberMoney {
     private final String memberMoneyId;
     private final String membershipId;
     private final int balance;
-//    private final int linkedBankAccount;
 
     public static MemberMoney generateMemberMoney (
             MemberMoneyId memberMoneyId,

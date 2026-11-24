@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,8 +27,8 @@ public class DummyMoneyDataSimulator {
         List<Integer> readyMemberList = new ArrayList<>();
 
         while (true) {
-            int amount = random.nextInt(20001) - 10000; // Random number between -100000 and 100000
-            int targetMembershipId = random.nextInt(1000) + 1; // Random number between 1 and 100000
+            int amount = random.nextInt(20001) - 10000;
+            int targetMembershipId = random.nextInt(1000) + 1;
 
             registerAccountSimulator(REGISTER_ACCOUNT_API_ENDPOINT, targetMembershipId);
             createMemberMoneySimulator(CREATE_MONEY_API_ENDPOINT, targetMembershipId);
@@ -36,12 +37,12 @@ public class DummyMoneyDataSimulator {
 
             increaseMemberMoneySimulator(INCREASE_API_ENDPOINT, amount, targetMembershipId);
 
-            amount = random.nextInt(20001) - 10000; // Random number between -100000 and 100000
+            amount = random.nextInt(20001) - 10000;
             Integer decreaseTargetMembershipId = readyMemberList.get(random.nextInt(readyMemberList.size()));
             increaseMemberMoneySimulator(DECREASE_API_ENDPOINT, amount, decreaseTargetMembershipId);
 
             try {
-                Thread.sleep(100); // Wait for 1 second before making the next API call
+                Thread.sleep(100);
             } catch (InterruptedException e) {
                 System.out.println(e.getMessage());
             }
@@ -50,7 +51,7 @@ public class DummyMoneyDataSimulator {
 
     private static void increaseMemberMoneySimulator(String apiEndpoint, int amount, int targetMembershipId) {
         try {
-            URL url = new URL(apiEndpoint);
+            URL url = URI.create(apiEndpoint).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
@@ -69,7 +70,7 @@ public class DummyMoneyDataSimulator {
 
     private static void registerAccountSimulator(String apiEndpoint, int targetMembershipId) {
         try {
-            URL url = new URL(apiEndpoint);
+            URL url = URI.create(apiEndpoint).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
@@ -91,7 +92,7 @@ public class DummyMoneyDataSimulator {
 
     private static void createMemberMoneySimulator(String apiEndpoint, int targetMembershipId) {
         try {
-            URL url = new URL(apiEndpoint);
+            URL url = URI.create(apiEndpoint).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
@@ -128,7 +129,7 @@ public class DummyMoneyDataSimulator {
         Random random = new Random();
 
         for (int i = 0; i < 10; i++) {
-            int digit = random.nextInt(10); // Generate a random digit (0 to 9)
+            int digit = random.nextInt(10);
             sb.append(digit);
         }
 

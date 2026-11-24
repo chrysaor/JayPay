@@ -37,7 +37,6 @@ public class RemittanceRequestPersistenceAdapter implements RequestRemittancePor
 
     @Override
     public List<RemittanceRequestJpaEntity> findRemittanceHistory(FindRemittanceCommand command) {
-        // using JPA
         return null;
     }
 }

@@ -25,7 +25,7 @@ public class PaymentPersistenceAdapter implements CreatePaymentPort, FinishSettl
                         Integer.parseInt(requestPrice),
                         franchiseId,
                         franchiseFeeRate,
-                        0, // 0: 승인, 1: 실패, 2: 정산 완료.
+                        0,
                         null
                 )
         );

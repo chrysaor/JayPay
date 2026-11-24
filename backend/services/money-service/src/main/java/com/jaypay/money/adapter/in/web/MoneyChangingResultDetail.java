@@ -10,6 +10,6 @@ import lombok.NoArgsConstructor;
 public class MoneyChangingResultDetail {
     private String moneyChangingRequestId;
     private int moneyChangingType;
-    private int moneyChangingResultStatus; // enum, 0: 중액, 1: 감액
+    private int moneyChangingResultStatus;
     private int amount;
 }

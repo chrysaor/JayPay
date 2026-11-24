@@ -15,7 +15,7 @@ import com.jaypay.remittance.application.port.out.money.MoneyPort;
 import com.jaypay.remittance.domain.RemittanceRequest;
 import lombok.RequiredArgsConstructor;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 
 
 @UseCase
@@ -31,33 +31,15 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
 
     @Override
     public RemittanceRequest requestRemittance(RequestRemittanceCommand command) {
-        /*
-         * 0. Write a remittance request and update status 'start' (persistence layer)
-         * 1. From membership status check (membership service)
-         * 2. Check account balance (money service)
-         * 2-1. In case of the balance isn't enough, request charge (money service)
-         * 3. Check remittance type (customer/bank)
-         * 3.1. [Internal] - from customer money -, to customer money +
-         * 3.2. [External bank]
-         * 3.2.1 External bank account validation (banking service)
-         * 3.2.2 If valid, request firm-banking to external account (banking service)
-         * 4. Update a remittance request status to 'success' (persistence layer)
-         * 5. Write a remittance (persistence layer)
-         */
-
-        // 0. Write a remittance request and update status 'start' (persistence layer)
         RemittanceRequestJpaEntity entity = requestRemittancePort.createRemittanceRequestHistory(command);
 
-        // 1. From membership status check (membership service)
         MembershipStatus membershipStatus = membershipPort.getMembershipStatus(command.getFromMembershipId());
         if (!membershipStatus.isValid()) {
             return null;
         }
 
-        // 2. Check account balance (money service)
         MoneyInfo moneyInfo = moneyPort.getMoneyInfo(command.getFromMembershipId());
 
-        // 2-1. In case of the balance isn't enough, request charge (money service)
         if (moneyInfo.getBalance() < command.getAmount()) {
             int rechargeAmount = (int) Math.ceil((command.getAmount() - moneyInfo.getBalance()) / 10000.0) * 10000;
             boolean moneyResult = moneyPort.requestMoneyRecharging(command.getFromMembershipId(), rechargeAmount);
@@ -67,9 +49,7 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
             }
         }
 
-        // 3. Check remittance type (customer/bank)
         if (command.getRemittanceType() == 0) {
-            // 3.1. [Internal] - from customer money -, to customer money +
             boolean decResult;
             boolean incResult;
             decResult = moneyPort.requestMoneyDecrease(command.getFromMembershipId(), command.getAmount());
@@ -79,21 +59,17 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
                 return null;
             }
         } else if (command.getRemittanceType() == 1) {
-            // 3.2. [External bank]
-            // 3.2.1 External bank account validation (banking service)
             BankingInfo bankingInfo = bankingPort.getMembershipBankingInfo(command.getToBankName(), command.getToBankAccountNumber());
             if (!bankingInfo.isValid()) {
                 return null;
             }
 
-            // 3.2.2 If valid, request firm-banking to external account (banking service)
             boolean remittanceResult = bankingPort.requestFirmbanking(command.getToBankName(), command.getToBankAccountNumber(), command.getAmount());
             if (!remittanceResult) {
                 return null;
             }
         }
 
-        // 4. Update a remittance request status to 'success' (persistence layer)
         entity.setRemittanceStatus("success");
         boolean result = requestRemittancePort.saveRemittanceRequestHistory(entity);
         if (result) {

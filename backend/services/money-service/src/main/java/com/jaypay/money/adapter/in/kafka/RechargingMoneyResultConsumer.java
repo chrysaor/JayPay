@@ -12,7 +12,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -47,7 +47,6 @@ public class RechargingMoneyResultConsumer {
                     ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
                     for (ConsumerRecord<String, String> record : records) {
                         System.out.println("[TaskResultConsumer] Received message: " + record.key()  + " / "+  record.value());
-                        // record: RechargingMoneyTask, ( all subtask is done)
 
                         RechargingMoneyTask task;
                         try {
@@ -58,17 +57,13 @@ public class RechargingMoneyResultConsumer {
                         List<SubTask> subTaskList = task.getSubTaskList();
 
                         boolean taskResult = true;
-                        // validation membership
-                        // validation banking
                         for (SubTask subTask : subTaskList) {
-                            // 한번만 실패해도 실패한 task 로 간주.
                             if (subTask.getStatus().equals("fail")) {
                                 taskResult = false;
                                 break;
                             }
                         }
 
-                        // 모두 정상적으로 성공했다면
                         if (taskResult) {
                             this.loggingProducer.sendMessage(task.getTaskID(), "task success");
                             this.countDownLatchManager.setDataForKey(task.getTaskID(), "success");

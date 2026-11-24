@@ -14,7 +14,7 @@ import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
@@ -40,7 +40,6 @@ public class MemberMoneyAggregate {
         System.out.println("IncreaseMemberMoneyCommand Handler");
         id = command.getAggregateIdentifier();
 
-        // store event
         apply(new IncreaseMemberMoneyEvent(id, command.getMembershipId(), command.getAmount()));
         return id;
     }
@@ -50,8 +49,6 @@ public class MemberMoneyAggregate {
         System.out.println("RechargingMoneyRequestCreateCommand Handler");
         id = command.getAggregateIdentifier();
 
-        // Saga Start - new RechargingRequestCreatedEvent
-        // It needs banking information -> Bank svc (get RegisteredBankAccount)
         RegisteredBankAccountAggregateIdentifier aggregateIdentifier = getRegisteredBankAccountPort.getRegisteredBankAccount(
                 command.getMembershipId()
         );

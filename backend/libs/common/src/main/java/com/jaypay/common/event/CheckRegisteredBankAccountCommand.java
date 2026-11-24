@@ -12,7 +12,7 @@ import org.axonframework.modelling.command.TargetAggregateIdentifier;
 public class CheckRegisteredBankAccountCommand {
 
     @TargetAggregateIdentifier
-    private String aggregateIdentifier; // RegisteredBankAccount
+    private String aggregateIdentifier;
     private String rechargeRequestId;
     private String membershipId;
     private String checkRegisteredBankAccountId;

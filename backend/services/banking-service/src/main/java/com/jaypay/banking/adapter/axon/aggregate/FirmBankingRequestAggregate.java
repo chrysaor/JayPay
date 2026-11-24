@@ -19,7 +19,7 @@ import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
@@ -53,7 +53,6 @@ public class FirmBankingRequestAggregate {
         System.out.println("FirmbankingRequestAggregate Handler");
         id = command.getAggregateIdentifier();
 
-        // from -> to (firmbanking)
         firmbankingPort.createFirmBankingRequest(
                 new FirmBankingRequest.FromBankName(command.getToBankName()),
                 new FirmBankingRequest.FromBankAccountNumber(command.getToBankAccountNumber()),
@@ -63,7 +62,6 @@ public class FirmBankingRequestAggregate {
                 new FirmBankingRequest.FirmBankingStatus(0),
                 new FirmBankingRequest.FirmBankingAggregateIdentifier(id));
 
-        // firmbanking!
         FirmBankingResult firmbankingResult = externalFirmbankingPort.requestExternalFirmBanking(
                 new ExternalFirmBankingRequest(
                         command.getFromBankName(),
@@ -75,7 +73,6 @@ public class FirmBankingRequestAggregate {
 
         int resultCode = firmbankingResult.getResultCode();
 
-        // 0. 성공, 1. 실패
         apply(new RequestFirmBankingFinishedEvent(
                 command.getRequestFirmBankingId(),
                 command.getRechargeRequestId(),
@@ -93,7 +90,6 @@ public class FirmBankingRequestAggregate {
         System.out.println("RollbackFirmbankingRequestCommand Handler");
         id = UUID.randomUUID().toString();
 
-        // rollback 수행 (-> 법인 계좌 -> 고객 계좌 펌뱅킹)
         firmbankingPort.createFirmBankingRequest(
                 new FirmBankingRequest.FromBankName("jaypay-company"),
                 new FirmBankingRequest.FromBankAccountNumber("123-333-9999"),
@@ -103,7 +99,6 @@ public class FirmBankingRequestAggregate {
                 new FirmBankingRequest.FirmBankingStatus(0),
                 new FirmBankingRequest.FirmBankingAggregateIdentifier(id));
 
-        // firmbanking!
         FirmBankingResult result = externalFirmbankingPort.requestExternalFirmBanking(
                 new ExternalFirmBankingRequest(
                         "jaypay-company",

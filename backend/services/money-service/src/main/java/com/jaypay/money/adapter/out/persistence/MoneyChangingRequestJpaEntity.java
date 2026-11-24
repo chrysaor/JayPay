@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.sql.Timestamp;
 import java.util.Date;
 import java.util.UUID;
@@ -27,10 +27,9 @@ public class MoneyChangingRequestJpaEntity {
 
     private int moneyAmount;
 
-    @Temporal(TemporalType.TIMESTAMP)
     private Date timestamp;
 
-    private int changingMoneyStatus; // 0: request 1: success, 2: failure
+    private int changingMoneyStatus;
 
     private String uuid;
 

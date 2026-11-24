@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 
 @Builder
@@ -14,7 +14,7 @@ import javax.validation.constraints.NotNull;
 public class FindRemittanceCommand extends SelfValidating<FindRemittanceCommand> {
 
     @NotNull
-    private String membershipId; // from membership
+    private String membershipId;
 
     public FindRemittanceCommand(String membershipId) {
         this.membershipId = membershipId;

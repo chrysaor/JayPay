@@ -11,7 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 @Data
-public class RechargingMoneyTask { // Increase Money
+public class RechargingMoneyTask {
 
     private String taskID;
     private String taskName;
@@ -20,11 +20,9 @@ public class RechargingMoneyTask { // Increase Money
 
     private List<SubTask> subTaskList;
 
-    // 법인 계좌
     private String toBankName;
 
-    // 법인 계좌 번호
     private String toBankAccountNumber;
 
-    private int moneyAmount; // only won
+    private int moneyAmount;
 }
