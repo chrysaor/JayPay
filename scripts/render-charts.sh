@@ -2,7 +2,6 @@
 set -eu
 
 out=$1
-namespace=jaypay
 
 messages=$(mktemp)
 render() {
@@ -17,6 +16,7 @@ render() {
 }
 
 mkdir -p "$out/ci"
+namespace=ci
 for values in deploy/charts/*/ci/*.yaml; do
   [ -e "$values" ] || continue
   chart=${values%/ci/*}
@@ -24,13 +24,18 @@ for values in deploy/charts/*/ci/*.yaml; do
   render "${chart##*/}" "$chart" "$out/ci/${chart##*/}-$name" -f "$values"
 done
 
-for workload in deploy/envs/*/*/*.yaml; do
-  group=${workload%/*}
-  env_dir=${group%/*}
-  chart=${group##*/}
-  name=${workload##*/}
-  mkdir -p "$out/${env_dir##*/}"
-  render "${name%.yaml}" "deploy/charts/$chart" "$out/${env_dir##*/}/$name" -f "$env_dir/$chart.yaml" -f "$workload"
+for env_dir in deploy/envs/*; do
+  env=${env_dir##*/}
+  namespace=$(sed -n 's/^namespace: *//p' "$env_dir/gitops.yaml" 2>/dev/null)
+  [ -n "$namespace" ] || { echo "render-charts: $env_dir/gitops.yaml sets no namespace" >&2; exit 1; }
+  mkdir -p "$out/$env"
+  render gitops deploy/charts/gitops "$out/$env/gitops.yaml" -f "$env_dir/gitops.yaml"
+  for workload in "$env_dir"/*/*.yaml; do
+    group=${workload%/*}
+    chart=${group##*/}
+    name=${workload##*/}
+    render "${name%.yaml}" "deploy/charts/$chart" "$out/$env/$name" -f "$env_dir/$chart.yaml" -f "$workload"
+  done
 done
 
 converter=$(mktemp -d)

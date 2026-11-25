@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ .Values.environment }}
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: jaypay
+spec:
+  goTemplate: true
+  goTemplateOptions: [missingkey=error]
+  generators:
+    - git:
+        repoURL: {{ .Values.repoURL }}
+        revision: {{ .Values.revision }}
+        requeueAfterSeconds: {{ .Values.pollSeconds }}
+        files:
+          - path: deploy/envs/{{ .Values.environment }}/*/*.yaml
+  template:
+    metadata:
+      name: '{{ .Values.environment }}-{{`{{ trimSuffix ".yaml" .path.filename }}`}}'
+      labels:
+        app.kubernetes.io/part-of: jaypay
+        app.kubernetes.io/component: '{{`{{ .path.basename }}`}}'
+    spec:
+      project: {{ .Values.environment }}
+      source:
+        repoURL: {{ .Values.repoURL }}
+        targetRevision: {{ .Values.revision }}
+        path: '{{`deploy/charts/{{ .path.basename }}`}}'
+        helm:
+          releaseName: '{{`{{ trimSuffix ".yaml" .path.filename }}`}}'
+          valueFiles:
+            - '{{`../../../{{ .path.path }}.yaml`}}'
+            - '{{`../../../{{ .path.path }}/{{ .path.filename }}`}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ .Values.namespace }}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

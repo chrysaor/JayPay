@@ -1,6 +1,6 @@
 # Kubernetes packaging
 
-This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. It also packages the six dependencies that the local cluster runs. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` runs `deploy/envs/local` on a local minikube cluster. GitOps and the cloud come in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
+This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. It also packages the six dependencies that the local cluster runs. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` starts a local minikube cluster in which Argo CD syncs `deploy/envs/local`. The cloud comes in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
 
 ## Layout
 
@@ -12,8 +12,12 @@ deploy/
       ci/ingress-values.yaml values that only the gate renders, to cover the Ingress template
     dependency/              one chart for the dependencies of the local cluster
       files/                 links to the Compose and Terraform files that configure them
+    gitops/                  the Argo CD AppProject and ApplicationSet of one environment
+  argocd/
+    local/                   the patches that the local cluster applies to the pinned Argo CD install
   envs/
     local/
+      gitops.yaml            where Argo CD reads the environment from, and the namespace it deploys to
       spring-service.yaml    shared by every spring-service workload in local
       frontend.yaml          shared by every frontend workload in local
       dependency.yaml        shared by every dependency in local
@@ -34,7 +38,7 @@ Helm renders a workload with two values files, in this order:
 
 Helm merges maps, so a workload file adds keys to `env` and `secretEnv` from the shared file and overrides the ones it repeats.
 
-An Argo CD ApplicationSet can turn the layout into one Application per workload. Use a Git files generator on `deploy/envs/<env>/*/*.yaml`. For each file, take the chart from the directory name, the release name and the Application name from the file name, and pass the two values files above.
+The `gitops` chart turns the layout into one Argo CD Application per workload file. Its ApplicationSet runs a Git files generator on `deploy/envs/<env>/*/*.yaml`. For each file it takes the chart from the directory name and the release name from the file name, names the Application `<env>-<release>`, and passes the two values files above. See [GitOps](#gitops).
 
 ## Values
 
@@ -89,6 +93,8 @@ The keys are the keys of `infra/docker/.env.example`, the same names that Compos
 kubectl create secret generic jaypay --namespace jaypay --from-env-file=infra/docker/.env
 ```
 
+Argo CD never owns that Secret. It prunes and heals only what an Application renders, and the gate fails when a chart in `deploy/envs` renders a Secret.
+
 ## What every pod gets
 
 - A ServiceAccount of its own with `automountServiceAccountToken: false`. No workload calls the Kubernetes API.
@@ -107,11 +113,14 @@ The frontend chart therefore turns every entry of `upstreams` into a full name i
 
 ## The gate
 
-`make verify STEPS=charts` runs these steps. It runs Helm and kubeconform from images pinned by digest in `scripts/verify.sh`.
+`make verify STEPS=charts` runs these steps. It runs kubectl, Helm and kubeconform from images pinned by digest in `scripts/verify.sh`.
 
+1. It downloads `core-install.yaml` of the Argo CD version that `scripts/verify.sh` pins, fails when the file does not match the pinned SHA-256, and builds each overlay in `deploy/argocd` with `kubectl kustomize` into `build/charts/argocd/<overlay>.yaml`. The download is cached in `build/argocd`.
 1. `scripts/render-charts.sh` lints every chart with `helm lint --strict` for each file in `deploy/charts/<chart>/ci/` and for each workload in `deploy/envs`, and renders each one with `helm template` into `build/charts/<env>/<workload>.yaml`.
-2. kubeconform validates everything in `build/charts` against the Kubernetes schemas, in strict mode, so a field that Kubernetes does not know fails.
-3. `scripts/check-deploy.py` compares the rendered `local` workloads with `infra/docker/compose.yaml`.
+1. `scripts/render-charts.sh` also renders the `gitops` chart for each environment with `deploy/envs/<env>/gitops.yaml` into `build/charts/<env>/gitops.yaml`, and takes the namespace of every render in the environment from that file.
+1. `scripts/crd-schemas.py` turns the CustomResourceDefinitions of that same install into strict JSON schemas.
+1. kubeconform validates everything in `build/charts` against the Kubernetes schemas and those Argo CD schemas, in strict mode, so a field that Kubernetes or Argo CD does not know fails. It skips the CustomResourceDefinitions themselves, which come unchanged from the checksummed file.
+1. `scripts/check-deploy.py` compares the rendered `local` workloads with `infra/docker/compose.yaml`.
 
 The comparison checks the facts that break a workload when they drift. It leaves the values of plain settings to the environment, because a cluster reaches its dependencies at other addresses than Compose does.
 
@@ -123,31 +132,71 @@ The comparison checks the facts that break a workload when they drift. It leaves
 - The memory limit equals `mem_limit` in Compose.
 - Every dependency is a Compose service, with the same image and the same memory limit.
 - No environment other than `local` uses `imagePullPolicy: Never`.
+- No environment renders a Secret.
+- The Argo CD repo server mounts the published repository.
 
-`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable and a wrong upstream, and checks that the step fails on each one.
+`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable, a wrong upstream, a rendered Secret, a field the ApplicationSet does not know, a wrong checksum of the Argo CD install and a repo server patch that matches nothing, and checks that the step fails on each one.
 
 ## Local cluster
 
 ```sh
 make k8s-up
 make k8s-smoke
+make k8s-gitops-check
 make k8s-down
 ```
 
-- `make k8s-up` builds the images with `make images`, runs `make verify STEPS=charts`, and starts the minikube profile `jaypay` with the ingress addon. It writes the cluster's credentials to `build/k8s/kubeconfig`, so the current context of `~/.kube/config` stays as it is. It creates the namespace `jaypay` and the Secret `jaypay` from `infra/docker/.env`, applies the dependencies and loads the working tree images into the node while they start, waits until the dependencies are ready, then applies the workloads and waits until all thirteen are available. Run it again at any time. It loads only the images that changed and restarts only the workloads that run them.
+- `make k8s-up` builds the images with `make images`, runs `make verify STEPS=charts`, and starts the minikube profile `jaypay` with the ingress addon. It writes the cluster's credentials to `build/k8s/kubeconfig`, so the current context of `~/.kube/config` stays as it is. It creates the namespace and the Secret `jaypay` from `infra/docker/.env`, installs Argo CD, publishes the working tree to the Git repository that Argo CD reads, loads the working tree images into the node and applies the `gitops` render. From then on Argo CD deploys everything in `deploy/envs/local`. The script only waits until every Application is synced to the published commit and healthy, and reports when the dependencies got there. Run it again at any time. It publishes a commit only when the working tree changed, loads only the images that changed and restarts only the workloads that run them.
 - `make k8s-smoke` forwards `127.0.0.1:8480` to the ingress controller and runs `scripts/smoke.sh` against `http://web.jaypay.localhost:8480` and `http://admin.jaypay.localhost:8480`. curl resolves every `*.localhost` name to the loopback address. Set `K8S_INGRESS_PORT` to use another port. With `SMOKE_STACK=kubernetes` the smoke test recreates the `dynamodb` pod instead of the container, and it skips the log, trace and scrape checks until the cluster runs a collector and Prometheus.
-- `make k8s-down` deletes the profile and everything in it.
+- `make k8s-gitops-check` proves the GitOps loop on the running cluster. It commits `replicas: 2` for `frontend-web` to the repository that Argo CD reads and waits until the Deployment runs two pods, without applying anything. It commits the original file back and waits for one pod again. Then it scales `frontend-web` by hand and waits until Argo CD scales it back.
+- `make k8s-down` deletes the profile, everything in it and the published repository.
 
-The profile asks for every CPU of the Docker VM and 10 GiB of memory. Set `K8S_CPUS` and `K8S_MEMORY` to change that. The memory requests of the workloads and the dependencies add up to about 8.5 GiB, because each request equals the Compose `mem_limit`. Do not run the Compose stack at the same time.
+The profile asks for every CPU of the Docker VM and 10 GiB of memory. Set `K8S_CPUS` and `K8S_MEMORY` to change that. The memory requests of the workloads and the dependencies add up to about 8.5 GiB, because each request equals the Compose `mem_limit`. Argo CD sets no requests and uses about 175 MiB. Do not run the Compose stack at the same time.
+
+A new node pulls the six dependency images, about 3.5 GB, from their registries. The node cannot reuse the images of the host's Docker, because `docker load` drops the digest that the dependency images are pinned by. `make k8s-up` starts all six pulls at once and logs how long each took. The waits time out after `K8S_TIMEOUT` seconds, 1200 by default.
 
 To look around, point kubectl at the profile's own kubeconfig:
 
 ```sh
 KUBECONFIG=build/k8s/kubeconfig kubectl --namespace jaypay get pods
+KUBECONFIG=build/k8s/kubeconfig kubectl --namespace argocd get applications
 ```
+
+## GitOps
+
+Argo CD runs in the namespace `argocd` in its core form, `core-install.yaml`: the application controller, the ApplicationSet controller, the repo server and Redis, without the API server, the UI, Dex or notifications. Nothing in the local cluster needs them, and `kubectl` reads every Application. The install is not committed. `scripts/verify.sh` pins its version and SHA-256 and downloads it, because the file is 1.9 MB of generated upstream YAML whose diff nobody would review. `deploy/argocd/local` patches it for the local cluster: the repo server mounts the published repository, and Argo CD compares every Application with Git every 20 to 25 seconds instead of every 2 to 3 minutes.
+
+`deploy/charts/gitops` renders two objects from `deploy/envs/<env>/gitops.yaml`:
+
+| Key | Meaning |
+| --- | --- |
+| `repoURL`, `revision` | The Git repository and the branch that Argo CD reads. |
+| `environment` | The directory under `deploy/envs`. It also names the AppProject and the ApplicationSet. |
+| `namespace` | The namespace that every Application deploys to. `scripts/render-charts.sh` renders the environment into the same namespace, and `scripts/k8s.sh` and `scripts/smoke.sh` read it from here. |
+| `pollSeconds` | How often the ApplicationSet controller lists the workload files. |
+
+- The AppProject allows only that repository and only that namespace in the same cluster, and no cluster-scoped resources.
+- The ApplicationSet generates one Application per workload file. Every Application syncs automatically, prunes what Git no longer has and heals what someone changed in the cluster.
+
+Another environment uses the same chart with its own `gitops.yaml`, such as a private repository's `https://` URL and branch.
+
+### Where Argo CD reads Git from
+
+`make k8s-up` must run what the working tree holds, committed or not, without pushing anything. It therefore publishes the working tree to a bare repository at `build/k8s/git/jaypay.git`. The minikube node mounts `build/k8s/git` at `/jaypay/git`, the repo server mounts that node path read-only, and the `repoURL` is `file:///jaypay/git/jaypay.git`.
+
+Each publish stages the working tree with `git add --all` into a temporary index, so it holds tracked, changed and untracked files and skips what `.gitignore` ignores, such as `infra/docker/.env`. It writes the objects into the bare repository, never into the repository you work in, and commits on top of the previous publish to the branch `local`, so the branch only moves forward. It does nothing when the tree is the same as the branch already has.
+
+Argo CD's repo server follows the links in `deploy/charts/dependency/files`, because they point inside the repository.
+
+### Order of the dependencies
+
+All nineteen Applications sync at once. Every Service exists from the first sync, so the workloads resolve the names of their dependencies, and a Spring Boot service that starts before PostgreSQL or Kafka accepts connections exits and is restarted by the kubelet. In the measured runs no service restarted more than once, and every Application was healthy in the same poll in which the last dependency was. An ApplicationSet with the `RollingSync` strategy could sync the dependencies first, but it turns off automatic sync and self-heal for every Application it generates, which is the loop this phase exists to prove.
+
+### Working tree images
+
+The local images keep the tag `working-tree`, so a rebuilt image changes nothing that Argo CD compares. `make k8s-up` loads the new image and runs `kubectl rollout restart` on the workloads that use it. The restart only adds the annotation `kubectl.kubernetes.io/restartedAt` to the pod template. Argo CD compares only the fields that Git sets, so the Application stays synced and self-heal leaves the restart alone.
 
 ## Next phases
 
-1. GitOps. Argo CD syncs the local cluster from `deploy/envs/local`, one Application per workload file.
-2. Observability and policy. The OpenTelemetry Collector, Prometheus and Grafana run in the cluster, and NetworkPolicy lets only the admin console reach the backends it proxies.
-3. Cloud. Terraform modules for the network, an EKS cluster, workload identity for DynamoDB and the secret store, validated in the gate and applied only from a private copy of this repository.
+1. Observability and policy. The OpenTelemetry Collector, Prometheus and Grafana run in the cluster, and NetworkPolicy lets only the admin console reach the backends it proxies.
+2. Cloud. Terraform modules for the network, an EKS cluster, workload identity for DynamoDB and the secret store, validated in the gate and applied only from a private copy of this repository.

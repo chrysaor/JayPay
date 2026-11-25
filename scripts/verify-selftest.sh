@@ -6,6 +6,7 @@ mkdir -p "$root/build"
 work=$(mktemp -d "$root/build/verify-selftest.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 failures=0
+export ARGOCD_CACHE=$root/build/argocd
 
 copy_repo() {
   local dest="$work/$1"
@@ -104,6 +105,22 @@ expect charts fail "$dir" "passes SERVICE_PAYMENT_URL but deploy/envs/local does
 dir=$(copy_repo charts-upstream)
 perl -pi -e 's/(JAYPAY_AUTH_URL:).*/$1 auth-svc/' "$dir/deploy/envs/local/frontend/frontend-admin.yaml"
 expect charts fail "$dir" "auth-svc.jaypay.svc.cluster.local:8080, which is no Service"
+
+dir=$(copy_repo charts-secret)
+printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: {{ .Release.Name }}\nstringData:\n  planted: "1"\n' >"$dir/deploy/charts/frontend/templates/secret.yaml"
+expect charts fail "$dir" "renders the Secret frontend-web"
+
+dir=$(copy_repo charts-applicationset)
+perl -pi -e 's/^(\s*)selfHeal: true/$1selfHeal: true\n$1selfHealing: true/' "$dir/deploy/charts/gitops/templates/applicationset.yaml"
+expect charts fail "$dir" "additional properties 'selfHealing' not allowed"
+
+dir=$(copy_repo charts-argocd-version)
+perl -pi -e 's/^ARGOCD_INSTALL_SHA256=.*/ARGOCD_INSTALL_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' "$dir/scripts/verify.sh"
+expect charts fail "$dir" "does not match ARGOCD_INSTALL_SHA256"
+
+dir=$(copy_repo charts-argocd-patch)
+perl -pi -e 's/name: argocd-repo-server$/name: argocd-repo-servers/' "$dir/deploy/argocd/local/kustomization.yaml"
+expect charts fail "$dir" "argocd-repo-server does not mount jaypay-git"
 
 [ "$failures" -eq 0 ] || { echo "$failures self-test case(s) failed"; exit 1; }
 echo "verify.sh catches every planted failure"

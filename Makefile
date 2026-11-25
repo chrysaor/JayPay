@@ -13,7 +13,7 @@ FRONTEND_DEPS := frontend/node_modules/.package-lock.json
 GIT_COMMON_DIR := $(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-down lock contract release-branch
+.PHONY: help build test verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-down lock contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
@@ -28,6 +28,7 @@ help:
 	@echo "make smoke                     drive the running stack end to end"
 	@echo "make k8s-up | k8s-down         start or delete the local minikube cluster, profile jaypay"
 	@echo "make k8s-smoke                 drive the cluster end to end through its ingress"
+	@echo "make k8s-gitops-check          prove that Argo CD follows a commit and reverts a manual change"
 	@echo "make lock                      refresh gradle.lockfile and package-lock.json"
 	@echo "make contract                  regenerate docs/api-contract.md"
 	@echo "make release-branch VERSION=X.Y.Z  create release/X.Y.Z from origin/develop"
@@ -90,6 +91,9 @@ k8s-up: infra/docker/.env images
 
 k8s-smoke:
 	scripts/k8s.sh smoke
+
+k8s-gitops-check:
+	scripts/k8s.sh gitops-check
 
 k8s-down:
 	scripts/k8s.sh down
