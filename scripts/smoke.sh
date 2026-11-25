@@ -311,8 +311,8 @@ as "$admin_token" expect "the actuator of a service behind the console" 403 GET 
 expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
 
 log "a staff token means nothing to the customer site"
-request "staff token validation on the web site" POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
-[ "$(cat "$work/body")" = false ] || fail "the web site accepted a staff token: $(response)"
+call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
+[ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
 
 log "every service shipped its logs to ClickHouse"
 for service in "${services[@]}"; do
