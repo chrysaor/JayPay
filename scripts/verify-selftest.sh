@@ -119,8 +119,8 @@ perl -pi -e 's/^ARGOCD_INSTALL_SHA256=.*/ARGOCD_INSTALL_SHA256=00000000000000000
 expect charts fail "$dir" "does not match ARGOCD_INSTALL_SHA256"
 
 dir=$(copy_repo charts-argocd-patch)
-perl -pi -e 's/name: argocd-repo-server$/name: argocd-repo-servers/' "$dir/deploy/argocd/local/repo-server.yaml"
-expect charts fail "$dir" "argocd-repo-servers"
+perl -pi -e 's/name: argocd-repo-server$/name: argocd-repo-servers/' "$dir/deploy/argocd/local/kustomization.yaml"
+expect charts fail "$dir" "argocd-repo-server does not mount jaypay-git"
 
 [ "$failures" -eq 0 ] || { echo "$failures self-test case(s) failed"; exit 1; }
 echo "verify.sh catches every planted failure"

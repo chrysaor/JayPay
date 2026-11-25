@@ -6,4 +6,7 @@ resources:
   - core-install.yaml
 patches:
   - path: argocd-cm.yaml
-  - path: repo-server.yaml
+  - path: repo-server-mounts.yaml
+    target:
+      kind: Deployment
+      name: argocd-repo-server

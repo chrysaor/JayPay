@@ -133,8 +133,9 @@ The comparison checks the facts that break a workload when they drift. It leaves
 - Every dependency is a Compose service, with the same image and the same memory limit.
 - No environment other than `local` uses `imagePullPolicy: Never`.
 - No environment renders a Secret.
+- The Argo CD repo server mounts the published repository.
 
-`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable, a wrong upstream, a rendered Secret, a field the ApplicationSet does not know, a wrong checksum of the Argo CD install and a patch of a Deployment the install does not have, and checks that the step fails on each one.
+`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable, a wrong upstream, a rendered Secret, a field the ApplicationSet does not know, a wrong checksum of the Argo CD install and a repo server patch that matches nothing, and checks that the step fails on each one.
 
 ## Local cluster
 

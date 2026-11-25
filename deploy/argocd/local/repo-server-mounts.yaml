@@ -1,0 +1,13 @@
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: jaypay-git
+    hostPath:
+      path: /jaypay/git
+      type: Directory
+- op: add
+  path: /spec/template/spec/containers/0/volumeMounts/-
+  value:
+    name: jaypay-git
+    mountPath: /jaypay/git
+    readOnly: true

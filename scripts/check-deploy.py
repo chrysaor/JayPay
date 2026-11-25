@@ -85,6 +85,17 @@ def rendered_secrets(root, rendered_dir):
     return problems
 
 
+def repo_server_mount(rendered_dir):
+    for line in read(os.path.join(rendered_dir, "argocd.json")).splitlines():
+        manifest = json.loads(line)
+        if manifest.get("kind") == "Deployment" and manifest["metadata"]["name"] == "argocd-repo-server":
+            volumes = {volume["name"] for volume in manifest["spec"]["template"]["spec"].get("volumes", [])}
+            mounts = {mount["name"] for mount in manifest["spec"]["template"]["spec"]["containers"][0].get("volumeMounts", [])}
+            if "jaypay-git" in volumes & mounts:
+                return []
+    return ["argocd: argocd-repo-server does not mount jaypay-git, the repository that deploy/envs/local/gitops.yaml points at"]
+
+
 def compare(name, service, upstreams, container, secret_keys, deployed):
     problems = []
     compose_env = service.get("environment") or {}
@@ -143,6 +154,7 @@ def main():
         problems += compare_dependency(name, services.get(name), container)
     problems += unpulled_images(rendered_dir)
     problems += rendered_secrets(root, rendered_dir)
+    problems += repo_server_mount(rendered_dir)
 
     for problem in problems:
         print(problem)
