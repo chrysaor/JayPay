@@ -1,0 +1,14 @@
+image:
+  registry: ghcr.io/chrysaor
+  tag: ""
+  pullPolicy: IfNotPresent
+replicas: 1
+secretName: jaypay
+env: {}
+secretEnv: {}
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    memory: 512Mi

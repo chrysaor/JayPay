@@ -47,3 +47,4 @@ bin/
 .env
 
 .audit/
+__pycache__/

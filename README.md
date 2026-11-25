@@ -1,6 +1,6 @@
 # JayPay
 
-JayPay is a study project for a small payment service: members sign up, register a bank account, top up a wallet, send money and pay merchants, and a batch job settles the payments. The repository shows how to build that as Spring Boot services in a hexagonal layout and connect them with HTTP, Kafka and Axon Framework commands, events, sagas and queries. It also ships two React sites, a Docker Compose stack with logs, traces and metrics, and one `make` gate that CI runs. The project started in 2024 and was rebuilt on Java 25 and Spring Boot 4. The documents from before the rebuild are in [docs/legacy](docs/legacy/README.md).
+JayPay is a study project for a small payment service: members sign up, register a bank account, top up a wallet, send money and pay merchants, and a batch job settles the payments. The repository shows how to build that as Spring Boot services in a hexagonal layout and connect them with HTTP, Kafka and Axon Framework commands, events and sagas. It also ships two React sites, a Docker Compose stack with logs, traces and metrics, and one `make` gate that CI runs. The project started in 2024 and was rebuilt on Java 25 and Spring Boot 4. The documents from before the rebuild are in [docs/legacy](docs/legacy/README.md).
 
 ## Architecture
 
@@ -8,89 +8,29 @@ Eleven Spring Boot services run in Docker Compose. Nine of them have a host port
 
 ### Request path
 
-The browser calls only its own site. nginx strips `/api/<service>` and forwards the rest of the path to that service. The services then call each other over HTTP. On the admin console, an `auth_request` to auth-service comes first: it answers 204 to let the request through, 401 without a valid staff token, and 403 when the role is not enough. No other service calls auth-service.
+The browser calls only its own site. nginx strips `/api/<service>` and forwards the rest of the path to that service. On the admin console, an `auth_request` to auth-service comes first: it answers 204 to let the request through, 401 without a valid staff token, and 403 when the role is not enough. No other service calls auth-service. settlement-service starts its own requests from a batch job.
 
-```mermaid
-flowchart TB
-    subgraph sites["nginx, proxies /api/&lt;service&gt;/"]
-        web["frontend-web<br/>customer site"]
-        admin["frontend-admin<br/>admin console"]
-    end
+![frontend-web forwards to banking, money, remittance, membership and payment. frontend-admin asks auth-service first and forwards to membership, payment, money-aggregation and money-query. settlement-service calls banking and payment from its batch job.](docs/diagrams/request-path.svg)
 
-    settlement["settlement-service<br/>batch every 30 s"]
-    remittance["remittance-service"]
-    aggregation["money-aggregation-service"]
-    query["money-query-service"]
-    payment["payment-service"]
-    money["money-service"]
-    banking["banking-service"]
-    membership["membership-service"]
-    auth["auth-service<br/>staff accounts, sign-in, request decisions"]
+The services then call each other over HTTP. Each row is a caller, each column the service it calls, and each cell what the caller asks for.
 
-    web --> membership & banking & money & remittance & payment
-    admin -- "auth_request on every /api call,<br/>/api/auth/staff/ for sign-in" --> auth
-    admin --> membership & payment & aggregation & query
-
-    banking -- "member check" --> membership
-    money -- "member check" --> membership
-    money -- "registered account" --> banking
-    remittance -- "member check" --> membership
-    remittance -- "/banking/info" --> banking
-    payment -- "member check" --> membership
-    aggregation -- "members by address" --> membership
-    aggregation -- "balances" --> money
-    query -- "member address" --> membership
-    settlement -- "unsettled payments,<br/>finish settlement" --> payment
-    settlement -- "merchant account,<br/>firm banking" --> banking
-```
+![The calls between services: seven callers and the four services they call, with the purpose of every call.](docs/diagrams/service-calls.svg)
 
 `docs/api-contract.md` lists every endpoint, and `make verify` fails when the code no longer matches it.
 
 ### Messaging and storage
 
-Kafka carries the task top-up and a log line for each web request. Axon Server routes the commands, events and queries of the money top-up saga and stores the events of the Axon aggregates.
+Kafka carries the task top-up and a log record for each web request.
 
-```mermaid
-flowchart LR
-    subgraph services["Services with a PostgreSQL database"]
-        membership["membership-service"]
-        banking["banking-service"]
-        money["money-service"]
-        remittance["remittance-service"]
-        payment["payment-service"]
-        aggregation["money-aggregation-service"]
-        query["money-query-service"]
-        settlement["settlement-service"]
-        auth["auth-service"]
-    end
+![money-service writes jaypay.task.topic, task-consumer reads it and writes jaypay.task.result.topic, which money-service reads. Seven services write one record per web request to jaypay.logging.out.stdout, which logging-consumer reads.](docs/diagrams/kafka.svg)
 
-    subgraph kafka["Kafka"]
-        task(["jaypay.task.topic"])
-        result(["jaypay.task.result.topic"])
-        logs(["jaypay.logging.out.stdout<br/>one record per web request"])
-    end
+Axon Server routes the commands and events of the money top-up saga and stores the events of the Axon aggregates. Every service with a host port has its own PostgreSQL database.
 
-    taskConsumer["task-consumer"]
-    loggingConsumer["logging-consumer"]
-    axon["Axon Server<br/>commands, events, queries"]
-    postgres[("PostgreSQL<br/>one database per service")]
-    dynamodb[("DynamoDB<br/>MoneyIncreaseEventByRegion")]
-    vault[("Vault<br/>email encryption key")]
+![Axon Server connects banking-service, money-service and money-query-service. membership-service reads a key from Vault, money-query-service writes to DynamoDB, and nine services each use their own PostgreSQL database.](docs/diagrams/axon-and-storage.svg)
 
-    money -- "top-up task" --> task --> taskConsumer
-    taskConsumer -- "task result" --> result --> money
-    membership & banking & money & remittance & payment --> logs --> loggingConsumer
+`make diagrams` draws these four pictures with `scripts/check-docs.py` from `deploy/envs/local/network-policy/calls.yaml`, `infra/docker/compose.yaml` and the service code. `make verify` fails when a committed picture differs from what the script draws.
 
-    money <-- "saga: commands out, events in" --> axon
-    banking <-- "commands in, events out" --> axon
-    query <-- "events in, money sum query" --> axon
-
-    services --> postgres
-    query -- "money sum by region" --> dynamodb
-    membership -- "AES key" --> vault
-```
-
-[docs/architecture.md](docs/architecture.md) walks through the saga top-up step by step and shows the layers inside a service.
+[docs/architecture.md](docs/architecture.md) walks through the saga top-up step by step and shows the layers inside a service. [docs/components.md](docs/components.md) lists every component, what it is for and where its version is pinned.
 
 ## Repository layout
 
@@ -101,8 +41,9 @@ flowchart LR
 | `frontend/` | npm workspace with the two sites and their shared packages, see [frontend/README.md](frontend/README.md) |
 | `infra/docker/` | `compose.yaml` for the local stack and the configuration of every container in it, see [infra/docker/README.md](infra/docker/README.md) |
 | `infra/terraform/` | The AWS DynamoDB table that money-query-service uses, see [infra/terraform/README.md](infra/terraform/README.md) |
-| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke`, `init-env.py` that writes `infra/docker/.env`, and the checks that `make verify` runs |
-| `docs/` | The HTTP API contract, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
+| `deploy/` | Helm charts for the services, the two sites and the dependencies of the local cluster, and the values of every workload per environment, see [deploy/README.md](deploy/README.md) |
+| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke` and `make k8s-smoke`, `k8s.sh` behind the `make k8s-*` targets, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, `check-docs.py` that draws `docs/diagrams/`, and the checks that `make verify` runs |
+| `docs/` | The HTTP API contract, the [service reference](docs/services.md), the diagrams, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
 
 ## Quick start
 
@@ -145,19 +86,23 @@ The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/
 
 ## Services
 
-| Service | Host port | Responsibility | Storage and messaging |
-| --- | --- | --- | --- |
-| membership-service | 8081 | Sign up, look members up by id or address, edit members, and issue and check JWTs | PostgreSQL `membership`, Vault for the key that encrypts member email |
-| banking-service | 8082 | Register bank accounts and run firm banking requests against a fake bank | PostgreSQL `banking`, Axon aggregates for bank accounts and firm banking |
-| money-service | 8083 | Wallet balances and top-ups: synchronous, through a Kafka task, or through the Axon saga | PostgreSQL `money`, Axon aggregate and recharge saga, Kafka task topics |
-| remittance-service | 8084 | Send money to a member or a bank account, and keep the history | PostgreSQL `remittance` |
-| payment-service | 8085 | Record payments to merchants, list unsettled payments, and mark them settled | PostgreSQL `payment` |
-| money-aggregation-service | 8086 | Sum the wallet balances of the members at one address | PostgreSQL `money_aggregation` |
-| money-query-service | 8087 | Read model of top-ups per region, answered through an Axon query | PostgreSQL `money_query`, DynamoDB `MoneyIncreaseEventByRegion`, Axon event handler and query handler |
-| settlement-service | 8088 | Spring Batch job every 30 seconds that pays merchants their share through firm banking and marks the payments settled | PostgreSQL `settlement` for the batch tables |
-| auth-service | 8089 | Staff accounts with the roles viewer, operator and admin, the password rules, sign-in, staff tokens, and the decision for every admin console request | PostgreSQL `auth` |
-| task-consumer | none | Reads top-up tasks, marks every subtask done, and writes the result | Kafka `jaypay.task.topic` in, `jaypay.task.result.topic` out |
-| logging-consumer | none | Writes each message from the logging topic to its own log | Kafka `jaypay.logging.out.stdout` in |
+Every service and site has a section in [docs/services.md](docs/services.md) with what it does, its endpoints, data, calls, messaging, memory limit and configuration keys. The log topic is `jaypay.logging.out.stdout`: seven services write one record to it for each web request.
+
+| Service | Role | Host port | Storage | Messaging |
+| --- | --- | --- | --- | --- |
+| [membership-service](docs/services.md#membership-service) | Sign up, look members up by id or address, edit members, and issue and check member JWTs | 8081 | PostgreSQL `membership`, Vault for the key that encrypts member email | Writes the log topic |
+| [banking-service](docs/services.md#banking-service) | Register bank accounts and run firm banking requests against a fake bank | 8082 | PostgreSQL `banking` | Axon aggregates for bank accounts and firm banking, writes the log topic |
+| [money-service](docs/services.md#money-service) | Wallet balances and top-ups: synchronous, through a Kafka task, or through the Axon saga | 8083 | PostgreSQL `money` | Axon aggregate and recharge saga, Kafka task topics, writes the log topic |
+| [remittance-service](docs/services.md#remittance-service) | Send money to a member or a bank account through money-service and banking-service | 8084 | PostgreSQL `remittance` | Writes the log topic |
+| [payment-service](docs/services.md#payment-service) | Record payments to merchants, list unsettled payments, and mark them settled | 8085 | PostgreSQL `payment` | Writes the log topic |
+| [money-aggregation-service](docs/services.md#money-aggregation-service) | Sum the wallet balances of the members at one address | 8086 | PostgreSQL `money_aggregation`, no tables | Writes the log topic |
+| [money-query-service](docs/services.md#money-query-service) | Read model of saga top-ups per address, read over HTTP | 8087 | DynamoDB `MoneyIncreaseEventByRegion`, PostgreSQL `money_query` with no tables | Axon event handler, writes the log topic |
+| [settlement-service](docs/services.md#settlement-service) | Spring Batch job every 30 seconds that pays merchants through firm banking and marks the payments settled | 8088 | PostgreSQL `settlement` for the batch tables | none |
+| [auth-service](docs/services.md#auth-service) | Staff accounts with the roles viewer, operator and admin, sign-in, staff tokens, and the decision for every admin console request | 8089 | PostgreSQL `auth` | none |
+| [task-consumer](docs/services.md#task-consumer) | Reads top-up tasks, marks every subtask done, and writes the result | none | none | Kafka `jaypay.task.topic` in, `jaypay.task.result.topic` out |
+| [logging-consumer](docs/services.md#logging-consumer) | Writes each record of the log topic to its own log | none | none | Kafka `jaypay.logging.out.stdout` in |
+| [frontend-web](docs/services.md#frontend-web) | Customer site: nginx serves the React app and proxies `/api/<service>/` to five services | 8090 | The session in the browser | none |
+| [frontend-admin](docs/services.md#frontend-admin) | Admin console: nginx serves the React app, asks auth-service, and proxies to four services | 8091 | The staff session in the browser | none |
 
 Inside Compose every service listens on port 8080 and is reached by its service name, for example `http://membership-service:8080`.
 
@@ -197,18 +142,20 @@ Every command runs from the repository root. Run `make` to list them.
 | --- | --- |
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
-| `make verify` | Runs the gate that CI runs: `contract english env terraform actionlint frontend backend` |
+| `make verify` | Runs the gate that CI runs: `contract docs english env terraform actionlint charts frontend backend` |
 | `make verify STEPS="contract backend"` | Runs only the named steps |
 | `make verify-selftest` | Proves that the gate fails on planted errors |
 | `make images` | Builds every service image and both frontend images |
 | `make up`, `make down` | Starts the local stack and waits until it is healthy, or stops it |
 | `make smoke` | Drives the running stack end to end |
+| `make k8s-up`, `make k8s-smoke`, `make k8s-down` | Runs the same stack on a local minikube cluster, drives it through its ingress, or deletes the cluster, see [deploy/README.md](deploy/README.md#local-cluster) |
 | `make scan`, `make scan-images` | Runs the Trivy and gitleaks scans, or the Trivy image scan |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
+| `make diagrams` | Redraws `docs/diagrams/*.svg` after a change to the calls, `compose.yaml` or the Kafka and Axon code |
 | `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` |
 
-Docker must be running for `make test` and `make verify`. The terraform, actionlint, Trivy and gitleaks checks run from their official images, so you install none of them.
+Docker must be running for `make test` and `make verify`. The terraform, actionlint, Helm, kubeconform, Trivy and gitleaks checks run from images pinned by digest, so you install none of them. The `make k8s-*` targets also need minikube and kubectl.
 
 ### Branches and releases
 
@@ -233,7 +180,7 @@ flowchart LR
 
 ### AWS
 
-The local stack uses DynamoDB Local. [infra/terraform/README.md](infra/terraform/README.md) creates the real DynamoDB table for money-query-service and runs Terraform from its official image.
+The local stack uses DynamoDB Local and keeps its data in a volume. One file, `infra/terraform/modules/dynamodb-money-sum/table.json`, defines the table for both DynamoDB Local and AWS. [infra/terraform/README.md](infra/terraform/README.md) creates the real table for money-query-service, points the service at it and destroys it again, running Terraform from its official image. money-query-service takes the table name from `DYNAMODB_TABLE_NAME` and the region from `AWS_REGION`, `ap-northeast-2` by default.
 
 ## Known limitations
 
@@ -244,7 +191,9 @@ JayPay is a study project and is not safe to run with real money or real users.
 - An admin cannot reset another account's password. Deactivate the account and create a new one instead.
 - Login takes a member id only, with no password or other credential.
 - The fake bank in banking-service accepts every account and every transfer.
-- remittance-service does not move money yet. Its money-service client returns no data, so a remittance request fails.
+- remittance-service stores every remittance, but `GET /remittance/{membershipId}` always returns an empty body, and a remittance to a bank account does not take the money from the sender's wallet.
 - The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
+- The customer site forwards every path of the five services it proxies, so their internal endpoints, Actuator and OpenAPI pages answer without a login ([#95](https://github.com/chrysaor/JayPay/issues/95)).
+- Money can be created and moved by anyone: a top-up accepts any amount for any member, a payment does not debit the payer and takes the merchant and fee from the request, and a remittance accepts a negative amount and any sender ([#96](https://github.com/chrysaor/JayPay/issues/96), [#97](https://github.com/chrysaor/JayPay/issues/97), [#98](https://github.com/chrysaor/JayPay/issues/98)).
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.

@@ -1,0 +1,43 @@
+{{- if eq .Release.Name "dynamodb" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "table.sh" "files/dynamodb/table.sh" "table.json" "files/dynamodb-table.json")) }}
+---
+{{ include "dependency.service" . }}
+    - name: http
+      port: 8000
+      targetPort: http
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          args: [-jar, DynamoDBLocal.jar, -sharedDb, -dbPath, /home/dynamodblocal/data]
+          securityContext:
+            runAsUser: 0
+          ports:
+            - name: http
+              containerPort: 8000
+          lifecycle:
+            postStart:
+              exec:
+                command: [bash, /scripts/table.sh, create]
+          readinessProbe:
+            exec:
+              command: [bash, /scripts/table.sh, check]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /home/dynamodblocal/data
+            - name: files
+              mountPath: /scripts/table.sh
+              subPath: table.sh
+              readOnly: true
+            - name: files
+              mountPath: /schema/table.json
+              subPath: table.json
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: dynamodb-files
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

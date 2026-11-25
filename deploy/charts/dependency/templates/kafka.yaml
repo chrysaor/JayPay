@@ -1,0 +1,30 @@
+{{- if eq .Release.Name "kafka" }}
+{{ include "dependency.service" . }}
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: kafka
+              containerPort: 9092
+          readinessProbe:
+            tcpSocket:
+              port: kafka
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+            - name: secrets
+              mountPath: /etc/kafka/secrets
+            - name: shared-config
+              mountPath: /mnt/shared/config
+      volumes:
+        - name: secrets
+          emptyDir: {}
+        - name: shared-config
+          emptyDir: {}
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

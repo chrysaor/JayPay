@@ -1,0 +1,47 @@
+{{- define "network-policy.metadata" -}}
+metadata:
+  name: {{ .name }}
+  labels:
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: jaypay
+    helm.sh/chart: {{ printf "%s-%s" .root.Chart.Name .root.Chart.Version }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+{{ include "network-policy.metadata" (dict "root" . "name" "default-deny") }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+{{- range $callee := concat (keys .Values.calls) (keys .Values.ingress) | uniq | sortAlpha }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+{{ include "network-policy.metadata" (dict "root" $ "name" $callee) }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $callee }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- range $port, $callers := get $.Values.calls $callee | default dict }}
+    - from:
+        {{- range $callers }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+        {{- end }}
+      ports:
+        - port: {{ $port }}
+    {{- end }}
+    {{- range $port := get $.Values.ingress $callee | default list }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.ingressController.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $.Values.ingressController.podLabels | nindent 14 }}
+      ports:
+        - port: {{ $port }}
+    {{- end }}
+{{- end }}

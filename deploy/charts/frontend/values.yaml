@@ -1,0 +1,16 @@
+image:
+  registry: ghcr.io/chrysaor
+  tag: ""
+  pullPolicy: IfNotPresent
+replicas: 1
+upstreams: {}
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 64Mi

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: dependency
+description: One dependency of the local JayPay stack, rendered once per file in deploy/envs/<env>/dependency/
+type: application
+version: 0.1.0

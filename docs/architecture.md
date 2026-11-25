@@ -111,3 +111,28 @@ flowchart RL
 - `domain` imports neither `application` nor `adapter`.
 - `application` reaches the outside only through its `port.in` and `port.out` interfaces.
 - `adapter` turns HTTP requests, Kafka records and Axon messages into `port.in` calls, and implements `port.out` with JPA, HTTP clients, Kafka, Vault and the AWS SDK.
+
+## Workloads on Kubernetes
+
+[deploy/README.md](../deploy/README.md) packages the same thirteen workloads as Helm charts. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
+
+```mermaid
+flowchart LR
+    subgraph envs["deploy/envs/local"]
+        shared["spring-service.yaml<br/>frontend.yaml<br/>shared by the chart's workloads"]
+        workload["spring-service/&lt;workload&gt;.yaml<br/>frontend/&lt;workload&gt;.yaml"]
+    end
+    secret[("Secret jaypay<br/>keys of .env.example")]
+    chart["deploy/charts/&lt;chart&gt;"]
+    objects["Deployment, Service, ServiceAccount<br/>named after the workload"]
+    compose["infra/docker/compose.yaml"]
+
+    shared & workload --> chart --> objects
+    objects -- "secretKeyRef" --> secret
+    compose -.->|"make verify compares names,<br/>secrets and memory"| workload
+```
+
+Two things differ from Compose:
+
+- The two sites get their upstreams as full names such as `http://auth-service.jaypay.svc.cluster.local:8080`, because the nginx `resolver` ignores the search domains of the pod. The admin console's `auth_request` to auth-service uses the same name.
+- Secret values come from the Secret `jaypay` instead of `infra/docker/.env`, under the same key names.

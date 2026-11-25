@@ -1,0 +1,5 @@
+apiVersion: v2
+name: spring-service
+description: One JayPay Spring Boot service, rendered once per workload from deploy/envs/<env>/spring-service/<workload>.yaml
+type: application
+version: 0.1.0

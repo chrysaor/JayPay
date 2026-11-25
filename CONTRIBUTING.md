@@ -17,6 +17,7 @@ Nobody pushes to `master` or `develop` directly; every change goes through a PR.
 Who merges:
 
 - Into `develop`: an agent merges once CI passes.
+- Dependabot PRs into `develop`: patch and minor updates merge by themselves once the required checks pass. Major updates wait for a person.
 - Into `master`, and every `vX.Y.Z` tag: an agent acts only after the owner confirms explicitly in the conversation. Without that, nobody merges into `master` or tags.
 
 ## Making a change
@@ -24,9 +25,10 @@ Who merges:
 1. Open an issue, or pick one.
 2. `git switch -c feature/<issue>-<short-name> origin/develop`
 3. Write a failing test, then make it pass.
-4. `make verify`. It runs every check CI runs and prints `FAILED: <steps>` when something breaks.
+4. `make verify`. It runs every check CI runs and prints `FAILED: <steps>` when something breaks. Its `charts` step renders every workload in `deploy/envs` and fails when `deploy/envs/local` and `infra/docker/compose.yaml` disagree, so a change to a workload's environment or `mem_limit` in one needs the same change in the other.
 5. Open a PR against `develop` with the template filled in and `Closes #<issue>`.
 6. Merge after CI passes.
+7. Close the issue. `Closes` only fires on `master`, so merging into `develop` leaves it open.
 
 ## Releasing
 

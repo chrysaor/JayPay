@@ -1,0 +1,19 @@
+image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
+env:
+  GF_AUTH_ANONYMOUS_ENABLED: "true"
+  GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+  GF_AUTH_DISABLE_LOGIN_FORM: "true"
+  GF_PLUGINS_PREINSTALL_SYNC: grafana-clickhouse-datasource@4.23.5
+  GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/service-overview.json
+  GF_ANALYTICS_REPORTING_ENABLED: "false"
+  GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+  GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+secretEnv:
+  GF_SECURITY_ADMIN_PASSWORD: GRAFANA_ADMIN_PASSWORD
+  CLICKHOUSE_PASSWORD: CLICKHOUSE_PASSWORD
+resources:
+  requests:
+    cpu: 50m
+    memory: 512Mi
+  limits:
+    memory: 512Mi
