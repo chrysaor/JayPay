@@ -11,7 +11,7 @@ export ARGOCD_CACHE=$root/build/argocd
 copy_repo() {
   local dest="$work/$1"
   mkdir -p "$dest"
-  git -C "$root" ls-files -co --exclude-standard -- scripts README.md docs backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
+  git -C "$root" ls-files -co --exclude-standard -- scripts README.md CHANGELOG.md docs backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
     while IFS= read -r path; do
       [ -e "$root/$path" ] || continue
       mkdir -p "$dest/$(dirname "$path")"
@@ -35,7 +35,27 @@ expect() {
   fi
 }
 
+expect_run() {
+  local name=$1 want=$2 planted=$3 out status=0
+  shift 3
+  out=$("$@" 2>&1) || status=$?
+  if { [ "$want" = pass ] && [ "$status" -eq 0 ]; } || { [ "$want" = fail ] && [ "$status" -ne 0 ]; }; then
+    if grep -q -- "$planted" <<<"$out"; then
+      echo "ok   $name $([ "$want" = pass ] && echo passes || echo fails)${planted:+ with $planted}"
+      return
+    fi
+  fi
+  echo "FAIL $name (exit $status, wanted $want)"
+  echo "$out" | tail -20
+  failures=$((failures + 1))
+}
+
+changelog() {
+  python3 "$root/scripts/changelog.py" "$@"
+}
+
 clean=$(copy_repo clean)
+expect changelog pass "$clean"
 expect contract pass "$clean"
 expect docs pass "$clean"
 expect actionlint pass "$clean"
@@ -66,6 +86,47 @@ expect docs fail "$dir" "logging-consumer: Memory limit says"
 dir=$(copy_repo english)
 printf '\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-hangul.md"
 expect english fail "$dir" planted-hangul.md
+
+dir=$(copy_repo changelog-order)
+perl -pi -e 's/^## \[0\.2\.0\]/## [0.0.9]/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "\[0.0.9\] must be newer than \[0.1.0\]"
+
+dir=$(copy_repo changelog-heading)
+perl -pi -e 's/^## \[0\.1\.0\] - (\d+)-(\d+)-(\d+)$/## [0.1.0] - $3.$2.$1/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "is not a version heading"
+
+dir=$(copy_repo changelog-empty-group)
+perl -pi -e 's/^(## \[0\.1\.0\])/### Fixed\n\n$1/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "### Fixed has no entries in \[0.2.0\]"
+
+dir=$(copy_repo changelog-link)
+perl -0pi -e 's/ \(\[#\d+\]\([^)]*\)\)$//m' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "does not end with a PR or issue link"
+
+dir=$(copy_repo changelog-release)
+expect_run "changelog release" pass "" changelog release "$dir/CHANGELOG.md" 9.0.0 2099-01-01
+expect changelog pass "$dir"
+expect_run "changelog notes" pass "issues/113" changelog notes "$dir/CHANGELOG.md" 9.0.0
+expect_run "changelog release of an empty Unreleased" fail "Unreleased has no entries" changelog release "$dir/CHANGELOG.md" 9.0.1 2099-01-02
+expect_run "changelog notes of a missing version" fail "no section for 8.8.8" changelog notes "$root/CHANGELOG.md" 8.8.8
+
+repo="$work/changelog-entry"
+git init --quiet --initial-branch develop "$repo"
+cp "$root/CHANGELOG.md" "$repo/"
+in_repo() { git -C "$repo" -c user.name=selftest -c user.email=selftest@example.invalid "$@"; }
+entry() { (cd "$repo" && changelog entry CHANGELOG.md base); }
+in_repo add CHANGELOG.md && in_repo commit --quiet -m base && in_repo branch base
+echo change >"$repo/change" && in_repo add change && in_repo commit --quiet -m "feat: change behaviour"
+expect_run "changelog entry missing" fail "adds no line to Unreleased" entry
+in_repo commit --quiet --allow-empty -m "docs: fix a typo" -m "Changelog: none"
+expect_run "changelog entry waived by a Changelog: none trailer" pass "" entry
+in_repo reset --quiet --hard HEAD~1
+perl -0pi -e 's/(## \[Unreleased\]\n\n### \w+\n)/$1- Planted entry ([#1](https:\/\/github.com\/chrysaor\/JayPay\/pull\/1))\n/' "$repo/CHANGELOG.md"
+in_repo commit --quiet -am "feat: change behaviour with an entry"
+expect_run "changelog entry added" pass "" entry
+in_repo reset --quiet --hard base
+changelog release "$repo/CHANGELOG.md" 9.0.0 2099-01-01 && in_repo commit --quiet -am "chore: release 9.0.0"
+expect_run "changelog entry of a back-merge" pass "" entry
 
 dir=$(copy_repo env-example)
 echo 'DOCKER_HOST_IP=127.0.0.1' >>"$dir/infra/docker/.env.example"

@@ -142,7 +142,7 @@ Every command runs from the repository root. Run `make` to list them.
 | --- | --- |
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
-| `make verify` | Runs the gate that CI runs: `contract docs english env terraform actionlint charts frontend backend` |
+| `make verify` | Runs the gate that CI runs: `changelog contract docs english env terraform actionlint charts frontend backend` |
 | `make verify STEPS="contract backend"` | Runs only the named steps |
 | `make verify-selftest` | Proves that the gate fails on planted errors |
 | `make images` | Builds every service image and both frontend images |
@@ -153,7 +153,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
 | `make diagrams` | Redraws `docs/diagrams/*.svg` after a change to the calls, `compose.yaml` or the Kafka and Axon code |
-| `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` |
+| `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` with a commit that sets the version and turns Unreleased in `CHANGELOG.md` into X.Y.Z |
 
 Docker must be running for `make test` and `make verify`. The terraform, actionlint, Helm, kubeconform, Trivy and gitleaks checks run from images pinned by digest, so you install none of them. The `make k8s-*` targets also need minikube and kubectl.
 
@@ -172,7 +172,7 @@ flowchart LR
     tag -- "release.yml pushes vX.Y.Z,<br/>creates the GitHub Release" --> ghcr
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the branch table, the steps for a change, the release steps and the hotfix flow. [CLAUDE.md](CLAUDE.md) has the rules that coding agents follow in this repository.
+[CHANGELOG.md](CHANGELOG.md) says what each release added and changed. [CONTRIBUTING.md](CONTRIBUTING.md) has the branch table, the steps for a change, the release steps and the hotfix flow. [CLAUDE.md](CLAUDE.md) has the rules that coding agents follow in this repository.
 
 ### Security
 
