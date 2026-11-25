@@ -1,0 +1,40 @@
+{{- if eq .Release.Name "vault" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "encryption-key.sh" "files/vault/encryption-key.sh")) }}
+---
+{{ include "dependency.service" . }}
+    - name: http
+      port: 8200
+      targetPort: http
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 8200
+          lifecycle:
+            postStart:
+              exec:
+                command: [sh, /scripts/encryption-key.sh, write]
+          readinessProbe:
+            exec:
+              command: [sh, /scripts/encryption-key.sh, check]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: files
+              mountPath: /scripts
+              readOnly: true
+            - name: file
+              mountPath: /vault/file
+            - name: logs
+              mountPath: /vault/logs
+      volumes:
+        - name: files
+          configMap:
+            name: vault-files
+        - name: file
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+{{- end }}

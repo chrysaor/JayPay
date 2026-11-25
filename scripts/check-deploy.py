@@ -41,13 +41,38 @@ def workloads(root, services):
             yield name, service, set(UPSTREAM.findall(template))
 
 
-def deployed_containers(manifests_path):
+def rendered_containers(manifests_path, kind):
     containers = {}
     for line in read(manifests_path).splitlines():
         manifest = json.loads(line)
-        if manifest.get("kind") == "Deployment":
+        if manifest.get("kind") == kind:
             containers[manifest["metadata"]["name"]] = manifest["spec"]["template"]["spec"]["containers"][0]
     return containers
+
+
+def compare_dependency(name, service, container):
+    problems = []
+    if service is None:
+        return [f"{name}: deploy/envs/local runs the dependency {name} but compose.yaml does not"]
+    if container.get("image") != service.get("image"):
+        problems.append(f"{name}: image {container.get('image')} differs from {service.get('image')} in compose.yaml")
+    limit = container.get("resources", {}).get("limits", {}).get("memory")
+    if to_bytes(limit) != to_bytes(service.get("mem_limit")):
+        problems.append(f"{name}: memory limit {limit} differs from mem_limit {service.get('mem_limit')} in compose.yaml")
+    return problems
+
+
+def unpulled_images(rendered_dir):
+    problems = []
+    for file_name in sorted(os.listdir(rendered_dir)):
+        env, extension = os.path.splitext(file_name)
+        if extension != ".json" or env == "local":
+            continue
+        for kind in ("Deployment", "StatefulSet"):
+            for name, container in sorted(rendered_containers(os.path.join(rendered_dir, file_name), kind).items()):
+                if container.get("imagePullPolicy") == "Never":
+                    problems.append(f"{env}: {name} uses imagePullPolicy Never, which only deploy/envs/local may use")
+    return problems
 
 
 def compare(name, service, upstreams, container, secret_keys, deployed):
@@ -87,7 +112,9 @@ def compare(name, service, upstreams, container, secret_keys, deployed):
 
 def main():
     root = os.path.abspath(sys.argv[1])
-    deployed = deployed_containers(sys.argv[2])
+    rendered_dir = sys.argv[2]
+    local = os.path.join(rendered_dir, "local.json")
+    deployed = rendered_containers(local, "Deployment")
     services = compose_services(os.path.join(root, "infra", "docker"))
     secret_keys = {line.split("=", 1)[0] for line in read(os.path.join(root, "infra", "docker", ".env.example")).splitlines() if "=" in line}
 
@@ -101,13 +128,17 @@ def main():
         problems += compare(name, service, upstreams, deployed[name], secret_keys, deployed)
     for name in sorted(set(deployed) - expected):
         problems.append(f"{name}: deploy/envs/local has it but compose.yaml does not run it")
+    dependencies = rendered_containers(local, "StatefulSet")
+    for name, container in sorted(dependencies.items()):
+        problems += compare_dependency(name, services.get(name), container)
+    problems += unpulled_images(rendered_dir)
 
     for problem in problems:
         print(problem)
     if problems:
         print(f"check-deploy: {len(problems)} problem(s)")
         sys.exit(1)
-    print(f"check-deploy: deploy/envs/local and compose.yaml agree on {len(expected)} workloads")
+    print(f"check-deploy: deploy/envs/local and compose.yaml agree on {len(expected)} workloads and {len(dependencies)} dependencies")
 
 
 if __name__ == "__main__":

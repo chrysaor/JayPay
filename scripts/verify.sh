@@ -49,7 +49,7 @@ step_charts() {
       --entrypoint sh "$HELM_IMAGE" scripts/render-charts.sh "$out" &&
     docker run --rm -v "$root/$out:/rendered:ro" "$KUBECONFORM_IMAGE" \
       -strict -summary -kubernetes-version "$KUBERNETES_VERSION" -ignore-filename-pattern '\.json$' /rendered &&
-    python3 scripts/check-deploy.py . "$out/local.json"
+    python3 scripts/check-deploy.py . "$out"
 }
 
 step_frontend() {

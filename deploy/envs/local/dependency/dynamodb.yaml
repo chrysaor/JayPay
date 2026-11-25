@@ -1,0 +1,9 @@
+image: amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+env:
+  DYNAMODB_TABLE_NAME: MoneyIncreaseEventByRegion
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 256Mi

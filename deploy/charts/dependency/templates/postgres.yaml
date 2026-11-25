@@ -1,0 +1,31 @@
+{{- if eq .Release.Name "postgres" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "01-databases.sql" "files/postgres-initdb/01-databases.sql")) }}
+---
+{{ include "dependency.service" . }}
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [psql, -h, 127.0.0.1, -U, jaypay, -d, auth, -tAc, select 1]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: files
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: postgres-files
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

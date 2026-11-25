@@ -1,5 +1,7 @@
 image:
-  tag: v0.2.0
+  registry: localhost
+  tag: working-tree
+  pullPolicy: Never
 env:
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   AXON_AXONSERVER_SERVERS: axon-server:8124

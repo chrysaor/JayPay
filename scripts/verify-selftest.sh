@@ -14,7 +14,7 @@ copy_repo() {
     while IFS= read -r path; do
       [ -e "$root/$path" ] || continue
       mkdir -p "$dest/$(dirname "$path")"
-      cp "$root/$path" "$dest/$path"
+      cp -P "$root/$path" "$dest/$path"
     done
   echo "$dest"
 }
@@ -78,8 +78,20 @@ perl -pi -e 's/containerPort:/containerPorts:/' "$dir/deploy/charts/spring-servi
 expect charts fail "$dir" containerPorts
 
 dir=$(copy_repo charts-tag)
-perl -pi -e 's/^(\s*tag:).*/$1 latest/' "$dir/deploy/envs/local/frontend.yaml"
+perl -pi -e 's/^(\s*tag:).*/$1 latest/; s/^(\s*pullPolicy:).*/$1 IfNotPresent/' "$dir/deploy/envs/local/frontend.yaml"
 expect charts fail "$dir" "'latest' does not match pattern"
+
+dir=$(copy_repo charts-unpulled)
+cp -R "$dir/deploy/envs/local" "$dir/deploy/envs/staging"
+expect charts fail "$dir" "staging: frontend-web uses imagePullPolicy Never"
+
+dir=$(copy_repo charts-dependency)
+perl -pi -e 's/^image: postgres:19\.0/image: postgres:18.0/' "$dir/deploy/envs/local/dependency/postgres.yaml"
+expect charts fail "$dir" "postgres: image postgres:18.0"
+
+dir=$(copy_repo charts-dependency-file)
+rm "$dir/infra/docker/vault/encryption-key.sh"
+expect charts fail "$dir" "files/vault/encryption-key.sh is empty or missing"
 
 dir=$(copy_repo charts-workload)
 rm "$dir/deploy/envs/local/spring-service/task-consumer.yaml"

@@ -1,2 +1,4 @@
 image:
-  tag: v0.2.0
+  registry: localhost
+  tag: working-tree
+  pullPolicy: Never
