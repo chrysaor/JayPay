@@ -16,6 +16,7 @@ scrape_configs:
           - money-aggregation-service:8080
           - money-query-service:8080
           - settlement-service:8080
+          - auth-service:8080
           - logging-consumer:8080
           - task-consumer:8080
     relabel_configs:

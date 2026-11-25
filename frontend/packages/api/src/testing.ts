@@ -4,6 +4,7 @@ export type ReceivedRequest = {
   url: string
   method: string
   contentType: string | null
+  authorization: string | undefined
   body: string | null
 }
 
@@ -14,15 +15,17 @@ export function fakeServer(reply: Reply | ((request: ReceivedRequest) => Reply))
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init: RequestInit) => {
+      const headers = new Headers(init.headers)
       const request = {
         url,
         method: init.method ?? 'GET',
-        contentType: new Headers(init.headers).get('Content-Type'),
+        contentType: headers.get('Content-Type'),
+        authorization: headers.get('Authorization') ?? undefined,
         body: init.body instanceof URLSearchParams ? init.body.toString() : typeof init.body === 'string' ? init.body : null,
       }
       received.push(request)
       const { status = 200, body } = typeof reply === 'function' ? reply(request) : reply
-      return Promise.resolve(new Response(body === undefined ? '' : JSON.stringify(body), { status }))
+      return Promise.resolve(new Response(body === undefined ? null : JSON.stringify(body), { status }))
     }),
   )
   return received

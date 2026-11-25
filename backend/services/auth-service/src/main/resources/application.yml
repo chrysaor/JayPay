@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: auth-service
+  config:
+    import: classpath:jaypay-common.yml
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jaypay}
+    username: ${SPRING_DATASOURCE_USERNAME:jaypay}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+staff:
+  token:
+    secret: ${STAFF_JWT_SECRET}
+    issuer: jaypay-auth-service
+    audience: jaypay-admin-console
+    lifetime: PT8H
+  default-accounts:
+    - role: ADMIN
+      username: ${STAFF_ADMIN_USERNAME}
+      password: ${STAFF_ADMIN_PASSWORD}
+    - role: OPERATOR
+      username: ${STAFF_OPERATOR_USERNAME}
+      password: ${STAFF_OPERATOR_PASSWORD}
+    - role: VIEWER
+      username: ${STAFF_VIEWER_USERNAME}
+      password: ${STAFF_VIEWER_PASSWORD}

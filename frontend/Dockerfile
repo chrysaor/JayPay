@@ -31,7 +31,8 @@ FROM runtime AS admin
 ENV JAYPAY_MEMBERSHIP_URL=http://membership-service:8080 \
     JAYPAY_PAYMENT_URL=http://payment-service:8080 \
     JAYPAY_MONEY_AGGREGATION_URL=http://money-aggregation-service:8080 \
-    JAYPAY_MONEY_QUERY_URL=http://money-query-service:8080
+    JAYPAY_MONEY_QUERY_URL=http://money-query-service:8080 \
+    JAYPAY_AUTH_URL=http://auth-service:8080
 
 FROM ${APP}
 ARG APP
