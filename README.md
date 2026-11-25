@@ -191,9 +191,9 @@ JayPay is a study project and is not safe to run with real money or real users.
 - An admin cannot reset another account's password. Deactivate the account and create a new one instead.
 - Login takes a member id only, with no password or other credential.
 - The fake bank in banking-service accepts every account and every transfer.
-- remittance-service stores every remittance, but `GET /remittance/{membershipId}` always returns an empty body, and a remittance to a bank account does not take the money from the sender's wallet.
+- A bank remittance that the bank does not confirm stays `TRANSFERRING` with the amount taken from the sender, because firm banking takes no idempotency key and remittance-service never sends a transfer twice. Someone has to compare it with the firm banking records ([#99](https://github.com/chrysaor/JayPay/issues/99)).
 - The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
-- Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, a payment takes the paying member from the request body, and a remittance accepts any sender ([#91](https://github.com/chrysaor/JayPay/issues/91), [#98](https://github.com/chrysaor/JayPay/issues/98), [#99](https://github.com/chrysaor/JayPay/issues/99)).
+- Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, and a payment and a remittance take the paying or sending member from the request body ([#91](https://github.com/chrysaor/JayPay/issues/91), [#99](https://github.com/chrysaor/JayPay/issues/99)).
 - settlement-service marks a payment settled before it sends the transfer and does not retry a transfer that fails, so a failed payout needs a manual transfer.
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.

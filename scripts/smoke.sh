@@ -103,6 +103,16 @@ wallet_balance_is() {
   [ "$balance" = "$expected" ]
 }
 
+wallets_total_is() {
+  local expected=$1 total=""
+  shift
+  call POST "$web/api/money/money/member-money" "$(hex 16)" \
+    "$(python3 -c 'import json, sys; print(json.dumps({"targetMembershipIds": sys.argv[1:]}))' "$@")"
+  [ "$http_status" != 200 ] || total=$(python3 -c 'import json, sys; print(sum(w["balance"] for w in json.load(open(sys.argv[1]))))' "$work/body" 2>/dev/null)
+  observed "HTTP $http_status, total ${total:-none} of $*: $(response)"
+  [ "$total" = "$expected" ]
+}
+
 bank_account_registered() {
   local aggregate=""
   call GET "$web/api/banking/banking/account/$1" "$(hex 16)"
@@ -280,11 +290,44 @@ log "send 5000 to another member"
 sign_up "Smoke Receiver" "smoke-receiver-$run@example.com"
 receiver=$signed_up
 open_wallet "$receiver"
-request "remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
-  '{"fromMembershipId":"'$membership_id'","toMembershipId":"'$receiver'","remittanceType":0,"amount":5000}'
-[ "$(json_field remittanceStatus)" = success ] || fail "remittance returned $(response)"
-eventually 30 "the remittance never left the sender's wallet" wallet_balance_is "$membership_id" 12000
-eventually 30 "the remittance never reached the receiver's wallet" wallet_balance_is "$receiver" 5000
+wallets_total_is 17000 "$membership_id" "$receiver" || fail "the two wallets did not hold 17000 before the remittance: $(cat "$work/last")"
+remit() {
+  call POST "$web/api/remittance/remittance/request" "$(hex 16)" \
+    '{"requestId":"'"$1"'","fromMembershipId":"'"$2"'","toMembershipId":"'"$3"'","remittanceType":0,"amount":'"$4"'}'
+}
+remit "smoke-remit-$run" "$membership_id" "$receiver" 5000
+[ "$http_status" = 200 ] || fail "remittance returned HTTP $http_status: $(response)"
+[ "$(json_field remittanceStatus)" = COMPLETED ] || fail "remittance returned $(response)"
+first_remittance=$(cat "$work/body")
+wallet_balance_is "$membership_id" 12000 || fail "the remittance did not leave the sender's wallet: $(cat "$work/last")"
+wallet_balance_is "$receiver" 5000 || fail "the remittance did not reach the receiver's wallet: $(cat "$work/last")"
+
+log "a repeated remittance answers with the first result and moves nothing more"
+remit "smoke-remit-$run" "$membership_id" "$receiver" 5000
+[ "$(cat "$work/body")" = "$first_remittance" ] || fail "the repeated remittance answered HTTP $http_status $(response) instead of $first_remittance"
+remit "smoke-remit-$run" "$membership_id" "$receiver" 5001
+[ "$http_status" = 409 ] && [ "$(json_field error)" = REQUEST_ID_REUSED ] || fail "a reused remittance request id answered HTTP $http_status: $(response)"
+wallets_total_is 17000 "$membership_id" "$receiver" || fail "a repeated remittance changed the total: $(cat "$work/last")"
+wallet_balance_is "$receiver" 5000 || fail "a repeated remittance changed the receiver's wallet: $(cat "$work/last")"
+
+log "a remittance above the balance fails and moves nothing, and bad remittances are refused"
+remit "smoke-overdraw-remit-$run" "$membership_id" "$receiver" 12001
+[ "$http_status" = 200 ] && [ "$(json_field remittanceStatus)" = FAILED ] || fail "a remittance above the balance answered HTTP $http_status: $(response)"
+wallet_balance_is "$membership_id" 12000 || fail "a failed remittance moved the sender's wallet: $(cat "$work/last")"
+wallets_total_is 17000 "$membership_id" "$receiver" || fail "a failed remittance changed the total: $(cat "$work/last")"
+for amount in -1000 0 10000001 1.5; do
+  remit "smoke-bad-$(hex 8)" "$membership_id" "$receiver" "$amount"
+  [ "$http_status" = 400 ] && [ "$(json_field error)" = INVALID_AMOUNT ] || fail "a remittance of $amount answered HTTP $http_status: $(response)"
+done
+remit "smoke-self-$run" "$membership_id" "$membership_id" 1000
+[ "$http_status" = 400 ] && [ "$(json_field error)" = INVALID_RECEIVER ] || fail "a remittance to the sender answered HTTP $http_status: $(response)"
+wallet_balance_is "$membership_id" 12000 || fail "a refused remittance moved the sender's wallet: $(cat "$work/last")"
+
+log "the receiver sends 1000 to a bank account, and it leaves the receiver's wallet"
+request "bank remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
+  '{"requestId":"smoke-bank-remit-'$run'","fromMembershipId":"'$receiver'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","remittanceType":1,"amount":1000}'
+[ "$(json_field remittanceStatus)" = COMPLETED ] || fail "the bank remittance returned $(response)"
+wallet_balance_is "$receiver" 4000 || fail "the bank remittance did not leave the receiver's wallet: $(cat "$work/last")"
 
 log "register a second member's bank account synchronously, the way the web site does, and top it up through the saga"
 sign_up "Smoke Sync" "smoke-sync-$run@example.com"

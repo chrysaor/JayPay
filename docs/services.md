@@ -122,7 +122,7 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - `POST /money/increase-async` writes a task with two subtasks to `jaypay.task.topic` and blocks the request until the result arrives on `jaypay.task.result.topic`. When every subtask is done, it adds the amount the same way as `POST /money/increase` and answers.
 - `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once. A repeated request id sends nothing. The saga then checks the bank account through banking-service, requests the firm banking, and adds the amount to the balance once, however often `RequestFirmBankingFinishedEvent` arrives. When the request is unknown, it sends `RollbackFirmBankingRequestCommand`.
 - `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created.
-- `POST /money/member-money` returns the wallets of a list of member ids. remittance-service and money-aggregation-service use it to read balances.
+- `POST /money/member-money` returns the wallets of a list of member ids. money-aggregation-service uses it to read balances.
 
 ### Endpoints
 
@@ -145,47 +145,74 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 
 ## remittance-service
 
-Sends money from one member to another member or to a bank account.
+Sends money from one member's wallet to another member or to a bank account.
 
 | | |
 | --- | --- |
 | Host port | `8084` |
 | Memory limit | `512m` |
-| Database | PostgreSQL `remittance`, table `request_remittance` |
+| Database | PostgreSQL `remittance`, table `remittance` |
 | Calls | `membership-service`, `banking-service`, `money-service` |
 | Called by | `frontend-web` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | none |
 | Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `SERVICE_MONEY_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `SERVICE_MONEY_URL`, `REMITTANCE_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
-remittance-service calls membership-service for the member check of the sender. It calls `POST /money/member-money`, `POST /money/increase` and `POST /money/decrease` on money-service, and `POST /banking/info` and `POST /banking/firmbanking/request` on banking-service.
+remittance-service calls `GET /memberships/{membershipId}` on membership-service to check the sender and the receiving member. It calls `POST /money/decrease` and `POST /money/increase` on money-service to take the amount from the sender, to give it to the receiving member, and to refund it. It calls `POST /banking/info` and `POST /banking/firmbanking/request` on banking-service to check the target account and to send the transfer.
 
 ### What it does
 
-`POST /remittance/request` stores a `request_remittance` row first. Then it runs these steps:
+`POST /remittance/request` takes a JSON body with `requestId`, `fromMembershipId`, `remittanceType` and `amount`. `remittanceType` `0` sends to the member `toMembershipId`, and `1` sends to the bank account `toBankName` and `toBankAccountNumber`.
 
-1. It checks that the sender is a valid member.
-2. It reads the sender's balance. When the balance is lower than the amount, it tops the wallet up through `POST /money/increase` by the missing amount, rounded up to a multiple of 10000, with the request id `remittance-<id>-recharge`.
-3. For `remittanceType` `0`, it lowers the sender's wallet through `POST /money/decrease` and raises the receiver's wallet through `POST /money/increase`, with the request ids `remittance-<id>-decrease` and `remittance-<id>-increase`, where `<id>` is the `request_remittance` row.
-4. For `remittanceType` `1`, it checks the target account through `POST /banking/info` and sends a firm banking transfer from the company account `jaypay-company` to the target account.
-5. It sets the status of the row to `success` and returns it.
+- `amount` is a whole number of won from 1 to `remittance.amount.max`, 10000000 unless `REMITTANCE_AMOUNT_MAX` sets another limit, the same limit as money-service. Any other amount answers 400 with `{"error":"INVALID_AMOUNT"}` and writes nothing.
+- The sender must be a valid member, or the request answers 400 with `{"error":"INVALID_SENDER"}`. A receiving member must be a valid member other than the sender, or the request answers 400 with `{"error":"INVALID_RECEIVER"}`. A bank account needs a name and a number of 1 to 64 characters that banking-service accepts, or the request answers 400 with `{"error":"INVALID_BANK_ACCOUNT"}`. Another `remittanceType` answers 400 with `{"error":"INVALID_REMITTANCE_TYPE"}`.
+- `requestId` is 1 to 64 letters, digits, `-` or `_`, chosen by the caller. The first request with an id checks the sender and the receiver, then stores a `remittance` row with a new UUID as `remittanceId` and the status `REQUESTED` through `INSERT ... ON CONFLICT (request_id) DO NOTHING`, and commits it before any money moves.
+- A repeated request with the same id and the same sender, receiver and amount answers with the stored remittance, or carries an unfinished one on from where it stopped. A request that reuses an id for another remittance answers 409 with `{"error":"REQUEST_ID_REUSED"}`.
 
-`make smoke` sends 5000 from one member to another and checks both balances.
+Every move of money goes through money-service with a request id made from the remittance, so money-service applies it once however often it is repeated:
+
+| Move | money-service call | Request id |
+| --- | --- | --- |
+| Take the amount from the sender | `POST /money/decrease` | `remittance-<remittanceId>-decrease` |
+| Give it to the receiving member | `POST /money/increase` | `remittance-<remittanceId>-increase` |
+| Give it back to the sender | `POST /money/increase` | `remittance-<remittanceId>-refund` |
+
+The statuses move only this way, and each move is one `UPDATE ... WHERE remittance_id = ? AND remittance_status = ?`, so of two concurrent copies only one makes it:
+
+| From | To | When |
+| --- | --- | --- |
+| `REQUESTED` | `DEBITED` | money-service took the amount from the sender |
+| `REQUESTED` | `FAILED` | the sender's balance is lower than the amount. No money moved. |
+| `DEBITED` | `COMPLETED` | money-service gave the amount to the receiving member |
+| `DEBITED` | `REFUNDING` | money-service refused to give the amount to the receiving member |
+| `DEBITED` | `TRANSFERRING` | a bank remittance is about to send the firm banking transfer |
+| `TRANSFERRING` | `COMPLETED` | the bank reported the transfer as done |
+| `TRANSFERRING` | `REFUNDING` | the bank reported the transfer as failed |
+| `REFUNDING` | `REFUNDED` | money-service gave the amount back to the sender |
+
+`COMPLETED`, `FAILED` and `REFUNDED` are final and answer 200 with the remittance. When money-service gives no answer, the request answers 503 with `{"error":"REMITTANCE_NOT_CONFIRMED"}` and the remittance stays `REQUESTED`, `DEBITED` or `REFUNDING`. Nothing retries it in the background. Sending the same request again repeats the unanswered call with the same request id and finishes the remittance, so a remittance whose credit failed ends `REFUNDED` with the sender's balance as before.
+
+banking-service takes no idempotency key, so a bank remittance sends at most one transfer. The request that moves the remittance from `DEBITED` to `TRANSFERRING` is the only one that calls `POST /banking/firmbanking/request`, and it does so after the sender was debited, so the company account never pays out money the sender still holds. When the bank gives no answer, or the service stops between the status change and the call, the remittance stays `TRANSFERRING` and answers 200 with that status. Repeating the request answers the same and sends nothing. The amount stays taken from the sender until someone checks the firm banking records of banking-service and finishes the remittance by hand.
+
+- `GET /remittance/{membershipId}` returns the remittances the member sent or received, newest first.
+
+Every answer with a remittance carries `remittanceId`, `requestId`, `fromMembershipId`, `remittanceType`, `toMembershipId`, `toBankName`, `toBankAccountNumber`, `amount` and `remittanceStatus`. `make smoke` sends money between two members, repeats the remittance, reuses its id for another amount, sends more than the balance, a bad amount and a remittance to the sender, sends money to a bank account, and checks that the two wallets always hold the same total.
 
 ### Endpoints
 
-- `POST /remittance/request` sends money to a member or to a bank account.
-- `GET /remittance/{membershipId}` is meant to return the history of a member.
+- `POST /remittance/request` sends money to a member or to a bank account. It reads a JSON body and answers 415 to a form.
+- `GET /remittance/{membershipId}` returns the remittances of a member.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
 ### Known limitations
 
-- `GET /remittance/{membershipId}` always returns an empty body. Neither `FindRemittanceService` nor the persistence adapter reads the table.
-- A remittance to a bank account does not lower the sender's wallet.
-- A failed step returns an empty body and leaves the row without a status. Nothing undoes a wallet change that came before the failure.
-- In the returned remittance, `remittanceRequestId` holds the sender's member id instead of the row id.
+- The sender comes from the request body, not from a token, so a caller can send money from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)). `GET /remittance/{membershipId}` answers for any member.
+- A bank remittance that the bank did not confirm stays `TRANSFERRING` with the amount taken from the sender, and needs a person to compare it with the firm banking records ([#99](https://github.com/chrysaor/JayPay/issues/99)).
+- A remittance left `REQUESTED`, `DEBITED` or `REFUNDING` after money-service did not answer stays that way until the same request is sent again. A refund that money-service refuses, because the sender is no longer a valid member, keeps the remittance `REFUNDING`.
+- remittance-service trusts any caller and calls money-service and banking-service without service-to-service authentication ([#100](https://github.com/chrysaor/JayPay/issues/100)).
+- Remittances from before the `remittance` table stay in the old `request_remittance` table, which remittance-service no longer reads.
 
 ## payment-service
 

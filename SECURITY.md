@@ -44,6 +44,16 @@ What this does not cover:
 - payment-service trusts any caller of money-service and membership-service, and they trust it, with no service-to-service authentication ([#100](https://github.com/chrysaor/JayPay/issues/100)).
 - A payout that the bank refuses or does not answer is logged, not retried.
 
+## Remittances
+
+A remittance takes the amount from the sender's wallet once and either gives it to the receiving member once, sends one bank transfer, or gives it back to the sender. Each move goes through money-service with a request id derived from the remittance, and the client's `requestId` makes a repeated request answer with the first result. The amount is a whole number from 1 to `REMITTANCE_AMOUNT_MAX`, and the receiver must be a valid member other than the sender or an account the bank accepts. [docs/services.md](docs/services.md#remittance-service) has the statuses and what finishes on its own.
+
+What this does not cover:
+
+- The sender comes from the request body, so anyone who reaches the customer site can send money from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)).
+- remittance-service trusts any caller of money-service, membership-service and banking-service, and they trust it, with no service-to-service authentication ([#100](https://github.com/chrysaor/JayPay/issues/100)).
+- A bank transfer that the bank does not confirm is never sent again and never refunded on its own. It waits for a person ([#99](https://github.com/chrysaor/JayPay/issues/99)).
+
 ## Known findings
 
 `.github/.gitleaksignore` lists findings that stay in git history after the secret was removed and rotated. Each entry is a single gitleaks fingerprint, so the rule keeps catching every other match. Add an entry only after rotating the secret.
