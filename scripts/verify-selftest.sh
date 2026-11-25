@@ -11,7 +11,7 @@ export ARGOCD_CACHE=$root/build/argocd
 copy_repo() {
   local dest="$work/$1"
   mkdir -p "$dest"
-  git -C "$root" ls-files -co --exclude-standard -- scripts docs/api-contract.md backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
+  git -C "$root" ls-files -co --exclude-standard -- scripts README.md docs backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
     while IFS= read -r path; do
       [ -e "$root/$path" ] || continue
       mkdir -p "$dest/$(dirname "$path")"
@@ -37,6 +37,7 @@ expect() {
 
 clean=$(copy_repo clean)
 expect contract pass "$clean"
+expect docs pass "$clean"
 expect actionlint pass "$clean"
 expect english pass "$clean"
 expect env pass "$clean"
@@ -45,6 +46,22 @@ expect charts pass "$clean"
 dir=$(copy_repo contract)
 echo '| banking-service | GET | /banking/not-in-code |' >>"$dir/docs/api-contract.md"
 expect contract fail "$dir" not-in-code
+
+dir=$(copy_repo docs-diagram)
+perl -pi -e 's/forwarded once auth-service allows it/forwarded at once/' "$dir/docs/diagrams/request-path.svg"
+expect docs fail "$dir" "request-path.svg differs from what scripts/check-docs.py draws"
+
+dir=$(copy_repo docs-call)
+perl -0pi -e 's/(\n  payment-service:\n    http: \[)/$1money-query-service, /' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect docs fail "$dir" "money-query-service calls payment-service"
+
+dir=$(copy_repo docs-port)
+perl -pi -e 's/127\.0\.0\.1:8085:8080/127.0.0.1:8095:8080/' "$dir/infra/docker/compose.yaml"
+expect docs fail "$dir" "payment-service: Host port says"
+
+dir=$(copy_repo docs-memory)
+perl -0pi -e 's/(\n  logging-consumer:\n(?:    .*\n)*?    mem_limit:) 384m/$1 256m/' "$dir/infra/docker/compose.yaml"
+expect docs fail "$dir" "logging-consumer: Memory limit says"
 
 dir=$(copy_repo english)
 printf '\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-hangul.md"

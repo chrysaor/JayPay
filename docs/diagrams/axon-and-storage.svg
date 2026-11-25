@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 972 516" width="972" height="516" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<title id="title">JayPay Axon Server and data stores</title>
+<desc id="desc">banking-service uses Axon Server as 2 aggregates; money-service uses Axon Server as aggregate, saga; money-query-service uses Axon Server as event handler. auth-service uses the PostgreSQL database auth. banking-service uses the PostgreSQL database banking. membership-service uses the PostgreSQL database membership. money-aggregation-service uses the PostgreSQL database money_aggregation. money-query-service uses the PostgreSQL database money_query. money-service uses the PostgreSQL database money. payment-service uses the PostgreSQL database payment. remittance-service uses the PostgreSQL database remittance. settlement-service uses the PostgreSQL database settlement. membership-service reads the email encryption key from Vault. money-query-service writes the DynamoDB table MoneyIncreaseEventByRegion.</desc>
+<style>
+.bg{fill:#ffffff}
+.box{fill:#f6f8fa;stroke:#8c959f;stroke-width:1.2}
+.t{fill:#1f2328;font-size:12.5px;font-weight:600;text-anchor:middle}
+.s{fill:#59636e;font-size:11px;text-anchor:middle}
+.l{font-size:11px}
+.grid{stroke:#d1d9e0;stroke-width:1}
+.cell{fill:#ddf4ff}
+.blue{stroke:#0969da;fill:none;stroke-width:1.6}.bluef{fill:#0969da}.bluebox{fill:#ddf4ff;stroke:#0969da;stroke-width:1.4}
+.orange{stroke:#bc4c00;fill:none;stroke-width:1.6}.orangef{fill:#bc4c00}.orangebox{fill:#fff1e5;stroke:#bc4c00;stroke-width:1.4}
+.purple{stroke:#8250df;fill:none;stroke-width:1.6}.purplef{fill:#8250df}.purplebox{fill:#fbefff;stroke:#8250df;stroke-width:1.4}
+.green{stroke:#1a7f37;fill:none;stroke-width:1.6}.greenf{fill:#1a7f37}.greenbox{fill:#dafbe1;stroke:#1a7f37;stroke-width:1.4}
+.gray{stroke:#6e7781;fill:none;stroke-width:1.4}.grayf{fill:#59636e}
+.dashed{stroke-dasharray:5 4}
+@media (prefers-color-scheme: dark){
+.bg{fill:#0d1117}
+.box{fill:#161b22;stroke:#6e7681}.t{fill:#e6edf3}.s{fill:#9198a1}
+.grid{stroke:#3d444d}.cell{fill:#0c2d6b}
+.blue{stroke:#58a6ff}.bluef{fill:#58a6ff}.bluebox{fill:#0c2d6b;stroke:#58a6ff}
+.orange{stroke:#f0883e}.orangef{fill:#f0883e}.orangebox{fill:#5a1e02;stroke:#f0883e}
+.purple{stroke:#bc8cff}.purplef{fill:#bc8cff}.purplebox{fill:#2e1461;stroke:#bc8cff}
+.green{stroke:#3fb950}.greenf{fill:#3fb950}.greenbox{fill:#04260f;stroke:#3fb950}
+.gray{stroke:#8b949e}.grayf{fill:#9198a1}}
+</style>
+<rect class="bg" x="0" y="0" width="972" height="516" rx="12"/>
+<rect class="box" x="416" y="24" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="46">membership-service</text>
+<path class="gray" d="M626 42 H786"/>
+<path class="grayf" d="M778 37 L778 47 L786 42 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="36">membership</text>
+<rect class="box" x="416" y="72" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="94">banking-service</text>
+<path class="gray" d="M626 90 H786"/>
+<path class="grayf" d="M778 85 L778 95 L786 90 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="84">banking</text>
+<rect class="box" x="416" y="120" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="142">money-service</text>
+<path class="gray" d="M626 138 H786"/>
+<path class="grayf" d="M778 133 L778 143 L786 138 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="132">money</text>
+<rect class="box" x="416" y="168" width="210" height="84" rx="8"/>
+<text class="t" x="521" y="214">money-query-service</text>
+<path class="gray" d="M626 210 H786"/>
+<path class="grayf" d="M778 205 L778 215 L786 210 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="204">money_query</text>
+<rect class="box" x="416" y="264" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="286">auth-service</text>
+<path class="gray" d="M626 282 H786"/>
+<path class="grayf" d="M778 277 L778 287 L786 282 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="276">auth</text>
+<rect class="box" x="416" y="312" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="334">money-aggregation-service</text>
+<path class="gray" d="M626 330 H786"/>
+<path class="grayf" d="M778 325 L778 335 L786 330 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="324">money_aggregation</text>
+<rect class="box" x="416" y="360" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="382">payment-service</text>
+<path class="gray" d="M626 378 H786"/>
+<path class="grayf" d="M778 373 L778 383 L786 378 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="372">payment</text>
+<rect class="box" x="416" y="408" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="430">remittance-service</text>
+<path class="gray" d="M626 426 H786"/>
+<path class="grayf" d="M778 421 L778 431 L786 426 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="420">remittance</text>
+<rect class="box" x="416" y="456" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="478">settlement-service</text>
+<path class="gray" d="M626 474 H786"/>
+<path class="grayf" d="M778 469 L778 479 L786 474 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="468">settlement</text>
+<rect class="box" x="786" y="24" width="170" height="468" rx="8"/>
+<text class="t" x="871" y="255">PostgreSQL</text>
+<text class="s" x="871" y="271">one database per service</text>
+<rect class="greenbox" x="16" y="72" width="196" height="132" rx="8"/>
+<text class="t" x="114" y="135">Axon Server</text>
+<text class="s" x="114" y="151">commands and events</text>
+<path class="green" d="M212 90 H416"/>
+<path class="greenf" d="M408 85 L408 95 L416 90 Z"/>
+<path class="greenf" d="M220 95 L220 85 L212 90 Z"/>
+<text class="l greenf" text-anchor="middle" x="314" y="84">2 aggregates</text>
+<path class="green" d="M212 138 H416"/>
+<path class="greenf" d="M408 133 L408 143 L416 138 Z"/>
+<path class="greenf" d="M220 143 L220 133 L212 138 Z"/>
+<text class="l greenf" text-anchor="middle" x="314" y="132">aggregate, saga</text>
+<path class="green" d="M212 186 H416"/>
+<path class="greenf" d="M408 181 L408 191 L416 186 Z"/>
+<path class="greenf" d="M220 191 L220 181 L212 186 Z"/>
+<text class="l greenf" text-anchor="middle" x="314" y="180">event handler</text>
+<rect class="box" x="16" y="24" width="196" height="36" rx="8"/>
+<text class="t" x="114" y="46">Vault</text>
+<path class="gray" d="M416 42 H212"/>
+<path class="grayf" d="M220 47 L220 37 L212 42 Z"/>
+<text class="l grayf" text-anchor="middle" x="314" y="36">email encryption key</text>
+<rect class="box" x="16" y="216" width="196" height="36" rx="8"/>
+<text class="t" x="114" y="238">DynamoDB</text>
+<path class="gray" d="M416 234 H212"/>
+<path class="grayf" d="M220 239 L220 229 L212 234 Z"/>
+<text class="l grayf" text-anchor="middle" x="314" y="228">MoneyIncreaseEventByRegion</text>
+</svg>
