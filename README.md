@@ -233,7 +233,7 @@ flowchart LR
 
 ### AWS
 
-The local stack uses DynamoDB Local. [infra/terraform/README.md](infra/terraform/README.md) creates the real DynamoDB table for money-query-service and runs Terraform from its official image.
+The local stack uses DynamoDB Local and keeps its data in a volume. One file, `infra/terraform/modules/dynamodb-money-sum/table.json`, defines the table for both DynamoDB Local and AWS. [infra/terraform/README.md](infra/terraform/README.md) creates the real table for money-query-service, points the service at it and destroys it again, running Terraform from its official image. money-query-service takes the table name from `DYNAMODB_TABLE_NAME` and the region from `AWS_REGION`, `ap-northeast-2` by default.
 
 ## Known limitations
 
