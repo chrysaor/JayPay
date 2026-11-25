@@ -1,0 +1,8 @@
+image:
+  tag: v0.2.0
+upstreams:
+  JAYPAY_AUTH_URL: auth-service
+ingress:
+  enabled: true
+  className: selftest
+  host: admin.jaypay.example

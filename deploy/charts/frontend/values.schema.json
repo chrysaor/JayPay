@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "replicas", "upstreams", "ingress", "resources"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry", "tag", "pullPolicy"],
+      "properties": {
+        "registry": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9a-f]{7,40})$" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "replicas": { "type": "integer", "minimum": 0 },
+    "upstreams": {
+      "type": "object",
+      "propertyNames": { "pattern": "^JAYPAY_[A-Z0-9_]+_URL$" },
+      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "className", "host"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" }
+      }
+    },
+    "resources": { "type": "object" }
+  }
+}

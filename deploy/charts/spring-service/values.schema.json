@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "replicas", "secretName", "env", "secretEnv", "resources"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry", "tag", "pullPolicy"],
+      "properties": {
+        "registry": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9a-f]{7,40})$" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "replicas": { "type": "integer", "minimum": 0 },
+    "secretName": { "type": "string", "minLength": 1 },
+    "env": { "type": "object", "additionalProperties": { "type": "string" } },
+    "secretEnv": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } },
+    "resources": { "type": "object" }
+  }
+}
