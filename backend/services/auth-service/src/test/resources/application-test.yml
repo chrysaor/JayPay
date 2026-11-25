@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:19.0-alpine:///jaypay
+    username: test
+    password: test
+axon:
+  axonserver:
+    enabled: false
+staff:
+  token:
+    secret: test-only-staff-token-secret-0123456789abcdef
+  default-accounts:
+    - role: ADMIN
+      username: test-admin
+      password: Quiet-River-Stone-71
+    - role: OPERATOR
+      username: test-operator
+      password: Amber-Field-Glass-52
+    - role: VIEWER
+      username: test-viewer
+      password: Silver-Moss-Kite-38
