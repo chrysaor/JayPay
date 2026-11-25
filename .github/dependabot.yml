@@ -6,6 +6,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     groups:
       gradle-minor-patch:
         update-types: [minor, patch]
@@ -17,6 +19,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
@@ -28,6 +32,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     groups:
       github-actions:
         patterns: ["*"]
@@ -40,6 +46,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     groups:
       docker-images:
         patterns: ["*"]
@@ -49,6 +57,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     groups:
       compose-images:
         patterns: ["*"]
@@ -58,6 +68,8 @@ updates:
     target-branch: develop
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
     groups:
       terraform:
         patterns: ["*"]
