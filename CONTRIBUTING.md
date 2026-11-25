@@ -27,6 +27,7 @@ Who merges:
 4. `make verify`. It runs every check CI runs and prints `FAILED: <steps>` when something breaks.
 5. Open a PR against `develop` with the template filled in and `Closes #<issue>`.
 6. Merge after CI passes.
+7. Close the issue. `Closes` only fires on `master`, so merging into `develop` leaves it open.
 
 ## Releasing
 
