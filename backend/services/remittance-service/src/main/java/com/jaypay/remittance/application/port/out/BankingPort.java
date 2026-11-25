@@ -6,5 +6,5 @@ public interface BankingPort {
 
     boolean isValid(Receiver.BankAccount account);
 
-    Outcome transfer(Receiver.BankAccount account, long amount);
+    Outcome transfer(String requestId, Receiver.BankAccount account, long amount);
 }

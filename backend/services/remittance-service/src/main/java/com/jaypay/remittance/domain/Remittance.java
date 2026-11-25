@@ -24,6 +24,10 @@ public record Remittance(UUID remittanceId, NewRemittance request, RemittanceSta
         return moneyRequestId("refund");
     }
 
+    public String transferRequestId() {
+        return moneyRequestId("transfer");
+    }
+
     private String moneyRequestId(String change) {
         return "remittance-" + remittanceId + "-" + change;
     }
