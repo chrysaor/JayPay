@@ -10,14 +10,15 @@ Rules for agents working in this repository. Every command runs from the reposit
 | Frontend, React, Vite, npm workspaces `apps/web`, `apps/admin`, `packages/*` | `frontend/` | `make build`, `make test`, `make images` |
 | Local stack, Docker Compose | `infra/docker/` | `make images`, `make up`, `make smoke`, `make down` |
 | AWS, Terraform | `infra/terraform/` | `make verify STEPS=terraform`, see `infra/terraform/README.md` |
+| Kubernetes, Helm charts and values per environment | `deploy/` | `make verify STEPS=charts`, see `deploy/README.md` |
 
-Docker must be running. Backend tests start PostgreSQL through Testcontainers, and terraform, actionlint, trivy and gitleaks run from their official images.
+Docker must be running. Backend tests start PostgreSQL through Testcontainers, and terraform, actionlint, helm, kubeconform, trivy and gitleaks run from images pinned by digest.
 
 ## The gate
 
-`make verify` runs the endpoint contract diff, the English-only check, terraform fmt and validate, actionlint, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
+`make verify` runs the endpoint contract diff, the English-only check, terraform fmt and validate, actionlint, the Helm lint and render of every workload with the Kubernetes schema check and the comparison with `compose.yaml`, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
 
-Do not report work as done until `make verify` passes. Changed an HTTP endpoint on purpose? Run `make contract` and commit `docs/api-contract.md`.
+Do not report work as done until `make verify` passes. Changed an HTTP endpoint on purpose? Run `make contract` and commit `docs/api-contract.md`. Changed a workload's environment or `mem_limit` in `infra/docker/compose.yaml`? Change `deploy/envs/local` the same way.
 
 ## Workflow
 

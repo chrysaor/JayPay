@@ -101,7 +101,8 @@ flowchart LR
 | `frontend/` | npm workspace with the two sites and their shared packages, see [frontend/README.md](frontend/README.md) |
 | `infra/docker/` | `compose.yaml` for the local stack and the configuration of every container in it, see [infra/docker/README.md](infra/docker/README.md) |
 | `infra/terraform/` | The AWS DynamoDB table that money-query-service uses, see [infra/terraform/README.md](infra/terraform/README.md) |
-| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke`, `init-env.py` that writes `infra/docker/.env`, and the checks that `make verify` runs |
+| `deploy/` | Helm charts for the services and the two sites, and the values of every workload per environment, see [deploy/README.md](deploy/README.md) |
+| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke`, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, and the checks that `make verify` runs |
 | `docs/` | The HTTP API contract, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
 
 ## Quick start
@@ -197,7 +198,7 @@ Every command runs from the repository root. Run `make` to list them.
 | --- | --- |
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
-| `make verify` | Runs the gate that CI runs: `contract english env terraform actionlint frontend backend` |
+| `make verify` | Runs the gate that CI runs: `contract english env terraform actionlint charts frontend backend` |
 | `make verify STEPS="contract backend"` | Runs only the named steps |
 | `make verify-selftest` | Proves that the gate fails on planted errors |
 | `make images` | Builds every service image and both frontend images |
@@ -208,7 +209,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
 | `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` |
 
-Docker must be running for `make test` and `make verify`. The terraform, actionlint, Trivy and gitleaks checks run from their official images, so you install none of them.
+Docker must be running for `make test` and `make verify`. The terraform, actionlint, Helm, kubeconform, Trivy and gitleaks checks run from images pinned by digest, so you install none of them.
 
 ### Branches and releases
 
