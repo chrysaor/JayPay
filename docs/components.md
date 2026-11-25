@@ -24,7 +24,7 @@ A new component is added to this page in the PR that introduces it.
 | React, TypeScript, Vite, Vitest | The customer site and the admin console | `frontend/package.json` and the `package.json` of each app |
 | TanStack Query | Server state in both sites | `frontend/apps/*/package.json` |
 | Node | Frontend build | `frontend/Dockerfile` |
-| nginx unprivileged, slim | Serves both sites and proxies `/api`, runs the admin gate through `auth_request` | `frontend/Dockerfile` |
+| nginx | Serves both sites and proxies `/api`, runs the admin gate through `auth_request` | `frontend/Dockerfile` |
 
 ## Stateful dependencies and messaging
 
