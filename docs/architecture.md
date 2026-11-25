@@ -43,25 +43,33 @@ sequenceDiagram
 
 `make smoke` runs both top-ups. It checks that the saga trace spans money-service and banking-service, and that the Kafka trace spans money-service and task-consumer.
 
-## Admin console request through auth-service
+## Admin console sign-in through Keycloak
 
-Only the sign-in screen and the JavaScript bundle load without a staff account. Every `/api/<service>/` request of the admin console passes nginx `auth_request` first: nginx sends the original method, path and headers, without the body, to `/authorize/<original path>` on auth-service and forwards the request only when auth-service answers 204.
+Keycloak holds the staff accounts in the realm `staff`. The admin console is the public client `jaypay-admin-console` and signs staff in with the Authorization Code flow and PKCE (`S256`). Only the JavaScript bundle, the callback page and the Keycloak sign-in pages load without a staff account.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant browser as browser
     participant admin as frontend-admin, nginx
+    participant keycloak as keycloak
     participant auth as auth-service
     participant membership as membership-service
 
-    browser->>admin: POST /api/auth/staff/sign-in
-    admin->>auth: POST /staff/sign-in
-    auth-->>browser: 200, staff token for 8 hours and the account
-    browser->>admin: PUT /api/membership/memberships/7, Bearer token
+    browser->>admin: GET /members, no tokens in memory
+    admin-->>browser: the React app
+    Note over browser: random state and code verifier in sessionStorage
+    browser->>admin: GET /realms/staff/protocol/openid-connect/auth, S256 challenge
+    admin->>keycloak: same path
+    keycloak-->>browser: sign-in form, then 302 to /callback with code and state
+    Note over browser: refuses a state this tab did not start
+    browser->>admin: POST /realms/staff/protocol/openid-connect/token, code and verifier
+    admin->>keycloak: same path
+    keycloak-->>browser: access token for 2 minutes, refresh token, ID token
+    browser->>admin: PUT /api/membership/memberships/7, Bearer access token
     admin->>auth: PUT /authorize/api/membership/memberships/7, no body
-    Note over auth: checks the token signature, audience and expiry,<br/>loads the account, and looks the request up in the table
-    alt viewer, or the account is inactive, or the path is not in the table
+    Note over auth: checks the signature against the realm keys, the issuer,<br/>the audience and the expiry, and looks the request up in the table
+    alt no valid token, a viewer, or a path that is not in the table
         auth-->>admin: 401 or 403
         admin-->>browser: 401 or 403 with a JSON error
     else operator or admin
@@ -71,14 +79,30 @@ sequenceDiagram
     end
 ```
 
-- `StaffSecurityConfig` in auth-service holds the only decision table, as Spring Security `authorizeHttpRequests` rules: one line per method and path the admin console calls, the lowest role that may call it, and `denyAll` for everything else. `AdminConsoleGateTest` pins the table for no token and for each role.
-- The roles form the hierarchy viewer < operator < admin through a Spring Security `RoleHierarchy`.
-- auth-service checks `$request_uri` as the browser sent it. Spring Security's firewall refuses an encoded slash, backslash or dot, `;`, `//`, a dot segment and an encoded `%` with 403, so the path auth-service decides on is the path the upstream service receives. Tomcat in auth-service passes encoded slashes and backslashes through to the firewall instead of answering 400, because nginx `auth_request` turns any answer other than 2xx, 401 and 403 into 500. `AdminConsoleGateOverTomcatTest` sends these paths through a real Tomcat.
-- auth-service loads the account on every check, so a deactivation or a role change applies at once to tokens issued before it.
-- Staff tokens are HS256 JWTs signed with `STAFF_JWT_SECRET`, with the audience `jaypay-admin-console`. Customer tokens from membership-service use `JWT_SECRET` and carry no audience, so neither token opens the other site.
-- The token carries the factors the sign-in proved, today `FACTOR_PASSWORD`, as Spring Security 7 `FactorGrantedAuthority` values, and the sign-in answer has a `status` of `SIGNED_IN`. A second factor for accounts with the MFA flag can add another status and a `requireFactors` rule without changing the shape.
+### One origin for the browser and the containers
 
-Spring Security stays in the adapters of auth-service. `domain` holds `StaffAccount`, `StaffRole` and `PasswordPolicy`, the list of password rules. `adapter.in.web` holds the decision table, the sign-in through `DaoAuthenticationProvider` and the token check. `adapter.out.password` and `adapter.out.token` wrap `PasswordEncoder` and `JwtEncoder` behind the `PasswordHashing` and `StaffTokenIssuer` ports. `SecurityStaysInAdaptersTest` fails when `domain` or `application` imports Spring Security.
+The browser reaches Keycloak only through the admin site: `frontend-admin` proxies `/realms/staff/` and `/resources/` to `JAYPAY_KEYCLOAK_URL` and answers 404 to any other `/realms/` path, so the master realm is not reachable on 8091. `KC_HOSTNAME` is the full URL of the admin site, `http://localhost:8091` in Compose and `http://admin.jaypay.localhost:8480` in the local cluster. Keycloak then writes the same issuer, `<admin site>/realms/staff`, into every token, whichever address a request came in on.
+
+auth-service checks that issuer through `STAFF_ISSUER_URI`, but fetches the realm keys from `STAFF_JWK_SET_URI`, the address of Keycloak inside the network, `http://keycloak:8080/realms/staff/protocol/openid-connect/certs`. The issuer is never fetched, so it does not have to resolve inside a container. The callback URI `/callback` and the post sign-out URI `/signed-out` are relative to `KC_HOSTNAME`, and the browser never makes a cross-origin call, so the client needs no CORS rule.
+
+The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://localhost:8092`. Compose publishes it on `127.0.0.1:8092` only. In the cluster it has no Ingress, and `kubectl port-forward service/keycloak 8092:8080` opens it.
+
+### Tokens and the session
+
+- The access and refresh tokens live in memory only, in the React Query cache. A reload or a new tab starts the Authorization Code flow again, and Keycloak's session cookie signs the tab in without the form while the session lasts.
+- The console refreshes the tokens 30 seconds before the access token expires. Keycloak rotates the refresh token on each use. A failed refresh or a 401 from any `/api` request ends the session in the tab and shows a button to sign in again instead of redirecting at once.
+- Signing out sends the tab to Keycloak's end-session endpoint with the ID token. Keycloak ends the session, so its refresh tokens stop working, and returns to `/signed-out`.
+- A Keycloak session ends after 30 idle minutes or 8 hours.
+
+### The decision in auth-service
+
+- `StaffSecurityConfig` in auth-service holds the only decision table, as Spring Security `authorizeHttpRequests` rules: one line per method and path the admin console calls, the lowest role that may call it, and `denyAll` for everything else. `AdminConsoleGateTest` pins the table for no token and for each role, and the refusal of a token signed by another key, an expired token, another issuer, another audience and a customer token.
+- auth-service is a Spring Security resource server. The realm roles `viewer`, `operator` and `admin` in the token's `realm_access.roles` become the roles of the table, and they form the hierarchy viewer < operator < admin through a Spring Security `RoleHierarchy`. A token with none of them opens nothing.
+- The audience mapper of the client puts `jaypay-admin-console` into the access token's `aud`. Customer tokens from membership-service are HS256 with `JWT_SECRET` and no audience, so neither token opens the other site.
+- auth-service checks `$request_uri` as the browser sent it. Spring Security's firewall refuses an encoded slash, backslash or dot, `;`, `//`, a dot segment and an encoded `%` with 403, so the path auth-service decides on is the path the upstream service receives. Tomcat in auth-service passes encoded slashes and backslashes through to the firewall instead of answering 400, because nginx `auth_request` turns any answer other than 2xx, 401 and 403 into 500. `AdminConsoleGateOverTomcatTest` sends these paths through a real Tomcat.
+- auth-service does not ask Keycloak on every request. Disabling an account or taking a role away refuses its next sign-in and its next refresh at once, but an access token issued before keeps working until it expires. With the 2-minute lifetime and Spring Security's clock skew of 60 seconds, `make smoke` and a manual measurement saw the first 401 181 seconds after the account was disabled.
+
+Spring Security stays in the adapters of auth-service, which keeps no database: `domain` holds `StaffRole`, and `adapter.in.web` holds the decision table and the token conversion. `SecurityStaysInAdaptersTest` fails when `domain` or `application` imports Spring Security.
 
 ## Layers inside a service
 
@@ -114,7 +138,7 @@ flowchart RL
 
 ## Workloads on Kubernetes
 
-[deploy/README.md](../deploy/README.md) packages the same thirteen workloads as Helm charts. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
+[deploy/README.md](../deploy/README.md) packages the same thirteen workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
 
 ```mermaid
 flowchart LR

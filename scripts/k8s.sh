@@ -225,11 +225,12 @@ smoke() {
   prometheus=$forwarded_port
   forward banking-service "$namespace" service/banking-service :8080
   banking=$forwarded_port
+  forward keycloak "$namespace" service/keycloak 8092:8080
   forward money-service "$namespace" service/money-service :8080
   until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
   SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" \
     SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$prometheus" \
-    SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_MONEY_URL="http://127.0.0.1:$forwarded_port" scripts/smoke.sh
+    SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_KEYCLOAK_URL=http://localhost:8092 SMOKE_MONEY_URL="http://127.0.0.1:$forwarded_port" scripts/smoke.sh
 }
 
 commit_to_mirror() {

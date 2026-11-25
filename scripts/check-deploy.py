@@ -107,7 +107,7 @@ def repo_server_mount(rendered_dir):
     return ["argocd: argocd-repo-server does not mount jaypay-git, the repository that deploy/envs/local/gitops.yaml points at"]
 
 
-def compare(name, service, upstreams, container, secret_keys, deployed):
+def compare(name, service, upstreams, container, secret_keys, services_in_cluster):
     problems = []
     compose_env = service.get("environment") or {}
     deployed_env = {}
@@ -133,7 +133,7 @@ def compare(name, service, upstreams, container, secret_keys, deployed):
             problems.append(f"{name}: {key} reads the Secret key {secret_key}, which infra/docker/.env.example does not have")
         if key in upstreams:
             target = UPSTREAM_SERVICE.match(entry.get("value", ""))
-            if not target or target.group(1) not in deployed:
+            if not target or target.group(1) not in services_in_cluster:
                 problems.append(f"{name}: {key} points at {entry.get('value')}, which is no Service in deploy/envs/local")
 
     limit = container.get("resources", {}).get("limits", {}).get("memory")
@@ -183,6 +183,7 @@ def main():
         return
     local = os.path.join(rendered_dir, "local.json")
     deployed = rendered_containers(local, "Deployment")
+    dependencies = rendered_containers(local, "StatefulSet")
     services = compose_services(os.path.join(root, "infra", "docker"))
     secret_keys = {line.split("=", 1)[0] for line in read(os.path.join(root, "infra", "docker", ".env.example")).splitlines() if "=" in line}
 
@@ -193,10 +194,9 @@ def main():
         if name not in deployed:
             problems.append(f"{name}: compose.yaml runs it but deploy/envs/local has no workload {name}")
             continue
-        problems += compare(name, service, upstreams, deployed[name], secret_keys, deployed)
+        problems += compare(name, service, upstreams, deployed[name], secret_keys, set(deployed) | set(dependencies))
     for name in sorted(set(deployed) - expected):
         problems.append(f"{name}: deploy/envs/local has it but compose.yaml does not run it")
-    dependencies = rendered_containers(local, "StatefulSet")
     for name, container in sorted(dependencies.items()):
         problems += compare_dependency(name, services.get(name), container)
     problems += unpulled_images(rendered_dir)

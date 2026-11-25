@@ -23,16 +23,17 @@ The weekly run is Monday 03:00 KST.
 
 ## Admin console access
 
-The admin console requires a staff account. auth-service stores each account with a salted bcrypt hash through Spring Security's `DelegatingPasswordEncoder`, and nginx asks auth-service about every `/api` request before it forwards it. The roles viewer, operator and admin, the decision table and the password rules are described in [infra/docker/README.md](infra/docker/README.md#staff-accounts) and [docs/architecture.md](docs/architecture.md#admin-console-request-through-auth-service).
+The admin console requires a staff account in the Keycloak realm `staff`. Keycloak stores the passwords, signs staff in with the Authorization Code flow and PKCE, and locks an account for a minute after 5 wrong passwords in a row, longer with each further failure up to 15 minutes. nginx asks auth-service about every `/api` request before it forwards it, and auth-service checks the Keycloak token's signature, issuer, audience and expiry. The roles viewer, operator and admin, the decision table and the password policy are described in [infra/docker/README.md](infra/docker/README.md#staff-accounts) and [docs/architecture.md](docs/architecture.md#admin-console-sign-in-through-keycloak).
 
-The first three accounts come from `STAFF_*` keys in `infra/docker/.env`, which `scripts/init-env.py` generates and git ignores. The repository holds no default username or password.
+The realm file `infra/docker/keycloak/import/staff.json` holds no password or secret. The first three accounts and their passwords come from `STAFF_*` keys in `infra/docker/.env`, and the Keycloak `admin` password from `KEYCLOAK_ADMIN_PASSWORD`. `scripts/init-env.py` generates them and git ignores the file. The repository holds no default username or password. The Keycloak admin console listens on `127.0.0.1:8092` only and is not proxied by the admin site.
 
 What the gate does not cover:
 
 - The service ports `127.0.0.1:8081` to `8089` reach the services without a staff token.
 - The customer site on 8090 forwards only the requests its screens make, listed in `frontend/apps/web/nginx.conf.template`, and answers 404 to every other `/api/` path. It forwards those without a login, and a member id is all that sign-in asks for.
-- Staff sign-in has no rate limit or lockout, and the MFA flag does not change sign-in yet.
-- A staff token stays valid for 8 hours. Signing out only drops it in the browser, but a deactivation stops it on the next request.
+- An authenticator app is optional for staff accounts. Requiring it is one line in the realm, the `CONFIGURE_TOTP` required action, which `make smoke` would then have to answer.
+- An access token stays valid for 2 minutes and auth-service accepts 60 seconds of clock skew. Disabling an account stops its sign-in and refresh at once, but its access token keeps working for up to 3 minutes. Signing out ends the Keycloak session.
+- The local stacks serve Keycloak over plain HTTP, and the brute force lockout counts failures per account, not per address.
 
 ## Payments and settlement
 

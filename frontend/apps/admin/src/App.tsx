@@ -1,27 +1,23 @@
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
-import type { StaffSession } from './api/staff'
-import { roles, useAccess, type Permission } from './permissions'
+import { roles } from './permissions'
 import { MemberDetail } from './screens/MemberDetail'
 import { Members } from './screens/Members'
 import { MyAccount } from './screens/MyAccount'
 import { RegionalMoney } from './screens/RegionalMoney'
 import { Settlement } from './screens/Settlement'
-import { SignIn } from './screens/SignIn'
-import { StaffAccounts } from './screens/StaffAccounts'
-import { useEndOnExpiry, useEndSession, useSession } from './session'
+import { Callback, NoRole, SignedOut, SignInAgain, SignInRedirect } from './screens/SignIn'
+import { useKeepFresh, useSession, useSignOut, type Session } from './session'
 
-const menu: { to: string; label: string; needs?: Permission }[] = [
+const menu = [
   { to: '/members', label: 'Members' },
   { to: '/money', label: 'Regional money' },
   { to: '/settlement', label: 'Settlement' },
-  { to: '/staff', label: 'Staff accounts', needs: 'manageStaff' },
   { to: '/account', label: 'My account' },
 ]
 
-function Console({ session }: { session: StaffSession }) {
-  const endSession = useEndSession()
-  useEndOnExpiry(session)
-  const access = roles[session.account.role]
+function Console({ session }: { session: Session }) {
+  const signOut = useSignOut(session.tokens)
+  useKeepFresh(session.tokens)
   return (
     <div className="console">
       <aside className="sidebar">
@@ -29,18 +25,16 @@ function Console({ session }: { session: StaffSession }) {
           JayPay <span>Admin</span>
         </Link>
         <nav aria-label="Admin menu">
-          {menu
-            .filter((item) => !item.needs || access[item.needs])
-            .map((item) => (
-              <NavLink key={item.to} to={item.to}>
-                {item.label}
-              </NavLink>
-            ))}
+          {menu.map((item) => (
+            <NavLink key={item.to} to={item.to}>
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
         <div className="staff">
-          <span className="staff-name">{session.account.username}</span>
-          <span className="staff-role">{access.label}</span>
-          <button type="button" className="link-button" onClick={endSession}>
+          <span className="staff-name">{session.staff.username}</span>
+          <span className="staff-role">{roles[session.staff.role].label}</span>
+          <button type="button" className="link-button" onClick={signOut}>
             Sign out
           </button>
         </div>
@@ -53,11 +47,17 @@ function Console({ session }: { session: StaffSession }) {
 }
 
 function SignedIn() {
-  const session = useSession()
+  const state = useSession()
   const location = useLocation()
-  if (session.isPending) return <p className="muted loading">Loading...</p>
-  if (!session.data?.signedIn) return <Navigate to="/sign-in" replace state={{ from: location.pathname + location.search }} />
-  return <Console session={session.data.session} />
+  const returnTo = location.pathname + location.search
+  switch (state.status) {
+    case 'signed-in':
+      return <Console session={state.session} />
+    case 'no-role':
+      return <NoRole tokens={state.tokens} username={state.username} />
+    case 'signed-out':
+      return state.notice ? <SignInAgain notice={state.notice} returnTo={returnTo} /> : <SignInRedirect returnTo={returnTo} />
+  }
 }
 
 function NotFound() {
@@ -69,21 +69,17 @@ function NotFound() {
   )
 }
 
-function StaffOnly() {
-  return useAccess().manageStaff ? <StaffAccounts /> : <NotFound />
-}
-
 export function App() {
   return (
     <Routes>
-      <Route path="/sign-in" element={<SignIn />} />
+      <Route path="/callback" element={<Callback />} />
+      <Route path="/signed-out" element={<SignedOut />} />
       <Route element={<SignedIn />}>
         <Route index element={<Navigate to="/members" replace />} />
         <Route path="members" element={<Members />} />
         <Route path="members/:membershipId" element={<MemberDetail />} />
         <Route path="money" element={<RegionalMoney />} />
         <Route path="settlement" element={<Settlement />} />
-        <Route path="staff" element={<StaffOnly />} />
         <Route path="account" element={<MyAccount />} />
         <Route path="*" element={<NotFound />} />
       </Route>

@@ -2,103 +2,94 @@ import { authorize } from '@jaypay/api/client'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useOutletContext } from 'react-router'
-import { findMe, staffSessionSchema, type StaffSession } from './api/staff'
+import { endKeycloakSession, finishSignIn, refreshTokens, staffOf, type Tokens } from './keycloak'
+import type { Role } from './permissions'
 
-export type SessionState = { signedIn: true; session: StaffSession } | { signedIn: false; notice: string | null }
+export type Session = { tokens: Tokens; staff: { username: string; role: Role } }
 
-const storageKey = 'jaypay.admin.session'
+export type SessionState =
+  | { status: 'signed-in'; session: Session }
+  | { status: 'no-role'; tokens: Tokens; username: string }
+  | { status: 'signed-out'; notice: string | null }
+
 const sessionKey = ['staff-session']
 const endedNotice = 'Your session has ended. Sign in again.'
-const longestTimerDelay = 2 ** 31 - 1
+const signedOutNotice = 'You signed out.'
+const refreshAhead = 30_000
 
-function readStoredSession(): StaffSession | null {
-  let stored: unknown
-  try {
-    stored = JSON.parse(localStorage.getItem(storageKey) ?? 'null')
-  } catch {
-    return null
+function open(queryClient: QueryClient, tokens: Tokens): SessionState {
+  const { username, role } = staffOf(tokens)
+  if (!role) {
+    authorize(null)
+    return { status: 'no-role', tokens, username }
   }
-  const parsed = staffSessionSchema.safeParse(stored)
-  return parsed.success ? parsed.data : null
-}
-
-function storeSession(session: StaffSession | null) {
-  if (session) localStorage.setItem(storageKey, JSON.stringify(session))
-  else localStorage.removeItem(storageKey)
-}
-
-function millisecondsLeft(session: StaffSession) {
-  return Date.parse(session.expiresAt) - Date.now()
-}
-
-function open(queryClient: QueryClient, session: StaffSession): SessionState {
-  storeSession(session)
   authorize({
-    token: session.token,
+    token: tokens.accessToken,
     onUnauthorized: () => {
-      close(queryClient, endedNotice)
+      end(queryClient, endedNotice)
     },
   })
-  return { signedIn: true, session }
+  return { status: 'signed-in', session: { tokens, staff: { username, role } } }
 }
 
-function forget(notice: string | null): SessionState {
-  storeSession(null)
+function end(queryClient: QueryClient, notice: string | null) {
   authorize(null)
-  return { signedIn: false, notice }
-}
-
-function close(queryClient: QueryClient, notice: string | null) {
-  const signedOut = forget(notice)
   queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] })
+  const signedOut: SessionState = { status: 'signed-out', notice }
   queryClient.setQueryData(sessionKey, signedOut)
 }
 
-async function restore(queryClient: QueryClient): Promise<SessionState> {
-  const stored = readStoredSession()
-  if (!stored) return forget(null)
-  if (millisecondsLeft(stored) <= 0) return forget(endedNotice)
-  open(queryClient, stored)
-  try {
-    return open(queryClient, { ...stored, account: await findMe() })
-  } catch {
-    return forget(endedNotice)
-  }
-}
-
 export function useSession() {
-  const queryClient = useQueryClient()
-  return useQuery({ queryKey: sessionKey, queryFn: () => restore(queryClient), staleTime: Infinity })
+  return useQuery<SessionState>({
+    queryKey: sessionKey,
+    queryFn: () => ({ status: 'signed-out', notice: null }),
+    initialData: { status: 'signed-out', notice: null },
+    staleTime: Infinity,
+  }).data
 }
 
-export function useStartSession() {
+export function useFinishSignIn(search: string) {
   const queryClient = useQueryClient()
-  return (session: StaffSession) => {
-    queryClient.setQueryData(sessionKey, open(queryClient, session))
-  }
+  return useQuery({
+    queryKey: ['sign-in', search],
+    queryFn: async () => {
+      const { tokens, returnTo } = await finishSignIn(search)
+      queryClient.setQueryData(sessionKey, open(queryClient, tokens))
+      return returnTo
+    },
+    retry: false,
+    staleTime: Infinity,
+  })
 }
 
-export function useEndSession() {
+export function useSignOut(tokens: Tokens) {
   const queryClient = useQueryClient()
   return () => {
-    close(queryClient, null)
+    end(queryClient, signedOutNotice)
+    endKeycloakSession(tokens)
   }
 }
 
-export function useEndOnExpiry(session: StaffSession) {
+export function useKeepFresh(tokens: Tokens) {
   const queryClient = useQueryClient()
   useEffect(() => {
-    const delay = millisecondsLeft(session)
-    if (delay > longestTimerDelay) return
-    const timer = setTimeout(() => {
-      close(queryClient, endedNotice)
-    }, delay)
+    const timer = setTimeout(
+      () => {
+        refreshTokens(tokens).then(
+          (fresh) => queryClient.setQueryData(sessionKey, open(queryClient, fresh)),
+          () => {
+            end(queryClient, endedNotice)
+          },
+        )
+      },
+      Math.max(0, tokens.expiresAt - Date.now() - refreshAhead),
+    )
     return () => {
       clearTimeout(timer)
     }
-  }, [queryClient, session])
+  }, [queryClient, tokens])
 }
 
 export function useStaff() {
-  return useOutletContext<StaffSession>()
+  return useOutletContext<Session>()
 }

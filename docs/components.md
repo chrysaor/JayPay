@@ -13,11 +13,11 @@ A new component is added to this page in the PR that introduces it.
 | Debian | Source of the `C.UTF-8` locale the service images copy, the same glibc as the distroless base | `backend/Dockerfile` |
 | Gradle | Backend build | `backend/gradle/wrapper/gradle-wrapper.properties` |
 | Spring Boot | Web, data access, Kafka, Actuator | `backend/gradle/libs.versions.toml` |
-| Spring Security | Staff sign-in, roles and the admin gate in auth-service | Spring Boot BOM |
+| Spring Security | Resource server in auth-service that checks Keycloak tokens, the roles and the admin gate | Spring Boot BOM |
 | Spring Vault | Reads the encryption key of membership-service | `backend/gradle/libs.versions.toml` |
 | Axon Framework | Event sourcing and the money top-up saga | `backend/gradle/libs.versions.toml` |
 | AWS SDK for Java | DynamoDB access of money-query-service | `backend/gradle/libs.versions.toml` |
-| JJWT | Customer and staff tokens | `backend/gradle/libs.versions.toml` |
+| JJWT | Customer tokens | `backend/gradle/libs.versions.toml` |
 | springdoc | OpenAPI documents of the services | `backend/gradle/libs.versions.toml` |
 | Micrometer and the OpenTelemetry Logback appender | Metrics, traces and logs out of every service | Spring Boot BOM, `backend/gradle/libs.versions.toml` |
 | ArchUnit, Testcontainers | Hexagonal layer rules and tests against real PostgreSQL and Kafka | `backend/gradle/libs.versions.toml`, Spring Boot BOM |
@@ -32,7 +32,8 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 
 | Component | Role | Version pinned in |
 | --- | --- | --- |
-| PostgreSQL | One database per service | `infra/docker/compose.yaml` |
+| PostgreSQL | One database per service with data, and one for Keycloak | `infra/docker/compose.yaml` |
+| Keycloak | Staff accounts and sign-in of the admin console: the realm `staff` with the Authorization Code flow and PKCE, brute force protection, the password policy and optional authenticator apps. Keeps its data in the `keycloak` database of PostgreSQL | `infra/docker/compose.yaml` |
 | Apache Kafka | Tasks and logging events between services | `infra/docker/compose.yaml` |
 | Axon Server | Event store and command and event routing | `infra/docker/compose.yaml` |
 | HashiCorp Vault | Holds the encryption key of membership-service, dev mode | `infra/docker/compose.yaml` |

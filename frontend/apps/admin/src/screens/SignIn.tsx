@@ -1,56 +1,82 @@
-import { ErrorNotice } from '@jaypay/ui/ErrorNotice'
-import { readForm } from '@jaypay/ui/form'
-import { useMutation } from '@tanstack/react-query'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router'
-import { z } from 'zod'
-import { signIn } from '../api/staff'
-import { useSession, useStartSession } from '../session'
+import { beginSignIn, type Tokens } from '../keycloak'
+import { useFinishSignIn, useSignOut } from '../session'
 
-const returnSchema = z.object({ from: z.string() })
-
-export function SignIn() {
-  const session = useSession()
-  const startSession = useStartSession()
-  const location = useLocation()
-  const attempt = useMutation({ mutationFn: signIn, onSuccess: startSession })
-  if (session.isPending) return <p className="muted loading">Loading...</p>
-  if (session.data?.signedIn) {
-    const back = returnSchema.safeParse(location.state)
-    return <Navigate to={back.success ? back.data.from : '/members'} replace />
-  }
+function AuthCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className="auth">
-      <div className="auth-card">
+      <div className="auth-card stack">
         <p className="brand">
           JayPay <span>Admin</span>
         </p>
-        <h1>Sign in to JayPay Admin</h1>
-        {session.data?.notice ? (
-          <p className="notice notice-info" role="status">
-            {session.data.notice}
-          </p>
-        ) : null}
-        <form
-          className="stack"
-          onSubmit={(event) => {
-            const form = readForm(event)
-            attempt.mutate({ username: form.text('username'), password: form.raw('password') })
-          }}
-        >
-          <label>
-            Username
-            <input name="username" autoComplete="username" autoCapitalize="none" required />
-          </label>
-          <label>
-            Password
-            <input name="password" type="password" autoComplete="current-password" required />
-          </label>
-          <button className="primary" disabled={attempt.isPending}>
-            Sign in
-          </button>
-          <ErrorNotice error={attempt.error} />
-        </form>
+        <h1>{title}</h1>
+        {children}
       </div>
     </main>
   )
+}
+
+function SignInButton({ returnTo }: { returnTo: string }) {
+  return (
+    <button type="button" className="primary" onClick={() => void beginSignIn(returnTo)}>
+      Sign in
+    </button>
+  )
+}
+
+export function SignInRedirect({ returnTo }: { returnTo: string }) {
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    void beginSignIn(returnTo)
+  }, [returnTo])
+  return <p className="muted loading">Opening the sign-in page...</p>
+}
+
+export function SignInAgain({ notice, returnTo }: { notice: string; returnTo: string }) {
+  return (
+    <AuthCard title="Sign in to JayPay Admin">
+      <p className="notice notice-info" role="status">
+        {notice}
+      </p>
+      <SignInButton returnTo={returnTo} />
+    </AuthCard>
+  )
+}
+
+export function SignedOut() {
+  return <SignInAgain notice="You signed out." returnTo="/members" />
+}
+
+export function NoRole({ tokens, username }: { tokens: Tokens; username: string }) {
+  const signOut = useSignOut(tokens)
+  return (
+    <AuthCard title="No access to JayPay Admin">
+      <p className="notice notice-info" role="status">
+        {username} has no admin console role. Ask an admin to give the account the viewer, operator or admin role.
+      </p>
+      <button type="button" className="primary" onClick={signOut}>
+        Sign out
+      </button>
+    </AuthCard>
+  )
+}
+
+export function Callback() {
+  const { search } = useLocation()
+  const signIn = useFinishSignIn(search)
+  if (signIn.isPending) return <p className="muted loading">Signing in...</p>
+  if (signIn.isError) {
+    return (
+      <AuthCard title="Sign in to JayPay Admin">
+        <p className="notice notice-error" role="alert">
+          {signIn.error.message}
+        </p>
+        <SignInButton returnTo="/members" />
+      </AuthCard>
+    )
+  }
+  return <Navigate to={signIn.data} replace />
 }

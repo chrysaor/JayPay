@@ -368,50 +368,40 @@ The service has no HTTP endpoints of its own. The host port serves Actuator.
 
 ## auth-service
 
-Staff accounts of the admin console, staff sign-in, and the decision on every admin console request.
+The decision on every admin console request, made from the staff token Keycloak issued. Keycloak holds the staff accounts and signs them in.
 
 | | |
 | --- | --- |
 | Host port | `8089` |
 | Memory limit | `512m` |
-| Database | PostgreSQL `auth`, table `staff_account` |
+| Database | none |
 | Calls | none |
 | Called by | `frontend-admin` |
 | Kafka | none |
 | Axon | none |
 | Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `STAFF_JWT_SECRET`, `STAFF_ADMIN_USERNAME`, `STAFF_ADMIN_PASSWORD`, `STAFF_OPERATOR_USERNAME`, `STAFF_OPERATOR_PASSWORD`, `STAFF_VIEWER_USERNAME`, `STAFF_VIEWER_PASSWORD`. Secrets are `SPRING_DATASOURCE_PASSWORD`, `STAFF_JWT_SECRET` and the three `STAFF_<ROLE>_PASSWORD` keys. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `STAFF_ISSUER_URI`, `STAFF_JWK_SET_URI`. No secrets. |
 
-frontend-admin calls auth-service twice. nginx sends an `auth_request` to `/authorize` followed by the original path before it forwards an `/api/` request, and it proxies `/api/auth/staff/` for sign-in and account management.
+nginx in frontend-admin sends an `auth_request` to `/authorize` followed by the original path before it forwards an `/api/` request. auth-service fetches the public keys of the realm `staff` from Keycloak at `STAFF_JWK_SET_URI` and caches them.
 
 ### What it does
 
-- At startup, `DefaultStaffAccounts` creates an admin, an operator and a viewer from the `STAFF_<ROLE>_USERNAME` and `STAFF_<ROLE>_PASSWORD` keys, unless an account with that username exists.
-- Sign-in checks the password and returns an HS256 JWT signed with `STAFF_JWT_SECRET`, with the issuer `jaypay-auth-service`, the audience `jaypay-admin-console` and a lifetime of 8 hours. The service refuses to start when the secret is shorter than 32 bytes.
-- `StaffSecurityConfig` holds the decision table. `/authorize/**` answers 204 when the table lets the role make the original request, 401 without a valid token, and 403 otherwise. The roles form the hierarchy viewer, operator, admin.
-- Each check loads the account again, so a deactivation or a role change applies to tokens issued before it.
-- A username has 3 to 64 lowercase letters, digits, dots, hyphens or underscores. A password has at least 12 characters and at most 72 bytes, upper and lower case letters, a digit and a symbol. It must not contain the username or match a list of common passwords. `PasswordPolicy` holds these rules.
-- An admin can create accounts and change the role, the active flag and the MFA flag of another account. Nobody can change their own role or deactivate themselves.
+- `/authorize/**` answers 204 when the decision table in `StaffSecurityConfig` lets the token's role make the original request, 401 without a valid token, and 403 otherwise.
+- A valid token is signed by a key of the realm, has the issuer `STAFF_ISSUER_URI` and the audience `jaypay-admin-console`, and has not expired, with 60 seconds of clock skew.
+- The realm roles `viewer`, `operator` and `admin` in `realm_access.roles` are the roles. They form the hierarchy viewer, operator, admin, and the highest one counts.
+- A disabled account or a removed role stops new sign-ins and refreshes at once. An access token issued before keeps working until it expires, at most 3 minutes later.
 
-[docs/architecture.md](architecture.md) shows the admin console request step by step.
+[docs/architecture.md](architecture.md) shows the sign-in and an admin console request step by step.
 
 ### Endpoints
 
-- `POST /staff/sign-in` signs a staff account in.
-- `GET /staff/me` returns the signed-in account.
-- `PUT /staff/me/password` changes the password of the signed-in account.
-- `GET /staff/accounts` lists the staff accounts. Admin only.
-- `POST /staff/accounts` creates a staff account. Admin only.
-- `PUT /staff/accounts/{username}` changes the role, active flag and MFA flag of an account. Admin only.
 - `/authorize/**`, any method, is the decision for nginx `auth_request`.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
 ### Known limitations
 
-- The MFA flag is stored and shown, but sign-in does not use it.
-- Nothing limits how often someone may try a password.
-- An admin cannot reset another account's password.
+- auth-service does not ask Keycloak about each token, so revoking an account takes up to the lifetime of its access token plus the clock skew.
 
 ## task-consumer
 
@@ -490,7 +480,7 @@ The site checks the stored access token on load with `POST /memberships/token-va
 
 ## frontend-admin
 
-The admin console, served by nginx, with a proxy to five services behind the auth-service gate.
+The admin console, served by nginx, with a proxy to Keycloak for the staff sign-in and to four services behind the auth-service gate.
 
 | | |
 | --- | --- |
@@ -501,19 +491,21 @@ The admin console, served by nginx, with a proxy to five services behind the aut
 | Called by | the browser, through the nginx server on port 8080 of the container |
 | Kafka | none |
 | Axon | none |
-| Other stores | The staff session in the browser's `localStorage` under `jaypay.admin.session` |
-| Configuration | `JAYPAY_AUTH_URL`, `JAYPAY_MEMBERSHIP_URL`, `JAYPAY_PAYMENT_URL`, `JAYPAY_MONEY_AGGREGATION_URL`, `JAYPAY_MONEY_QUERY_URL`, `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` |
+| Other stores | The staff tokens in memory only. The state, PKCE verifier and return path of a sign-in in progress in the tab's `sessionStorage` under `jaypay.admin.sign-in` |
+| Configuration | `JAYPAY_AUTH_URL`, `JAYPAY_KEYCLOAK_URL`, `JAYPAY_MEMBERSHIP_URL`, `JAYPAY_PAYMENT_URL`, `JAYPAY_MONEY_AGGREGATION_URL`, `JAYPAY_MONEY_QUERY_URL`, `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` |
 
 ### What it does
 
-`frontend/apps/admin/nginx.conf.template` proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/` and `/api/money-query/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. `/api/auth/staff/` goes to auth-service without the gate, because auth-service checks those requests itself. nginx picks the upstream from the location that matched the normalized path, so a path such as `/api/membership/..%2Fauth/staff/me` reaches auth-service, not membership-service. Any other `/api/` path answers 404. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
+`frontend/apps/admin/nginx.conf.template` proxies `/realms/staff/` and `/resources/` to Keycloak at `JAYPAY_KEYCLOAK_URL`, so the browser signs in on the admin site's own origin, and answers 404 to any other `/realms/` path. It proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/` and `/api/money-query/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. Any other `/api/` path answers 404, including the old `/api/auth/staff/` sign-in. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
 
 The console has these pages:
 
-- `/sign-in` signs a staff account in.
+- `/callback` finishes a Keycloak sign-in. It refuses a `state` that this tab did not start, trades the code and the PKCE verifier for tokens, and opens the page the visitor asked for.
+- `/signed-out` is where Keycloak returns after sign-out.
 - `/members` finds members by id or by address.
 - `/members/:membershipId` shows a member and lets an operator or admin edit it.
 - `/money` shows the sum of balances at an address from money-aggregation-service and the total from money-query-service.
 - `/settlement` lists the paid payments with their fee and payout, and lets an operator or admin mark one settled. Marking a payment that is settled already says so and changes nothing.
-- `/staff` manages staff accounts. Admins only.
-- `/account` changes the password of the signed-in account.
+- `/account` shows the username and role and links to the Keycloak account console at `/realms/staff/account`, where staff change their password and set up an authenticator app.
+
+Staff accounts are managed in the Keycloak admin console, which replaced the staff accounts page. [infra/docker/README.md](../infra/docker/README.md#staff-accounts) describes how to open it.

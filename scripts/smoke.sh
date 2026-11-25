@@ -6,6 +6,7 @@ compose_file="$root/infra/docker/compose.yaml"
 env_file="$root/infra/docker/.env"
 web=${SMOKE_WEB_URL:-http://localhost:8090}
 admin=${SMOKE_ADMIN_URL:-http://localhost:8091}
+keycloak=${SMOKE_KEYCLOAK_URL:-http://localhost:8092}
 banking=${SMOKE_BANKING_URL:-http://localhost:8082}
 money=${SMOKE_MONEY_URL:-http://localhost:8083}
 clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
@@ -17,7 +18,18 @@ services=(
 )
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+smoke_users=()
+remove_smoke_users() {
+  local id
+  if [ ${#smoke_users[@]} -gt 0 ] && (keycloak_admin_sign_in) >/dev/null 2>&1; then
+    for id in "${smoke_users[@]}"; do
+      curl -sS -o /dev/null --max-time 30 -X DELETE -H "Authorization: Bearer $(cat "$work/keycloak-admin")" \
+        "$keycloak/admin/realms/staff/users/$id" || true
+    done
+  fi
+  rm -rf "$work"
+}
+trap remove_smoke_users EXIT
 : >"$work/last"
 http_status=000
 bearer=""
@@ -380,15 +392,71 @@ expect "a payment to a member that is not corporate" 400 POST "$web/api/payment/
 staff_setting() { sed -n "s/^STAFF_$1=//p" "$env_file"; }
 
 sign_in_staff() {
-  call POST "$admin/api/auth/staff/sign-in" "$(hex 16)" \
-    "$(python3 -c 'import json, sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$1" "$2")"
+  python3 "$root/scripts/staff_sign_in.py" "$admin" "$1" "$2" >"$work/staff-tokens" 2>"$work/staff-refusal"
+}
+
+staff_token() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$work/staff-tokens" "$1"; }
+
+token_claim() {
+  python3 - "$1" "$2" <<'PY'
+import base64, json, sys
+payload = sys.argv[1].split(".")[1]
+value = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+for part in sys.argv[2].split("."):
+    value = value.get(part)
+print(" ".join(value) if isinstance(value, list) else value)
+PY
 }
 
 sign_in_default_staff() {
-  sign_in_staff "$(staff_setting "$1_USERNAME")" "$(staff_setting "$1_PASSWORD")"
-  [ "$http_status" = 200 ] || fail "sign in of the default $1 account returned HTTP $http_status: $(response)"
-  [ "$(json_field account.role)" = "$1" ] || fail "the default $1 account signed in as $(response)"
-  signed_in=$(json_field token)
+  sign_in_staff "$(staff_setting "$1_USERNAME")" "$(staff_setting "$1_PASSWORD")" ||
+    fail "sign in of the default $1 account was refused: $(cat "$work/staff-refusal")"
+  signed_in=$(staff_token access_token)
+  [ "$(token_claim "$signed_in" realm_access.roles)" = "$(tr '[:upper:]' '[:lower:]' <<<"$1")" ] ||
+    fail "the default $1 account carries the realm roles $(token_claim "$signed_in" realm_access.roles)"
+  [ "$(token_claim "$signed_in" iss)" = "$admin/realms/staff" ] ||
+    fail "the token of the default $1 account was issued by $(token_claim "$signed_in" iss)"
+}
+
+as_staff() {
+  local role=$1
+  shift
+  sign_in_default_staff "$role"
+  as "$signed_in" "$@"
+}
+
+refresh_status() {
+  curl -sS -o "$work/body" -w '%{http_code}' --max-time 30 -d grant_type=refresh_token -d client_id=jaypay-admin-console \
+    --data-urlencode "refresh_token=$1" "$admin/realms/staff/protocol/openid-connect/token" 2>"$work/curl-error" || true
+}
+
+keycloak_admin_sign_in() {
+  curl -sS --fail-with-body --max-time 30 -d grant_type=password -d client_id=admin-cli -d username=admin \
+    --data-urlencode "password=$(sed -n 's/^KEYCLOAK_ADMIN_PASSWORD=//p' "$env_file")" \
+    "$keycloak/realms/master/protocol/openid-connect/token" >"$work/body" 2>"$work/curl-error" ||
+    fail "the Keycloak admin sign in on $keycloak failed: $(response)"
+  json_field access_token >"$work/keycloak-admin"
+}
+
+as_keycloak_admin() { as "$(cat "$work/keycloak-admin")" "$@"; }
+
+create_staff() {
+  local username=$1 password=$2 role=$3 id
+  keycloak_admin_sign_in
+  as_keycloak_admin expect "creation of the Keycloak user $username" 201 POST "$keycloak/admin/realms/staff/users" "$(hex 16)" \
+    '{"username":"'$username'","enabled":true,"firstName":"Smoke","lastName":"Test","email":"'$username'@staff.jaypay.localhost","emailVerified":true}'
+  as_keycloak_admin request "lookup of the Keycloak user $username" GET "$keycloak/admin/realms/staff/users?exact=true&username=$username" "$(hex 16)"
+  id=$(json_field 0.id)
+  [ -n "$id" ] || fail "the Keycloak user $username was not found: $(response)"
+  smoke_users+=("$id")
+  as_keycloak_admin expect "a weak password for $username" 400 PUT "$keycloak/admin/realms/staff/users/$id/reset-password" "$(hex 16)" \
+    '{"type":"password","value":"weak","temporary":false}'
+  as_keycloak_admin expect "the password of $username" 204 PUT "$keycloak/admin/realms/staff/users/$id/reset-password" "$(hex 16)" \
+    '{"type":"password","value":"'$password'","temporary":false}'
+  as_keycloak_admin request "the realm role $role" GET "$keycloak/admin/realms/staff/roles/$role" "$(hex 16)"
+  as_keycloak_admin expect "the role $role for $username" 204 POST "$keycloak/admin/realms/staff/users/$id/role-mappings/realm" "$(hex 16)" \
+    "[$(cat "$work/body")]"
+  created_staff=$id
 }
 
 log "the customer site forwards only the requests its screens make"
@@ -408,13 +476,16 @@ for refused in \
   expect "$method ${url#"$web"} through the customer site" 404 "$method" "$url" "$(hex 16)" '{}'
 done
 
-log "staff sign in to the admin console with the default accounts"
+log "staff sign in through Keycloak with the authorization code flow and PKCE"
 sign_in_default_staff ADMIN
-admin_token=$signed_in
 sign_in_default_staff OPERATOR
-operator_token=$signed_in
 sign_in_default_staff VIEWER
-viewer_token=$signed_in
+viewer_id_token=$(staff_token id_token)
+viewer_refresh=$(staff_token refresh_token)
+
+log "the admin console no longer signs staff in itself and keeps the master realm away"
+expect "the old staff sign-in" 404 POST "$admin/api/auth/staff/sign-in" "$(hex 16)" '{}'
+expect "the master realm through the admin console" 404 GET "$admin/realms/master/.well-known/openid-configuration" "$(hex 16)"
 
 log "the admin console turns away a request without a staff token"
 member_url="$admin/api/membership/memberships/$membership_id"
@@ -427,64 +498,77 @@ as "$customer_token" expect "admin member lookup with a customer token" 401 GET 
 
 log "a viewer reads every screen but writes nothing"
 gate_trace=$(hex 16)
-as "$viewer_token" request "admin member lookup by a viewer" GET "$member_url" "$gate_trace"
+as_staff VIEWER request "admin member lookup by a viewer" GET "$member_url" "$gate_trace"
 [ "$(json_field membershipId)" = "$membership_id" ] || fail "admin member lookup returned $(response)"
 ! json_has refreshToken || fail "admin member lookup answered with a refresh token: $(response)"
 member=$(cat "$work/body")
-as "$viewer_token" request "settlement list for a viewer" GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
-as "$viewer_token" expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
+as_staff VIEWER request "settlement list for a viewer" GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
+as_staff VIEWER expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
 [ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
-as "$viewer_token" expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
+as_staff VIEWER expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
 
 log "the settlement job settles the payment once, and settling it again changes nothing"
-as "$viewer_token" eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
-as "$operator_token" request "Mark settled of a settled payment" POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
+as_staff OPERATOR request "Mark settled of a settled payment" POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
   '{"paymentId":"'$payment_id'"}'
 [ "$(json_field alreadySettled)" = True ] || fail "settling a settled payment answered $(response)"
-as "$operator_token" expect "Mark settled of a failed payment" 409 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+as_staff OPERATOR expect "Mark settled of a failed payment" 409 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
   '{"paymentId":"'$failed_payment_id'"}'
 [ "$(json_field error)" = PAYMENT_NOT_PAID ] || fail "settling a failed payment answered $(response)"
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
-as "$viewer_token" eventually 60 "the region total never reached 14000" region_total_is 14000
+as_staff VIEWER eventually 60 "the region total never reached 14000" region_total_is 14000
 recreate_dynamodb
-as "$viewer_token" eventually 30 "the region total did not survive a new DynamoDB container" region_total_is 14000
+as_staff VIEWER eventually 30 "the region total did not survive a new DynamoDB container" region_total_is 14000
 
-log "an operator edits a member but cannot manage staff accounts"
-as "$operator_token" request "member edit by an operator" PUT "$member_url" "$(hex 16)" "$member"
-as "$operator_token" expect "staff account list for an operator" 403 GET "$admin/api/auth/staff/accounts" "$(hex 16)"
-as "$operator_token" expect "staff account creation by an operator" 403 POST "$admin/api/auth/staff/accounts" "$(hex 16)" \
-  '{"username":"smoke-operator-'$run'","password":"Smoke-Operator-'$run'!","role":"ADMIN","mfaEnabled":false}'
+log "an operator edits a member"
+as_staff OPERATOR request "member edit by an operator" PUT "$member_url" "$(hex 16)" "$member"
 
-log "an admin creates a staff account, and once deactivated it can no longer sign in"
+log "signing out ends the Keycloak session and its refresh token"
+call GET "$admin/realms/staff/protocol/openid-connect/logout?client_id=jaypay-admin-console&id_token_hint=$viewer_id_token&post_logout_redirect_uri=$admin%2Fsigned-out" "$(hex 16)"
+[ "$http_status" = 302 ] || fail "sign out returned HTTP $http_status: $(response)"
+[ "$(refresh_status "$viewer_refresh")" = 400 ] || fail "the refresh token still worked after sign out: $(response)"
+
+log "a staff account made in Keycloak signs in, and once disabled it can no longer sign in or refresh"
 new_staff="smoke-$run"
 new_password="Smoke-$(hex 8)-Pass-42!"
-as "$admin_token" expect "staff account with a weak password" 400 POST "$admin/api/auth/staff/accounts" "$(hex 16)" \
-  '{"username":"'$new_staff'","password":"weak","role":"OPERATOR","mfaEnabled":false}'
-[ "$(json_field violations.0.rule)" = MIN_LENGTH ] || fail "the weak password was not refused for its length: $(response)"
-as "$admin_token" request "staff account creation by an admin" POST "$admin/api/auth/staff/accounts" "$(hex 16)" \
-  '{"username":"'$new_staff'","password":"'$new_password'","role":"OPERATOR","mfaEnabled":false}'
-sign_in_staff "$new_staff" "$new_password"
-[ "$http_status" = 200 ] || fail "sign in of the new staff account returned HTTP $http_status: $(response)"
-new_token=$(json_field token)
+create_staff "$new_staff" "$new_password" operator
+new_id=$created_staff
+sign_in_staff "$new_staff" "$new_password" || fail "sign in of the new staff account was refused: $(cat "$work/staff-refusal")"
+new_token=$(staff_token access_token)
+new_refresh=$(staff_token refresh_token)
 as "$new_token" request "member lookup by the new staff account" GET "$member_url" "$(hex 16)"
-as "$admin_token" request "deactivation of the new staff account" PUT "$admin/api/auth/staff/accounts/$new_staff" "$(hex 16)" \
-  '{"role":"OPERATOR","active":false,"mfaEnabled":false}'
-sign_in_staff "$new_staff" "$new_password"
-[ "$http_status" = 401 ] || fail "sign in of the deactivated staff account returned HTTP $http_status: $(response)"
-as "$new_token" expect "member lookup with the token of a deactivated account" 401 GET "$member_url" "$(hex 16)"
+as_keycloak_admin expect "disabling the new staff account" 204 PUT "$keycloak/admin/realms/staff/users/$new_id" "$(hex 16)" '{"enabled":false}'
+! sign_in_staff "$new_staff" "$new_password" || fail "the disabled staff account signed in"
+[ "$(refresh_status "$new_refresh")" = 400 ] || fail "the disabled staff account refreshed its token: $(response)"
+as "$new_token" call GET "$member_url" "$(hex 16)"
+log "the access token of the disabled account still answers HTTP $http_status and expires in $(($(token_claim "$new_token" exp) - $(date +%s)))s"
+
+log "five wrong passwords lock a staff account, and then even the right password is refused"
+locked_staff="smoke-lock-$run"
+locked_password="Smoke-$(hex 8)-Lock-42!"
+create_staff "$locked_staff" "$locked_password" viewer
+locked_id=$created_staff
+for attempt in 1 2 3 4 5; do
+  sleep 2
+  ! sign_in_staff "$locked_staff" "Wrong-$(hex 8)-Pass-$attempt!" || fail "a wrong password signed in"
+done
+! sign_in_staff "$locked_staff" "$locked_password" || fail "the right password signed in to a locked account"
+keycloak_admin_sign_in
+as_keycloak_admin request "brute force status of $locked_staff" GET "$keycloak/admin/realms/staff/attack-detection/brute-force/users/$locked_id" "$(hex 16)"
+[ "$(json_field disabled)" = True ] || fail "Keycloak does not report $locked_staff as locked: $(response)"
+[ "$(json_field numFailures)" -ge 5 ] || fail "Keycloak counted fewer than five failures: $(response)"
 
 log "the gate refuses what the admin console never asks for"
-as "$admin_token" expect "payment request through the admin console" 403 POST "$admin/api/payment/payment/request" "$(hex 16)" \
+as_staff ADMIN expect "payment request through the admin console" 403 POST "$admin/api/payment/payment/request" "$(hex 16)" \
   '{"requestId":"smoke-admin-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":1}'
-as "$admin_token" expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
-as "$admin_token" expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
+as_staff ADMIN expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
+as_staff ADMIN expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
 expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
-expect "a staff path reached through another service's prefix" 401 GET "$admin/api/membership/..%2Fauth/staff/me" "$(hex 16)"
-[ "$(json_field error)" = UNAUTHENTICATED ] || fail "the staff path behind another service's prefix answered $(response)"
 
 log "a staff token means nothing to the customer site"
-call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
+sign_in_default_staff ADMIN
+call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$signed_in'"}'
 [ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
 
 log "every service shipped its logs to ClickHouse"

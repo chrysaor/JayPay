@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
@@ -42,6 +44,11 @@ class ObservabilityTest {
     @Autowired
     private Tracer tracer;
 
+    @DynamicPropertySource
+    static void keycloak(DynamicPropertyRegistry registry) {
+        StaffTokens.register(registry);
+    }
+
     @Test
     void startsAndReportsHealthyWithoutAToken() throws Exception {
         mockMvc.perform(get("/actuator/health"))
@@ -66,11 +73,10 @@ class ObservabilityTest {
     }
 
     @Test
-    void exposesJvmAndConnectionPoolMetricsForPrometheusWithoutAToken() throws Exception {
+    void exposesJvmMetricsForPrometheusWithoutAToken() throws Exception {
         mockMvc.perform(get("/actuator/prometheus"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("jvm_memory_used_bytes")))
-                .andExpect(content().string(containsString("hikaricp_connections_active")));
+                .andExpect(content().string(containsString("jvm_memory_used_bytes")));
     }
 
     @Test
