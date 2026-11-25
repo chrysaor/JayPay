@@ -339,8 +339,8 @@ log "the receiver sends 1000 to a bank account, and it leaves the receiver's wal
 request "bank remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
   '{"requestId":"smoke-bank-remit-'$run'","fromMembershipId":"'$receiver'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","remittanceType":1,"amount":1000}'
 [ "$(json_field remittanceStatus)" = COMPLETED ] || fail "the bank remittance returned $(response)"
-wallet_balance_is "$receiver" 4000 || fail "the bank remittance did not leave the receiver's wallet: $(cat "$work/last")"
 first_bank_remittance=$(cat "$work/body")
+wallet_balance_is "$receiver" 4000 || fail "the bank remittance did not leave the receiver's wallet: $(cat "$work/last")"
 request "repeated bank remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
   '{"requestId":"smoke-bank-remit-'$run'","fromMembershipId":"'$receiver'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","remittanceType":1,"amount":1000}'
 [ "$(cat "$work/body")" = "$first_bank_remittance" ] || fail "the repeated bank remittance answered $(response) instead of $first_bank_remittance"
