@@ -41,7 +41,7 @@ expect_run() {
   out=$("$@" 2>&1) || status=$?
   if { [ "$want" = pass ] && [ "$status" -eq 0 ]; } || { [ "$want" = fail ] && [ "$status" -ne 0 ]; }; then
     if grep -q -- "$planted" <<<"$out"; then
-      echo "ok   $name ${want}s${planted:+ with $planted}"
+      echo "ok   $name $([ "$want" = pass ] && echo passes || echo fails)${planted:+ with $planted}"
       return
     fi
   fi
@@ -96,8 +96,8 @@ perl -pi -e 's/^## \[0\.1\.0\] - (\d+)-(\d+)-(\d+)$/## [0.1.0] - $3.$2.$1/' "$di
 expect changelog fail "$dir" "is not a version heading"
 
 dir=$(copy_repo changelog-empty-group)
-printf '\n### Security\n' >>"$dir/CHANGELOG.md"
-expect changelog fail "$dir" "### Security has no entries"
+perl -pi -e 's/^(## \[0\.1\.0\])/### Fixed\n\n$1/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "### Fixed has no entries in \[0.2.0\]"
 
 dir=$(copy_repo changelog-link)
 perl -0pi -e 's/ \(\[#\d+\]\([^)]*\)\)$//m' "$dir/CHANGELOG.md"
