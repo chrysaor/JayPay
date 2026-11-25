@@ -4,11 +4,11 @@ JayPay is a study project for a small payment service: members sign up, register
 
 ## Architecture
 
-Ten Spring Boot services run in Docker Compose. Eight of them have a host port and their own PostgreSQL database. Seven of those eight serve the HTTP endpoints, and settlement-service runs a batch job instead. task-consumer and logging-consumer only consume Kafka topics. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services.
+Eleven Spring Boot services run in Docker Compose. Nine of them have a host port and their own PostgreSQL database. Eight of those nine serve the HTTP endpoints, and settlement-service runs a batch job instead. task-consumer and logging-consumer only consume Kafka topics. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services. Before the admin console forwards a request, nginx asks auth-service whether the signed-in staff account may make it.
 
 ### Request path
 
-The browser calls only its own site. nginx strips `/api/<service>` and forwards the rest of the path to that service. The services then call each other over HTTP.
+The browser calls only its own site. nginx strips `/api/<service>` and forwards the rest of the path to that service. The services then call each other over HTTP. On the admin console, an `auth_request` to auth-service comes first: it answers 204 to let the request through, 401 without a valid staff token, and 403 when the role is not enough. No other service calls auth-service.
 
 ```mermaid
 flowchart TB
@@ -25,8 +25,10 @@ flowchart TB
     money["money-service"]
     banking["banking-service"]
     membership["membership-service"]
+    auth["auth-service<br/>staff accounts, sign-in, request decisions"]
 
     web --> membership & banking & money & remittance & payment
+    admin -- "auth_request on every /api call,<br/>/api/auth/staff/ for sign-in" --> auth
     admin --> membership & payment & aggregation & query
 
     banking -- "member check" --> membership
@@ -59,6 +61,7 @@ flowchart LR
         aggregation["money-aggregation-service"]
         query["money-query-service"]
         settlement["settlement-service"]
+        auth["auth-service"]
     end
 
     subgraph kafka["Kafka"]
@@ -115,7 +118,7 @@ make smoke
 
 1. `make images` builds `jaypay/<service>` for every backend service, and `jaypay/frontend-web` and `jaypay/frontend-admin`.
 2. `make up` writes `infra/docker/.env` with random secrets the first time, starts the Compose project `jaypay`, and waits until every container is healthy. The first start also builds the OpenTelemetry Collector image.
-3. `make smoke` signs a member up through the customer site, registers a bank account, tops the wallet up through the saga and through the Kafka task, pays, and checks that logs, traces and metrics arrived. It prints the cause and exits non-zero on the first failure.
+3. `make smoke` signs a member up through the customer site, registers a bank account, tops the wallet up through the saga and through the Kafka task, pays, signs the three staff roles in to the admin console and checks what each may do, and checks that logs, traces and metrics arrived. It prints the cause and exits non-zero on the first failure.
 
 Stop the stack with `make down`.
 
@@ -136,9 +139,9 @@ Every host port binds to `127.0.0.1`.
 | PostgreSQL, user `jaypay` | `localhost:5432` |
 | Kafka | `localhost:9092` |
 | OTLP gRPC and HTTP | `localhost:4317`, `localhost:4318` |
-| Services | `localhost:8081` to `localhost:8088`, listed in the next table, with Swagger UI at `/swagger-ui.html` |
+| Services | `localhost:8081` to `localhost:8089`, listed in the next table, with Swagger UI at `/swagger-ui.html` |
 
-The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/README.md) describes every key in it.
+The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/README.md) describes every key in it. The admin console asks for a staff account: `make up` creates an admin, an operator and a viewer from `STAFF_<ROLE>_USERNAME` and `STAFF_<ROLE>_PASSWORD` in that file.
 
 ## Services
 
@@ -152,6 +155,7 @@ The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/
 | money-aggregation-service | 8086 | Sum the wallet balances of the members at one address | PostgreSQL `money_aggregation` |
 | money-query-service | 8087 | Read model of top-ups per region, answered through an Axon query | PostgreSQL `money_query`, DynamoDB `MoneyIncreaseEventByRegion`, Axon event handler and query handler |
 | settlement-service | 8088 | Spring Batch job every 30 seconds that pays merchants their share through firm banking and marks the payments settled | PostgreSQL `settlement` for the batch tables |
+| auth-service | 8089 | Staff accounts with the roles viewer, operator and admin, the password rules, sign-in, staff tokens, and the decision for every admin console request | PostgreSQL `auth` |
 | task-consumer | none | Reads top-up tasks, marks every subtask done, and writes the result | Kafka `jaypay.task.topic` in, `jaypay.task.result.topic` out |
 | logging-consumer | none | Writes each message from the logging topic to its own log | Kafka `jaypay.logging.out.stdout` in |
 
@@ -165,7 +169,7 @@ Every Spring Boot service sends its logs and traces to the OpenTelemetry Collect
 
 ```mermaid
 flowchart LR
-    services["Ten Spring Boot services"]
+    services["Eleven Spring Boot services"]
     collector["OpenTelemetry Collector<br/>drops /actuator spans"]
     clickhouse[("ClickHouse<br/>otel.otel_logs, otel.otel_traces<br/>kept 72 hours")]
     prometheus[("Prometheus<br/>kept 3 days")]
@@ -235,7 +239,9 @@ The local stack uses DynamoDB Local. [infra/terraform/README.md](infra/terraform
 
 JayPay is a study project and is not safe to run with real money or real users.
 
-- The admin console has no authentication. Anyone who can reach it can read and edit members.
+- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8089` and the customer site do not. Anyone on the machine can call a service directly, and the customer site still forwards member edits and Mark settled without a login.
+- Staff sign-in takes a password only. The MFA flag on an account is stored and shown but does not change sign-in yet, and nothing limits how often someone may try a password.
+- An admin cannot reset another account's password. Deactivate the account and create a new one instead.
 - Login takes a member id only, with no password or other credential.
 - The fake bank in banking-service accepts every account and every transfer.
 - remittance-service does not move money yet. Its money-service client returns no data, so a remittance request fails.

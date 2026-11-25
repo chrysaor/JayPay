@@ -43,6 +43,43 @@ sequenceDiagram
 
 `make smoke` runs both top-ups. It checks that the saga trace spans money-service and banking-service, and that the Kafka trace spans money-service and task-consumer.
 
+## Admin console request through auth-service
+
+Only the sign-in screen and the JavaScript bundle load without a staff account. Every `/api/<service>/` request of the admin console passes nginx `auth_request` first: nginx sends the original method, path and headers, without the body, to `/authorize/<original path>` on auth-service and forwards the request only when auth-service answers 204.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant browser as browser
+    participant admin as frontend-admin, nginx
+    participant auth as auth-service
+    participant membership as membership-service
+
+    browser->>admin: POST /api/auth/staff/sign-in
+    admin->>auth: POST /staff/sign-in
+    auth-->>browser: 200, staff token for 8 hours and the account
+    browser->>admin: PUT /api/membership/memberships/7, Bearer token
+    admin->>auth: PUT /authorize/api/membership/memberships/7, no body
+    Note over auth: checks the token signature, audience and expiry,<br/>loads the account, and looks the request up in the table
+    alt viewer, or the account is inactive, or the path is not in the table
+        auth-->>admin: 401 or 403
+        admin-->>browser: 401 or 403 with a JSON error
+    else operator or admin
+        auth-->>admin: 204
+        admin->>membership: PUT /memberships/7
+        membership-->>browser: 200, the edited member
+    end
+```
+
+- `StaffSecurityConfig` in auth-service holds the only decision table, as Spring Security `authorizeHttpRequests` rules: one line per method and path the admin console calls, the lowest role that may call it, and `denyAll` for everything else. `AdminConsoleGateTest` pins the table for no token and for each role.
+- The roles form the hierarchy viewer < operator < admin through a Spring Security `RoleHierarchy`.
+- auth-service checks `$request_uri` as the browser sent it. Spring Security's firewall refuses an encoded slash or dot, `;`, `//`, a dot segment and an encoded `%` with 403, so the path auth-service decides on is the path the upstream service receives.
+- auth-service loads the account on every check, so a deactivation or a role change applies at once to tokens issued before it.
+- Staff tokens are HS256 JWTs signed with `STAFF_JWT_SECRET`, with the audience `jaypay-admin-console`. Customer tokens from membership-service use `JWT_SECRET` and carry no audience, so neither token opens the other site.
+- The token carries the factors the sign-in proved, today `FACTOR_PASSWORD`, as Spring Security 7 `FactorGrantedAuthority` values, and the sign-in answer has a `status` of `SIGNED_IN`. A second factor for accounts with the MFA flag can add another status and a `requireFactors` rule without changing the shape.
+
+Spring Security stays in the adapters of auth-service. `domain` holds `StaffAccount`, `StaffRole` and `PasswordPolicy`, the list of password rules. `adapter.in.web` holds the decision table, the sign-in through `DaoAuthenticationProvider` and the token check. `adapter.out.password` and `adapter.out.token` wrap `PasswordEncoder` and `JwtEncoder` behind the `PasswordHashing` and `StaffTokenIssuer` ports. `SecurityStaysInAdaptersTest` fails when `domain` or `application` imports Spring Security.
+
 ## Layers inside a service
 
 Each service follows the hexagonal dependency direction in [CLAUDE.md](../CLAUDE.md): `domain` ← `application` ← `adapter`. An arrow points from the code that depends to the code it depends on.
