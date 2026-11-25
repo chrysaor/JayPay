@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1028 384" width="1028" height="384" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<title id="title">JayPay calls between services</title>
+<desc id="desc">banking-service calls membership-service for member check. money-aggregation-service calls membership-service for members by address. money-aggregation-service calls money-service for balances. money-query-service calls membership-service for member address. money-service calls banking-service for registered account. money-service calls membership-service for member check. payment-service calls membership-service for member check. remittance-service calls banking-service for account check, firm banking. remittance-service calls membership-service for member check. remittance-service calls money-service for balance, money change. settlement-service calls banking-service for merchant account, firm banking. settlement-service calls payment-service for unsettled payments, finish settlement.</desc>
+<style>
+.bg{fill:#ffffff}
+.box{fill:#f6f8fa;stroke:#8c959f;stroke-width:1.2}
+.t{fill:#1f2328;font-size:12.5px;font-weight:600;text-anchor:middle}
+.s{fill:#59636e;font-size:11px;text-anchor:middle}
+.l{font-size:11px}
+.grid{stroke:#d1d9e0;stroke-width:1}
+.cell{fill:#ddf4ff}
+.blue{stroke:#0969da;fill:none;stroke-width:1.6}.bluef{fill:#0969da}.bluebox{fill:#ddf4ff;stroke:#0969da;stroke-width:1.4}
+.orange{stroke:#bc4c00;fill:none;stroke-width:1.6}.orangef{fill:#bc4c00}.orangebox{fill:#fff1e5;stroke:#bc4c00;stroke-width:1.4}
+.purple{stroke:#8250df;fill:none;stroke-width:1.6}.purplef{fill:#8250df}.purplebox{fill:#fbefff;stroke:#8250df;stroke-width:1.4}
+.green{stroke:#1a7f37;fill:none;stroke-width:1.6}.greenf{fill:#1a7f37}.greenbox{fill:#dafbe1;stroke:#1a7f37;stroke-width:1.4}
+.gray{stroke:#6e7781;fill:none;stroke-width:1.4}.grayf{fill:#59636e}
+.dashed{stroke-dasharray:5 4}
+@media (prefers-color-scheme: dark){
+.bg{fill:#0d1117}
+.box{fill:#161b22;stroke:#6e7681}.t{fill:#e6edf3}.s{fill:#9198a1}
+.grid{stroke:#3d444d}.cell{fill:#0c2d6b}
+.blue{stroke:#58a6ff}.bluef{fill:#58a6ff}.bluebox{fill:#0c2d6b;stroke:#58a6ff}
+.orange{stroke:#f0883e}.orangef{fill:#f0883e}.orangebox{fill:#5a1e02;stroke:#f0883e}
+.purple{stroke:#bc8cff}.purplef{fill:#bc8cff}.purplebox{fill:#2e1461;stroke:#bc8cff}
+.green{stroke:#3fb950}.greenf{fill:#3fb950}.greenbox{fill:#04260f;stroke:#3fb950}
+.gray{stroke:#8b949e}.grayf{fill:#9198a1}}
+</style>
+<rect class="bg" x="0" y="0" width="1028" height="384" rx="12"/>
+<text class="t" x="312" y="42">membership-service</text>
+<text class="t" x="512" y="42">banking-service</text>
+<text class="t" x="712" y="42">money-service</text>
+<text class="t" x="912" y="42">payment-service</text>
+<text class="s" x="114" y="42">caller, then the service it calls</text>
+<text class="t" x="24" y="86" style="text-anchor:start">banking-service</text>
+<rect class="cell" x="215" y="63" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="312" y="86">member check</text>
+<text class="t" x="24" y="130" style="text-anchor:start">money-service</text>
+<rect class="cell" x="215" y="107" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="312" y="130">member check</text>
+<rect class="cell" x="415" y="107" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="512" y="130">registered account</text>
+<text class="t" x="24" y="174" style="text-anchor:start">remittance-service</text>
+<rect class="cell" x="215" y="151" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="312" y="174">member check</text>
+<rect class="cell" x="415" y="151" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="512" y="174">account check, firm banking</text>
+<rect class="cell" x="615" y="151" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="712" y="174">balance, money change</text>
+<text class="t" x="24" y="218" style="text-anchor:start">payment-service</text>
+<rect class="cell" x="215" y="195" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="312" y="218">member check</text>
+<text class="t" x="24" y="262" style="text-anchor:start">money-aggregation-service</text>
+<rect class="cell" x="215" y="239" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="312" y="262">members by address</text>
+<rect class="cell" x="615" y="239" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="712" y="262">balances</text>
+<text class="t" x="24" y="306" style="text-anchor:start">money-query-service</text>
+<rect class="cell" x="215" y="283" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="312" y="306">member address</text>
+<text class="t" x="24" y="350" style="text-anchor:start">settlement-service</text>
+<rect class="cell" x="415" y="327" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="512" y="350">merchant account, firm banking</text>
+<rect class="cell" x="815" y="327" width="194" height="38" rx="4"/>
+<text class="l bluef" text-anchor="middle" x="912" y="343.5">unsettled payments,</text>
+<text class="l bluef" text-anchor="middle" x="912" y="356.5">finish settlement</text>
+<path class="grid" d="M16 16 H1012"/>
+<path class="grid" d="M16 60 H1012"/>
+<path class="grid" d="M16 104 H1012"/>
+<path class="grid" d="M16 148 H1012"/>
+<path class="grid" d="M16 192 H1012"/>
+<path class="grid" d="M16 236 H1012"/>
+<path class="grid" d="M16 280 H1012"/>
+<path class="grid" d="M16 324 H1012"/>
+<path class="grid" d="M16 368 H1012"/>
+<path class="grid" d="M212 16 V368"/>
+<path class="grid" d="M412 16 V368"/>
+<path class="grid" d="M612 16 V368"/>
+<path class="grid" d="M812 16 V368"/>
+<path class="grid" d="M1012 16 V368"/>
+</svg>
