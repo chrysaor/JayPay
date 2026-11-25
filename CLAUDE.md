@@ -29,6 +29,7 @@ Do not report work as done until `make verify` passes. Changed an HTTP endpoint 
 4. Run `make verify`.
 5. Open the PR against `develop`. Fill in `.github/pull_request_template.md` and link the issue with `Closes #<issue>`.
 6. Once CI passes, merge the PR into `develop` yourself.
+7. Close the issue right after the merge. `Closes` only fires on `master`, so an issue merged into `develop` stays open until you close it. When a PR is replaced by another, close it and delete its branch.
 
 Never push to `master` or `develop` directly. Every change reaches them through a PR.
 
