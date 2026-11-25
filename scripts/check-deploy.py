@@ -75,6 +75,16 @@ def unpulled_images(rendered_dir):
     return problems
 
 
+def rendered_secrets(root, rendered_dir):
+    problems = []
+    for env in sorted(os.listdir(os.path.join(root, "deploy", "envs"))):
+        for line in read(os.path.join(rendered_dir, f"{env}.json")).splitlines():
+            manifest = json.loads(line)
+            if manifest.get("kind") == "Secret":
+                problems.append(f"{env}: renders the Secret {manifest['metadata']['name']}, but Secrets come from outside deploy/envs")
+    return problems
+
+
 def compare(name, service, upstreams, container, secret_keys, deployed):
     problems = []
     compose_env = service.get("environment") or {}
@@ -132,6 +142,7 @@ def main():
     for name, container in sorted(dependencies.items()):
         problems += compare_dependency(name, services.get(name), container)
     problems += unpulled_images(rendered_dir)
+    problems += rendered_secrets(root, rendered_dir)
 
     for problem in problems:
         print(problem)

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repoURL", "revision", "environment", "namespace", "pollSeconds"],
+  "properties": {
+    "repoURL": { "type": "string", "pattern": "^(https://|ssh://|git@|file:///)" },
+    "revision": { "type": "string", "minLength": 1 },
+    "environment": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "namespace": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "pollSeconds": { "type": "integer", "minimum": 10 }
+  }
+}

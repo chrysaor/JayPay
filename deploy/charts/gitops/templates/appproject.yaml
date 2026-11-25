@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .Values.environment }}
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: jaypay
+spec:
+  description: JayPay workloads and dependencies of deploy/envs/{{ .Values.environment }}
+  sourceRepos:
+    - {{ .Values.repoURL }}
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: {{ .Values.namespace }}
+  clusterResourceWhitelist: []

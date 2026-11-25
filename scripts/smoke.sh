@@ -117,7 +117,7 @@ region_total_is() {
   [ "$total" = "$expected" ]
 }
 
-cluster() { kubectl --context jaypay --namespace jaypay "$@"; }
+cluster() { kubectl --context jaypay --namespace "${SMOKE_NAMESPACE:?scripts/k8s.sh sets it}" "$@"; }
 
 recreate_dynamodb() {
   if [ "$stack" = kubernetes ]; then

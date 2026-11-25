@@ -1,0 +1,5 @@
+repoURL: file:///jaypay/git/jaypay.git
+revision: local
+environment: local
+namespace: jaypay
+pollSeconds: 20
