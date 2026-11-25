@@ -193,5 +193,7 @@ JayPay is a study project and is not safe to run with real money or real users.
 - The fake bank in banking-service accepts every account and every transfer.
 - remittance-service stores every remittance, but `GET /remittance/{membershipId}` always returns an empty body, and a remittance to a bank account does not take the money from the sender's wallet.
 - The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
+- The customer site forwards every path of the five services it proxies, so their internal endpoints, Actuator and OpenAPI pages answer without a login ([#95](https://github.com/chrysaor/JayPay/issues/95)).
+- Money can be created and moved by anyone: a top-up accepts any amount for any member, a payment does not debit the payer and takes the merchant and fee from the request, and a remittance accepts a negative amount and any sender ([#96](https://github.com/chrysaor/JayPay/issues/96), [#97](https://github.com/chrysaor/JayPay/issues/97), [#98](https://github.com/chrysaor/JayPay/issues/98)).
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.
