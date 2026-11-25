@@ -18,7 +18,10 @@ public class MoneyIncreaseEventHandler {
 
     @EventHandler
     public void handler(RequestFirmBankingFinishedEvent event) {
-        log.info("Money Increase Event Received: {}", event);
-        increaseMoneySumByAddressUseCase.increaseMoneySum(event.getMembershipId(), event.getMoneyAmount());
+        if (!event.succeeded()) {
+            log.info("Recharge {} did not land at the bank, so the region total leaves it out", event.getRechargingRequestId());
+            return;
+        }
+        increaseMoneySumByAddressUseCase.increaseMoneySum(event.getMembershipId(), Math.toIntExact(event.getMoneyAmount()));
     }
 }
