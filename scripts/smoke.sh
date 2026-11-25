@@ -114,7 +114,7 @@ bank_account_registered() {
 payment_settled() {
   call GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
   observed "HTTP $http_status: $(response)"
-  [ "$http_status" = 200 ] && ! python3 -c 'import json, sys; sys.exit(any(p["paymentId"] == int(sys.argv[2]) for p in json.load(open(sys.argv[1]))))' "$work/body" "$1"
+  [ "$http_status" = 200 ] && python3 -c 'import json, sys; sys.exit(0 if all(p["paymentId"] != int(sys.argv[2]) for p in json.load(open(sys.argv[1]))) else 1)' "$work/body" "$1"
 }
 
 region_total_is() {
