@@ -1,5 +1,5 @@
 plugins {
-    id("jaypay.jpa-service")
+    id("jaypay.service")
     id("jaypay.hexagonal")
 }
 

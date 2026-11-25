@@ -15,6 +15,8 @@ calls:
     http: [money-query-service]
   kafka:
     kafka: [auth-service, banking-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+  keycloak:
+    http: [auth-service, frontend-admin]
   logging-consumer:
     http: [prometheus]
   membership-service:
@@ -30,7 +32,7 @@ calls:
   payment-service:
     http: [frontend-admin, frontend-web, prometheus, settlement-service]
   postgres:
-    postgres: [auth-service, banking-service, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    postgres: [banking-service, keycloak, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   prometheus:
     http: [grafana]
   remittance-service:

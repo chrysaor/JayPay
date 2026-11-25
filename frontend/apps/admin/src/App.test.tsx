@@ -1,33 +1,23 @@
-import { fakeRoutes, jsonBody, type Reply } from '@jaypay/api/testing'
-import { screen, within } from '@testing-library/react'
-import { describe, expect, test } from 'vitest'
+import { fakeRoutes, type Reply } from '@jaypay/api/testing'
+import { screen, waitFor, within } from '@testing-library/react'
+import { describe, expect, test, vi } from 'vitest'
+import { leaveFor } from './leave'
 import {
-  hoursFromNow,
-  meRoute,
   member,
+  pendingKey,
+  pendingSignIn,
   renderApp,
   signedInAs,
-  staffAccount,
   staffToken,
-  storageKey,
-  storedSession,
+  testCode,
+  testVerifier,
+  tokenReply,
+  tokenRoute,
 } from './test/render'
 
-const signInRoute = 'POST /api/auth/staff/sign-in'
 const memberRoute = 'GET /api/membership/memberships/1'
 const queueRoute = 'GET /api/payment/payment/normal-status'
-const issued = {
-  status: 'SIGNED_IN',
-  token: 'issued-token',
-  expiresAt: hoursFromNow(8),
-  account: staffAccount('OPERATOR', 'olivia'),
-}
-
-async function signIn(user: ReturnType<typeof renderApp>, username = 'olivia', password = 'Correct-Horse-9') {
-  await user.type(await screen.findByLabelText('Username'), username)
-  await user.type(screen.getByLabelText('Password'), password)
-  await user.click(screen.getByRole('button', { name: 'Sign in' }))
-}
+const endpoints = '/realms/staff/protocol/openid-connect'
 
 function menuLabels() {
   const menu = screen.getByRole('navigation', { name: 'Admin menu' })
@@ -36,108 +26,144 @@ function menuLabels() {
     .map((link) => link.textContent)
 }
 
-describe('signing in', () => {
-  test('a visitor who is not signed in sees only the sign-in screen', async () => {
-    const requests = fakeRoutes({})
-    renderApp('/settlement')
+function lastExit() {
+  const url = vi.mocked(leaveFor).mock.lastCall?.[0] ?? ''
+  const [path, query = ''] = url.split('?')
+  return { path, params: new URLSearchParams(query) }
+}
 
-    expect(await screen.findByRole('heading', { name: 'Sign in to JayPay Admin' })).toBeInTheDocument()
+function pending() {
+  return JSON.parse(sessionStorage.getItem(pendingKey) ?? 'null') as {
+    state: string
+    verifier: string
+    returnTo: string
+  } | null
+}
+
+async function challengeOf(verifier: string) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)))
+  return btoa(String.fromCharCode(...digest)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
+function formOf(body: string | null | undefined) {
+  return Object.fromEntries(new URLSearchParams(body ?? ''))
+}
+
+describe('signing in', () => {
+  test('a visitor who is not signed in is sent to Keycloak with a PKCE challenge and nothing else is called', async () => {
+    const requests = fakeRoutes({})
+    renderApp('/settlement?status=open')
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledOnce()
+    })
+    const { path, params } = lastExit()
+    const started = pending()
+    expect(path).toBe(`${endpoints}/auth`)
+    expect(params.get('client_id')).toBe('jaypay-admin-console')
+    expect(params.get('response_type')).toBe('code')
+    expect(params.get('scope')).toBe('openid')
+    expect(params.get('redirect_uri')).toBe(`${window.location.origin}/callback`)
+    expect(params.get('code_challenge_method')).toBe('S256')
+    expect(started?.returnTo).toBe('/settlement?status=open')
+    expect(params.get('state')).toBe(started?.state)
+    expect(params.get('code_challenge')).toBe(await challengeOf(started?.verifier ?? ''))
+    expect(started?.state).not.toBe(started?.verifier)
     expect(screen.queryByRole('navigation', { name: 'Admin menu' })).not.toBeInTheDocument()
     expect(requests).toEqual([])
   })
 
-  test('signing in opens the screen the visitor asked for and remembers the session', async () => {
-    const requests = fakeRoutes({ [signInRoute]: { body: issued }, [queueRoute]: { body: [] } })
-    const user = renderApp('/settlement')
-
-    await signIn(user)
+  test('the callback trades the code for tokens and opens the screen the visitor asked for', async () => {
+    const requests = fakeRoutes({ ...signedInAs(), [queueRoute]: { body: [] } })
+    renderApp('/settlement')
 
     expect(await screen.findByRole('heading', { name: 'Settlement' })).toBeInTheDocument()
-    const sent = requests.find((r) => r.url.endsWith('/sign-in'))
-    expect(jsonBody(sent)).toEqual({ username: 'olivia', password: 'Correct-Horse-9' })
-    expect(sent?.authorization).toBeUndefined()
-    expect(requests.find((r) => r.url.endsWith('/normal-status'))?.authorization).toBe('Bearer issued-token')
-    expect(storedSession()).toEqual({ token: 'issued-token', expiresAt: issued.expiresAt, account: issued.account })
+    const exchange = requests.find((r) => r.url === `${endpoints}/token`)
+    expect(exchange?.contentType).toBe('application/x-www-form-urlencoded')
+    expect(exchange?.authorization).toBeUndefined()
+    expect(formOf(exchange?.body)).toEqual({
+      client_id: 'jaypay-admin-console',
+      grant_type: 'authorization_code',
+      code: testCode,
+      redirect_uri: `${window.location.origin}/callback`,
+      code_verifier: testVerifier,
+    })
+    expect(requests.find((r) => r.url.endsWith('/normal-status'))?.authorization).toBe(`Bearer ${staffToken}`)
+    expect(pending()).toBeNull()
+    expect(localStorage.length).toBe(0)
+    expect(JSON.stringify(sessionStorage)).not.toContain(staffToken)
   })
 
   test('signing in from the start opens the member search', async () => {
-    fakeRoutes({ [signInRoute]: { body: issued } })
-    const user = renderApp('/')
-
-    await signIn(user)
+    fakeRoutes(signedInAs())
+    renderApp('/')
 
     expect(await screen.findByRole('heading', { name: 'Members' })).toBeInTheDocument()
   })
 
-  test('wrong credentials show the server message and keep the visitor on the sign-in screen', async () => {
-    fakeRoutes({
-      [signInRoute]: {
-        status: 401,
-        body: {
-          error: 'INVALID_CREDENTIALS',
-          message: 'The username or password is wrong, or the account is inactive.',
-        },
-      },
-    })
-    const user = renderApp('/members')
+  test('a callback whose state does not match this tab is refused without calling Keycloak', async () => {
+    pendingSignIn('/members', 'state-from-this-tab')
+    const requests = fakeRoutes({ [tokenRoute]: tokenReply(['admin']) })
+    renderApp('/callback?code=stolen&state=state-from-elsewhere')
 
-    await signIn(user, 'olivia', 'wrong')
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The username or password is wrong, or the account is inactive.',
-    )
-    expect(screen.getByRole('heading', { name: 'Sign in to JayPay Admin' })).toBeInTheDocument()
-    expect(screen.queryByText('Your session has ended. Sign in again.')).not.toBeInTheDocument()
-    expect(storedSession()).toBeNull()
+    expect(await screen.findByRole('alert')).toHaveTextContent('This sign-in did not start in this tab. Sign in again.')
+    expect(requests).toEqual([])
+    expect(pending()).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Admin menu' })).not.toBeInTheDocument()
   })
 
-  test('a sign-in step the console does not support is explained', async () => {
-    fakeRoutes({ [signInRoute]: { body: { status: 'MFA_REQUIRED', challenge: 'c-1' } } })
-    const user = renderApp('/members')
+  test('a callback this tab never started is refused', async () => {
+    const requests = fakeRoutes({ [tokenRoute]: tokenReply(['admin']) })
+    renderApp('/callback?code=stolen&state=anything')
 
-    await signIn(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent('This sign-in did not start in this tab. Sign in again.')
+    expect(requests).toEqual([])
+  })
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'This account needs a sign-in step this console does not support yet.',
-    )
-    expect(storedSession()).toBeNull()
+  test('a callback replayed after it was used is refused', async () => {
+    const requests = fakeRoutes(signedInAs())
+    renderApp('/members')
+    await screen.findByRole('heading', { name: 'Members' })
+
+    renderApp(`/callback?code=${testCode}&state=state-from-this-tab`)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This sign-in did not start in this tab. Sign in again.')
+    expect(requests.filter((r) => r.url === `${endpoints}/token`)).toHaveLength(1)
+  })
+
+  test('an error Keycloak sends back is shown', async () => {
+    pendingSignIn()
+    fakeRoutes({})
+    renderApp('/callback?error=access_denied&error_description=Account%20is%20disabled&state=state-from-this-tab')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Account is disabled')
+  })
+
+  test('a code Keycloak refuses to trade shows a message and offers to sign in again', async () => {
+    const requests = fakeRoutes({ [tokenRoute]: { status: 400, body: { error: 'invalid_grant' } } })
+    pendingSignIn()
+    const user = renderApp(`/callback?code=${testCode}&state=state-from-this-tab`)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The sign-in server refused the request. Sign in again.')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(lastExit().path).toBe(`${endpoints}/auth`)
+    })
+    expect(requests).toHaveLength(1)
   })
 })
 
 describe('the signed-in console', () => {
-  test('restores the stored session with the role the server reports now', async () => {
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify({ token: staffToken, expiresAt: hoursFromNow(8), account: staffAccount('ADMIN') }),
-    )
-    const requests = fakeRoutes({ [meRoute]: { body: staffAccount('VIEWER') } })
-    renderApp('/members')
-
-    const sidebar = within(await screen.findByRole('complementary'))
-    expect(await sidebar.findByText('jay')).toBeInTheDocument()
-    expect(sidebar.getByText('Viewer')).toBeInTheDocument()
-    expect(menuLabels()).not.toContain('Staff accounts')
-    expect(requests.find((r) => r.url.endsWith('/staff/me'))?.authorization).toBe(`Bearer ${staffToken}`)
-  })
-
-  test('every viewer and operator screen is in the menu, with no staff accounts', async () => {
-    fakeRoutes(signedInAs('OPERATOR'))
+  test('every screen is in the menu, with no staff accounts screen', async () => {
+    fakeRoutes(signedInAs('ADMIN'))
     renderApp('/members')
 
     await screen.findByRole('heading', { name: 'Members' })
     expect(menuLabels()).toEqual(['Members', 'Regional money', 'Settlement', 'My account'])
   })
 
-  test('an admin also sees staff accounts in the menu', async () => {
-    fakeRoutes({ ...signedInAs('ADMIN'), 'GET /api/auth/staff/accounts': { body: [] } })
-    renderApp('/members')
-
-    await screen.findByRole('heading', { name: 'Members' })
-    expect(menuLabels()).toEqual(['Members', 'Regional money', 'Settlement', 'Staff accounts', 'My account'])
-  })
-
-  test('an operator who opens the staff accounts address sees a not-found page', async () => {
-    fakeRoutes(signedInAs('OPERATOR'))
+  test('the staff accounts address is gone', async () => {
+    fakeRoutes(signedInAs('ADMIN'))
     renderApp('/staff')
 
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
@@ -150,70 +176,115 @@ describe('the signed-in console', () => {
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
   })
 
-  test('every request after sign-in carries the staff token', async () => {
+  test('the sidebar shows the username and the highest realm role in the token', async () => {
+    pendingSignIn()
+    fakeRoutes({ [tokenRoute]: tokenReply(['default-roles-staff', 'viewer', 'admin'], 120, 'olivia') })
+    renderApp('/members')
+
+    const sidebar = within(await screen.findByRole('complementary'))
+    expect(sidebar.getByText('olivia')).toBeInTheDocument()
+    expect(sidebar.getByText('Admin', { selector: '.staff-role' })).toBeInTheDocument()
+  })
+
+  test('an account without a console role sees why and can sign out', async () => {
+    pendingSignIn()
+    const requests = fakeRoutes({ [tokenRoute]: tokenReply(['default-roles-staff'], 120, 'newcomer') })
+    const user = renderApp('/members')
+
+    expect(await screen.findByRole('heading', { name: 'No access to JayPay Admin' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('newcomer has no admin console role.')
+    expect(requests.filter((r) => r.url.startsWith('/api/'))).toEqual([])
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(lastExit().path).toBe(`${endpoints}/logout`)
+  })
+
+  test('every request after sign-in carries the access token', async () => {
     const requests = fakeRoutes({ ...signedInAs(), [memberRoute]: { body: member } })
     renderApp('/members?by=id&q=1')
 
     await screen.findByRole('row', { name: /Hong Gildong/ })
     expect(requests.find((r) => r.url.endsWith('/memberships/1'))?.authorization).toBe(`Bearer ${staffToken}`)
   })
+})
 
-  test('signing out returns to the sign-in screen and forgets the session', async () => {
-    fakeRoutes(signedInAs())
+describe('signing out', () => {
+  test('signing out ends the Keycloak session and forgets the tokens', async () => {
+    const requests = fakeRoutes({ ...signedInAs(), [memberRoute]: { body: member } })
     const user = renderApp('/members')
 
     await user.click(await screen.findByRole('button', { name: 'Sign out' }))
 
-    expect(await screen.findByRole('heading', { name: 'Sign in to JayPay Admin' })).toBeInTheDocument()
-    expect(screen.queryByText('Your session has ended. Sign in again.')).not.toBeInTheDocument()
-    expect(storedSession()).toBeNull()
+    const { path, params } = lastExit()
+    expect(path).toBe(`${endpoints}/logout`)
+    expect(params.get('client_id')).toBe('jaypay-admin-console')
+    expect(params.get('id_token_hint')).toBe('id-token-1')
+    expect(params.get('post_logout_redirect_uri')).toBe(`${window.location.origin}/signed-out`)
+    expect(await screen.findByText('You signed out.')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Admin menu' })).not.toBeInTheDocument()
+    expect(requests.filter((r) => r.url.startsWith('/api/'))).toEqual([])
+  })
+
+  test('the page Keycloak returns to after sign-out offers to sign in again', async () => {
+    fakeRoutes({})
+    const user = renderApp('/signed-out')
+
+    expect(await screen.findByText('You signed out.')).toBeInTheDocument()
+    expect(leaveFor).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(lastExit().path).toBe(`${endpoints}/auth`)
+    })
+    expect(pending()?.returnTo).toBe('/members')
   })
 })
 
 describe('the end of a session', () => {
-  test('a request the server no longer accepts ends the session and signing in again returns to the screen', async () => {
-    const routes: Record<string, Reply> = {
+  test('a request the server no longer accepts ends the session without sending the visitor away', async () => {
+    fakeRoutes({
       ...signedInAs(),
       [queueRoute]: { status: 401, body: { error: 'UNAUTHENTICATED', message: 'Sign in again.' } },
-      [signInRoute]: { body: issued },
-    }
-    fakeRoutes(routes)
+    })
     const user = renderApp('/settlement')
 
     expect(await screen.findByText('Your session has ended. Sign in again.')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Sign in to JayPay Admin' })).toBeInTheDocument()
-    expect(storedSession()).toBeNull()
+    expect(leaveFor).not.toHaveBeenCalled()
 
-    routes[queueRoute] = { body: [] }
-    await signIn(user)
-
-    expect(await screen.findByRole('heading', { name: 'Settlement' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(lastExit().path).toBe(`${endpoints}/auth`)
+    })
+    expect(pending()?.returnTo).toBe('/settlement')
   })
 
-  test('a stored session past its expiry is not restored', async () => {
-    const requests = fakeRoutes(signedInAs('OPERATOR', hoursFromNow(-1)))
+  test('the tokens are refreshed before the access token expires', async () => {
+    const requests = fakeRoutes({ ...signedInAs('OPERATOR', 31), [memberRoute]: { body: member } })
     renderApp('/members')
+    await screen.findByRole('heading', { name: 'Members' })
 
-    expect(await screen.findByText('Your session has ended. Sign in again.')).toBeInTheDocument()
-    expect(requests).toEqual([])
-    expect(storedSession()).toBeNull()
+    await waitFor(
+      () => {
+        expect(requests.filter((r) => r.url === `${endpoints}/token`)).toHaveLength(2)
+      },
+      { timeout: 3000 },
+    )
+    const refresh = requests.filter((r) => r.url === `${endpoints}/token`)[1]
+    expect(formOf(refresh?.body)).toEqual({
+      client_id: 'jaypay-admin-console',
+      grant_type: 'refresh_token',
+      refresh_token: 'refresh-operator-offline_access',
+    })
+    expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
   })
 
-  test('a token the server rejects on restore ends the session', async () => {
-    signedInAs()
-    fakeRoutes({ [meRoute]: { status: 401, body: { error: 'UNAUTHENTICATED', message: 'Sign in again.' } } })
+  test('a refresh Keycloak refuses ends the session', async () => {
+    const routes: Record<string, Reply> = { ...signedInAs('OPERATOR', 31) }
+    fakeRoutes(routes)
     renderApp('/members')
+    await screen.findByRole('heading', { name: 'Members' })
+    routes[tokenRoute] = { status: 400, body: { error: 'invalid_grant' } }
 
-    expect(await screen.findByText('Your session has ended. Sign in again.')).toBeInTheDocument()
-    expect(storedSession()).toBeNull()
-  })
-
-  test('the session ends on its own when it expires', async () => {
-    fakeRoutes(signedInAs('OPERATOR', new Date(Date.now() + 300).toISOString()))
-    renderApp('/members')
-
-    expect(await screen.findByRole('heading', { name: 'Members' })).toBeInTheDocument()
-    expect(await screen.findByText('Your session has ended. Sign in again.', {}, { timeout: 2000 })).toBeInTheDocument()
-    expect(storedSession()).toBeNull()
+    expect(await screen.findByText('Your session has ended. Sign in again.', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(leaveFor).not.toHaveBeenCalled()
   })
 })

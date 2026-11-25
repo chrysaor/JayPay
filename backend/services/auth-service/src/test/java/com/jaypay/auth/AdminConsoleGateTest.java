@@ -1,8 +1,6 @@
 package com.jaypay.auth;
 
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,18 +8,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.net.URI;
-import java.util.Map;
+import java.time.Duration;
 
-import static com.jaypay.auth.StaffApi.ADMIN;
-import static com.jaypay.auth.StaffApi.ADMIN_PASSWORD;
-import static com.jaypay.auth.StaffApi.OPERATOR;
-import static com.jaypay.auth.StaffApi.OPERATOR_PASSWORD;
-import static com.jaypay.auth.StaffApi.VIEWER;
-import static com.jaypay.auth.StaffApi.VIEWER_PASSWORD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,21 +25,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AdminConsoleGateTest {
+
+    private static final String MEMBER = "/authorize/api/membership/memberships/1";
 
     @Autowired
     private MockMvc mockMvc;
 
-    private Map<String, String> tokens;
-
-    @BeforeAll
-    void signIn() throws Exception {
-        StaffApi api = new StaffApi(mockMvc);
-        tokens = Map.of(
-                "VIEWER", api.tokenOf(VIEWER, VIEWER_PASSWORD),
-                "OPERATOR", api.tokenOf(OPERATOR, OPERATOR_PASSWORD),
-                "ADMIN", api.tokenOf(ADMIN, ADMIN_PASSWORD));
+    @DynamicPropertySource
+    static void keycloak(DynamicPropertyRegistry registry) {
+        StaffTokens.register(registry);
     }
 
     @ParameterizedTest(name = "{0} {1}: anonymous {2}, viewer {3}, operator {4}, admin {5}")
@@ -62,8 +52,8 @@ class AdminConsoleGateTest {
             "POST,   /authorize/api/payment/payment/request,                                                 401, 403, 403, 403",
             "GET,    /authorize/api/banking/banking/1,                                                       401, 403, 403, 403",
             "GET,    /authorize,                                                                             401, 403, 403, 403",
-            "GET,    /staff/me,                                                                              401, 200, 200, 200",
-            "GET,    /staff/accounts,                                                                        401, 403, 403, 200",
+            "GET,    /staff/me,                                                                              401, 403, 403, 403",
+            "POST,   /staff/sign-in,                                                                         401, 403, 403, 403",
             "GET,    /actuator/health,                                                                       200, 200, 200, 200",
             "GET,    /actuator/prometheus,                                                                   200, 200, 200, 200",
             "GET,    /v3/api-docs,                                                                           200, 200, 200, 200",
@@ -72,9 +62,45 @@ class AdminConsoleGateTest {
     })
     void decidesEveryRequestOfTheAdminConsole(String method, String path, int anonymous, int viewer, int operator, int admin) throws Exception {
         mockMvc.perform(request(HttpMethod.valueOf(method), URI.create(path))).andExpect(status().is(anonymous));
-        mockMvc.perform(as("VIEWER", request(HttpMethod.valueOf(method), URI.create(path)))).andExpect(status().is(viewer));
-        mockMvc.perform(as("OPERATOR", request(HttpMethod.valueOf(method), URI.create(path)))).andExpect(status().is(operator));
-        mockMvc.perform(as("ADMIN", request(HttpMethod.valueOf(method), URI.create(path)))).andExpect(status().is(admin));
+        send(StaffTokens.of("viewer"), request(HttpMethod.valueOf(method), URI.create(path))).andExpect(status().is(viewer));
+        send(StaffTokens.of("operator"), request(HttpMethod.valueOf(method), URI.create(path))).andExpect(status().is(operator));
+        send(StaffTokens.of("admin"), request(HttpMethod.valueOf(method), URI.create(path))).andExpect(status().is(admin));
+    }
+
+    @Test
+    void aTokenWithSeveralRolesGetsTheHighest() throws Exception {
+        send(StaffTokens.of("viewer", "operator", "offline_access"), request(HttpMethod.PUT, MEMBER)).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void aTokenWithoutAStaffRoleOpensNothing() throws Exception {
+        send(StaffTokens.of("default-roles-staff", "offline_access"), get(MEMBER)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void aTokenSignedWithAnotherKeyIsRefused() throws Exception {
+        send(StaffTokens.of("admin").signedByAnotherKey(), get(MEMBER)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void anExpiredTokenIsRefused() throws Exception {
+        send(StaffTokens.of("admin").expiredFor(Duration.ofMinutes(2)), get(MEMBER)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aTokenFromAnotherIssuerIsRefused() throws Exception {
+        send(StaffTokens.of("admin").issuedBy("http://admin.jaypay.test/realms/customer"), get(MEMBER)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aTokenForAnotherAudienceIsRefused() throws Exception {
+        send(StaffTokens.of("admin").forAudience("account"), get(MEMBER)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aCustomerTokenIsRefused() throws Exception {
+        mockMvc.perform(get(MEMBER).header("Authorization", "Bearer " + StaffTokens.customerToken()))
+                .andExpect(status().isUnauthorized());
     }
 
     @ParameterizedTest
@@ -87,7 +113,7 @@ class AdminConsoleGateTest {
             "/authorize/api/membership/memberships/%251",
     })
     void refusesAPathThatCouldMeanSomethingElseUpstream(String path) throws Exception {
-        mockMvc.perform(as("ADMIN", get(URI.create(path)))).andExpect(status().isForbidden());
+        send(StaffTokens.of("admin"), get(URI.create(path))).andExpect(status().isForbidden());
     }
 
     @Test
@@ -99,12 +125,12 @@ class AdminConsoleGateTest {
 
     @Test
     void aForbiddenRequestLearnsItsRoleIsNotEnough() throws Exception {
-        mockMvc.perform(as("VIEWER", request(HttpMethod.POST, "/authorize/api/payment/payment/finish-settlement")))
+        send(StaffTokens.of("viewer"), request(HttpMethod.POST, "/authorize/api/payment/payment/finish-settlement"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("FORBIDDEN"));
     }
 
-    private MockHttpServletRequestBuilder as(String role, MockHttpServletRequestBuilder request) {
-        return StaffApi.bearer(request, tokens.get(role));
+    private ResultActions send(StaffTokens.Token token, MockHttpServletRequestBuilder request) throws Exception {
+        return mockMvc.perform(request.header("Authorization", "Bearer " + token.value()));
     }
 }

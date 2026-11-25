@@ -13,14 +13,14 @@ docker compose -f infra/docker/compose.yaml up -d --wait
 scripts/smoke.sh
 ```
 
-1. `scripts/init-env.py` writes `infra/docker/.env` from `.env.example`. It replaces `<hex:N>` with N random bytes in hex and `<password:N>` with N random characters that pass the staff password rules, keeps a lowercase prefix such as `admin-` in front of either, keeps values that are already set, and never prints them. Run it again after `.env.example` gains a key.
+1. `scripts/init-env.py` writes `infra/docker/.env` from `.env.example`. It replaces `<hex:N>` with N random bytes in hex and `<password:N>` with N random characters that pass the Keycloak password policy of the realm `staff`, keeps a lowercase prefix such as `admin-` in front of either, keeps values that are already set, and never prints them. Run it again after `.env.example` gains a key.
 2. `make images` builds the service images and both front-end images. Compose builds the OpenTelemetry Collector image on first start.
 3. `up -d --wait` returns once every container reports healthy.
-4. `scripts/smoke.sh` signs a member up through the web site, registers a bank account, tops the wallet up through the Axon saga and through the Kafka task, pays, signs the three default staff accounts in to the admin console, checks that a request without a staff token or with a customer token is refused, that a viewer cannot write, that the saga top-ups of the run's own region add up in DynamoDB and are still there after it removes and recreates the `dynamodb` container, that an operator cannot manage staff accounts, and that an account an admin creates and deactivates can no longer sign in, and then checks that every service shipped logs to ClickHouse, that the HTTP, Kafka and Axon traces cross services and lead to their logs, and that Prometheus scrapes every service. It exits non-zero and prints the cause on the first failure.
+4. `scripts/smoke.sh` signs a member up through the web site, registers a bank account, tops the wallet up through the Axon saga and through the Kafka task, pays, signs the three default staff accounts in to the admin console through the real Keycloak Authorization Code flow with PKCE, checks that a request without a staff token or with a customer token is refused, that a viewer cannot write, that the saga top-ups of the run's own region add up in DynamoDB and are still there after it removes and recreates the `dynamodb` container, that signing out ends the Keycloak session, that an account created through the Keycloak admin API is refused a weak password, signs in, and once disabled can neither sign in nor refresh, that five wrong passwords lock an account so that even the right password is refused, and then checks that every service shipped logs to ClickHouse, that the HTTP, Kafka and Axon traces cross services and lead to their logs, and that Prometheus scrapes every service. It exits non-zero and prints the cause on the first failure.
 
 Stop the stack with `docker compose -f infra/docker/compose.yaml down`. Add `-v` to drop the named volumes as well.
 
-`postgres/initdb.d` creates one database per service only when the `jaypay_postgres-data` volume is new. A volume from before auth-service has no `auth` database, so auth-service and the PostgreSQL healthcheck fail. Run `docker volume rm jaypay_postgres-data` after `make down` to start over.
+`postgres/initdb.d/01-databases.sql` creates one database per service and the `keycloak` database when the `jaypay_postgres-data` volume is new. PostgreSQL runs that directory only on an empty volume, so `postgres/create-databases.sh` runs as the `post_start` hook of the container on every start, waits for the server and creates any database from `01-databases.sql` that the volume lacks. An existing volume therefore gains the `keycloak` database on the next `make up`. The PostgreSQL healthcheck connects to `keycloak`, so Keycloak starts only after that database exists. The `auth` database of earlier versions stays in an old volume unused.
 
 DynamoDB Local keeps its data in the `jaypay_dynamodb-data` volume, so the region totals of money-query-service survive `make down`. The container runs as root because the image's `dynamodblocal` user cannot write to a new named volume. When the container starts, `dynamodb/table.sh` creates the table `MoneyIncreaseEventByRegion` from `infra/terraform/modules/dynamodb-money-sum/table.json` unless it exists, the same file Terraform applies to AWS, see [infra/terraform/README.md](../terraform/README.md). Run `docker volume rm jaypay_dynamodb-data` after `make down` to start over. DynamoDB Local accepts an access key of letters and digits only, which is why money-query-service gets `dynamodblocal`.
 
@@ -34,6 +34,7 @@ membership-service encrypts member emails with AES-GCM and cannot read rows writ
 | --- | --- |
 | Web site | http://localhost:8090 |
 | Admin console, staff sign-in | http://localhost:8091 |
+| Keycloak admin console, user `admin` with `KEYCLOAK_ADMIN_PASSWORD` | http://localhost:8092 |
 | Grafana, no login | http://localhost:3030 |
 | Prometheus | http://localhost:9090 |
 | Kafka UI | http://localhost:8989 |
@@ -46,19 +47,23 @@ membership-service encrypts member emails with AES-GCM and cannot read rows writ
 | OTLP gRPC and HTTP | localhost:4317, localhost:4318 |
 | Services | membership 8081, banking 8082, money 8083, remittance 8084, payment 8085, money-aggregation 8086, money-query 8087, settlement 8088, auth 8089 |
 
-The front ends use 8090 and 8091 because 3000 and 3001 are common development server ports. The front ends proxy `/api/<service>/...` to the services by their Compose names, so they need no environment. The admin console sends every `/api/<service>/` request to auth-service first through nginx `auth_request` and forwards it only on a 204, and it proxies `/api/auth/staff/` to auth-service for sign-in and account management.
+The front ends use 8090 and 8091 because 3000 and 3001 are common development server ports. The front ends proxy `/api/<service>/...` to the services by their Compose names, so they need no environment. The admin console sends every `/api/<service>/` request to auth-service first through nginx `auth_request` and forwards it only on a 204, and it proxies `/realms/staff/` and `/resources/` to Keycloak for the sign-in pages.
 
 ## Staff accounts
 
-auth-service creates one staff account per role the first time it starts with an empty `auth` database, from the `STAFF_*` keys below, and leaves an account that already exists as it is. Sign in to http://localhost:8091 with those values. A role includes everything the role below it can do.
+Keycloak keeps the staff accounts in the realm `staff`. When Keycloak starts with an empty `keycloak` database, `--import-realm` reads `keycloak/import/staff.json`, which defines the realm, its roles, the client `jaypay-admin-console` and one account per role. The file holds no password: Keycloak replaces `${STAFF_ADMIN_USERNAME}`, `${STAFF_ADMIN_PASSWORD}` and the other `STAFF_*` placeholders with the environment of the container while it imports. The import skips a realm that exists, so a later change to the file does not reach an existing database. Apply such a change in the Keycloak admin console, or drop the `keycloak` database to import again.
 
-| Role | Can |
+Sign in to http://localhost:8091 with the `STAFF_*` values. Manage accounts, roles and passwords in the Keycloak admin console at http://localhost:8092 as `admin` with `KEYCLOAK_ADMIN_PASSWORD`, in the realm `staff`. It replaced the staff accounts page of the admin console. A role includes everything the role below it can do.
+
+| Realm role | Can |
 | --- | --- |
-| viewer | Read every screen of the admin console and change its own password |
+| viewer | Read every screen of the admin console |
 | operator | Also edit members and mark payments settled |
-| admin | Also create staff accounts, change their roles, turn their MFA flag on and off, and deactivate them; an admin cannot change its own role or deactivate itself |
+| admin | Everything an operator can do |
 
-A password needs at least 12 characters and at most 72 bytes, an uppercase letter, a lowercase letter, a digit and a symbol, must not contain the username, and must not be on the built-in list of common passwords. `PasswordPolicy` in auth-service holds the rules, and the API and the screen name each rule a password breaks. A staff token lasts 8 hours, and a role change or deactivation applies to it on the next request.
+The password policy asks for 12 to 128 characters, an uppercase letter, a lowercase letter, a digit and a symbol, not the username or email, not one of the last 5 passwords, and not a password from `keycloak/password-blacklists/common-passwords.txt`. Five wrong passwords lock an account for a minute, longer with each further failure up to 15 minutes, and two failures within a second lock it at once. Staff change their own password and add an authenticator app at http://localhost:8091/realms/staff/account. The app is optional. An access token lasts 2 minutes and the console refreshes it, and a session ends after 30 idle minutes or 8 hours.
+
+Keycloak runs `start` with `KC_HTTP_ENABLED`, because the local stack has no TLS. `KC_HOSTNAME` is the admin site's URL, so every token carries the issuer `http://localhost:8091/realms/staff`, which auth-service expects. [docs/architecture.md](../../docs/architecture.md#one-origin-for-the-browser-and-the-containers) explains why.
 
 ## Observability
 
@@ -85,9 +90,9 @@ Grafana provisions both data sources and three dashboards in the JayPay folder: 
 | `JWT_SECRET` | Signing key for the tokens membership-service issues | yes | 128 hex characters |
 | `CLICKHOUSE_PASSWORD` | Password of the ClickHouse user `otel`, used by the Collector and Grafana | yes | 48 hex characters |
 | `GRAFANA_ADMIN_PASSWORD` | Password of the Grafana `admin` account for the HTTP API; the web UI needs no login | yes | 48 hex characters |
-| `STAFF_JWT_SECRET` | Signing key for the staff tokens auth-service issues; separate from `JWT_SECRET`, so a staff token and a customer token never open each other's site | yes | 64 hex characters |
-| `STAFF_ADMIN_USERNAME`, `STAFF_ADMIN_PASSWORD` | The admin account auth-service creates when it is missing | yes | `admin-` and 6 hex characters, 24 random characters |
-| `STAFF_OPERATOR_USERNAME`, `STAFF_OPERATOR_PASSWORD` | The operator account auth-service creates when it is missing | yes | `operator-` and 6 hex characters, 24 random characters |
-| `STAFF_VIEWER_USERNAME`, `STAFF_VIEWER_PASSWORD` | The viewer account auth-service creates when it is missing | yes | `viewer-` and 6 hex characters, 24 random characters |
+| `KEYCLOAK_ADMIN_PASSWORD` | Password of the Keycloak `admin` account in the master realm, which Keycloak creates on its first start | yes | 24 random characters |
+| `STAFF_ADMIN_USERNAME`, `STAFF_ADMIN_PASSWORD` | The admin account the realm import creates in Keycloak | yes | `admin-` and 6 hex characters, 24 random characters |
+| `STAFF_OPERATOR_USERNAME`, `STAFF_OPERATOR_PASSWORD` | The operator account the realm import creates in Keycloak | yes | `operator-` and 6 hex characters, 24 random characters |
+| `STAFF_VIEWER_USERNAME`, `STAFF_VIEWER_PASSWORD` | The viewer account the realm import creates in Keycloak | yes | `viewer-` and 6 hex characters, 24 random characters |
 
 `python3 scripts/check-env.py .` checks that `compose.yaml` and `.env.example` name the same keys, and that every variable a service receives is one the service reads without repeating its default. `make verify` runs it as the `env` step.

@@ -1,0 +1,50 @@
+{{- if eq .Release.Name "keycloak" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "staff.json" "files/keycloak/import/staff.json" "common-passwords.txt" "files/keycloak/password-blacklists/common-passwords.txt")) }}
+---
+{{ include "dependency.service" . }}
+    - name: http
+      port: 8080
+      targetPort: http
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          args: [start, --import-realm]
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: import
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+            - name: password-blacklists
+              mountPath: /opt/keycloak/data/password-blacklists
+              readOnly: true
+      volumes:
+        - name: import
+          configMap:
+            name: keycloak-files
+            items:
+              - key: staff.json
+                path: staff.json
+        - name: password-blacklists
+          configMap:
+            name: keycloak-files
+            items:
+              - key: common-passwords.txt
+                path: common-passwords.txt
+{{- end }}

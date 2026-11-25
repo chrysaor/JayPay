@@ -269,7 +269,11 @@ def model(root):
     stale = sorted(set(CALL_PURPOSES) - http)
     problems += [f"scripts/check-docs.py: {a} calls {b} in {CALLS_FILE}, add its purpose to CALL_PURPOSES" for a, b in missing]
     problems += [f"scripts/check-docs.py: CALL_PURPOSES lists {a} calling {b}, which {CALLS_FILE} does not" for a, b in stale]
-    return {"services": services, "sites": sites, "info": info, "http": http, "dynamodb_table": table}, problems
+    keycloak = compose.get("keycloak", {}).get("ports") or []
+    if not keycloak:
+        problems.append("compose.yaml: keycloak publishes no port")
+    return {"services": services, "sites": sites, "info": info, "http": http, "dynamodb_table": table,
+            "keycloak_port": keycloak[0]["published"] if keycloak else None}, problems
 
 
 def short(name):
@@ -283,26 +287,35 @@ def request_path(m):
     admin_targets = set(info[admin]["calls"]) - {"auth-service"}
     row = request_order(m)
     batches = [s for s in m["services"] if info[s]["batch"] and not info[s]["called_by"]]
-    box_w, gap, x0 = 140, 12, 16
-    width, height = x0 * 2 + len(row) * box_w + (len(row) - 1) * gap, 400
+    box_w, gap, x0, side_w = 140, 12, 16, 150
+    row_width = x0 * 2 + len(row) * box_w + (len(row) - 1) * gap
+    width, height = row_width + side_w + 60, 400
     cx = {name: x0 + i * (box_w + gap) + box_w / 2 for i, name in enumerate(row)}
     sy, sh, web_bus, admin_bus = 210, 48, 124, 156
     svg = Svg(width, height, "JayPay request path",
               f"The customer site forwards /api/<service>/ to {', '.join(sorted(web_targets))}. "
-              f"The admin console asks auth-service before every call and then forwards to {', '.join(sorted(admin_targets))}. "
+              f"The admin console signs staff in through Keycloak, asks auth-service before every call, "
+              f"and then forwards to {', '.join(sorted(admin_targets))}. auth-service checks the Keycloak token against the realm keys. "
               + " ".join(f"{b} runs a batch against {' and '.join(info[b]['calls'])}." for b in batches))
 
     def site_center(targets):
         return cx[row[round(sum(row.index(t) for t in targets) / len(targets) - 0.01)]]
 
     web_c, admin_c = site_center(web_targets), site_center(admin_targets)
-    auth_x = width - 16 - 150
+    auth_x = row_width - 16 - side_w
+    keycloak_x = width - 16 - side_w
     svg.box(web_c - 100, 24, 200, 52, web, f"{SITE_ROLES[web]}, port {info[web]['port']}", "bluebox")
     svg.box(admin_c - 100, 24, 200, 52, admin, f"{SITE_ROLES[admin]}, port {info[admin]['port']}", "orangebox")
-    svg.box(auth_x, 24, 150, 52, "auth-service", f"staff, port {info['auth-service']['port']}")
+    svg.box(auth_x, 24, side_w, 52, "auth-service", f"staff gate, port {info['auth-service']['port']}")
+    svg.box(keycloak_x, 24, side_w, 52, "keycloak", f"staff realm, port {m['keycloak_port']}", "orangebox")
     svg.arrow([(admin_c + 100, 50), (auth_x, 50)], "orange", "orangef")
     svg.label((admin_c + 100 + auth_x) / 2, 42, "auth_request", "orangef", "middle")
-    svg.label((admin_c + 100 + auth_x) / 2, 68, "staff sign-in", "orangef", "middle")
+    svg.arrow([(auth_x + side_w, 50), (keycloak_x, 50)], "gray dashed", "grayf")
+    svg.label((auth_x + side_w + keycloak_x) / 2, 42, "keys", "s", "middle")
+    sign_in_y = 96
+    svg.path([(admin_c + 80, 76), (admin_c + 80, sign_in_y), (keycloak_x + side_w / 2, sign_in_y)], "orange")
+    svg.arrow([(keycloak_x + side_w / 2, sign_in_y), (keycloak_x + side_w / 2, 76)], "orange", "orangef")
+    svg.label(keycloak_x + side_w / 2 - 8, sign_in_y - 6, "sign-in, /realms/staff/", "orangef", "end")
 
     def drop_x(name, site):
         both = name in web_targets and name in admin_targets

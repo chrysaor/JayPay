@@ -135,11 +135,55 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+      - ./postgres/create-databases.sh:/usr/local/bin/create-databases.sh:ro
+    post_start:
+      - command: ["sh", "/usr/local/bin/create-databases.sh"]
     healthcheck:
-      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "auth", "-tAc", "select 1"]
+      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "keycloak", "-tAc", "select 1"]
       interval: 5s
       timeout: 5s
       start_period: 30s
+      retries: 12
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
+    command: ["start", "--import-realm"]
+    restart: unless-stopped
+    mem_limit: 768m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8092:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: jaypay
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.py}
+      KC_DB_POOL_MAX_SIZE: "10"
+      JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25
+      KC_HOSTNAME: http://localhost:8091
+      KC_HOSTNAME_ADMIN: http://localhost:8092
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_CACHE: local
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?run scripts/init-env.py}
+      STAFF_ADMIN_USERNAME: ${STAFF_ADMIN_USERNAME:?run scripts/init-env.py}
+      STAFF_ADMIN_PASSWORD: ${STAFF_ADMIN_PASSWORD:?run scripts/init-env.py}
+      STAFF_OPERATOR_USERNAME: ${STAFF_OPERATOR_USERNAME:?run scripts/init-env.py}
+      STAFF_OPERATOR_PASSWORD: ${STAFF_OPERATOR_PASSWORD:?run scripts/init-env.py}
+      STAFF_VIEWER_USERNAME: ${STAFF_VIEWER_USERNAME:?run scripts/init-env.py}
+      STAFF_VIEWER_PASSWORD: ${STAFF_VIEWER_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import:ro
+      - ./keycloak/password-blacklists:/opt/keycloak/data/password-blacklists:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
       retries: 12
 
   vault:
@@ -402,16 +446,13 @@ services:
     ports:
       - "127.0.0.1:8089:8080"
     environment:
-      <<: *jpa-service-env
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
-      STAFF_JWT_SECRET: ${STAFF_JWT_SECRET:?run scripts/init-env.py}
-      STAFF_ADMIN_USERNAME: ${STAFF_ADMIN_USERNAME:?run scripts/init-env.py}
-      STAFF_ADMIN_PASSWORD: ${STAFF_ADMIN_PASSWORD:?run scripts/init-env.py}
-      STAFF_OPERATOR_USERNAME: ${STAFF_OPERATOR_USERNAME:?run scripts/init-env.py}
-      STAFF_OPERATOR_PASSWORD: ${STAFF_OPERATOR_PASSWORD:?run scripts/init-env.py}
-      STAFF_VIEWER_USERNAME: ${STAFF_VIEWER_USERNAME:?run scripts/init-env.py}
-      STAFF_VIEWER_PASSWORD: ${STAFF_VIEWER_PASSWORD:?run scripts/init-env.py}
-    depends_on: *jpa-service-depends-on
+      <<: *service-env
+      STAFF_ISSUER_URI: http://localhost:8091/realms/staff
+      STAFF_JWK_SET_URI: http://keycloak:8080/realms/staff/protocol/openid-connect/certs
+    depends_on:
+      <<: *service-depends-on
+      keycloak:
+        condition: service_healthy
 
   task-consumer:
     <<: *service
