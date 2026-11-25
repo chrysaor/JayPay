@@ -12,7 +12,11 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - The service images run a `jlink` runtime cut from the same Temurin build on a distroless glibc base with no shell or package manager. The libraries every service shares sit in their own layers, so the eleven images share them, and membership-service drops from about 485 MB to 281 MB uncompressed ([#107](https://github.com/chrysaor/JayPay/pull/107))
 - The tag workflow fails before it publishes any image when `CHANGELOG.md` has no section for the version, and it retries creating the GitHub Release when GitHub answers with an error ([#113](https://github.com/chrysaor/JayPay/issues/113))
+- Every money-service change takes a `requestId` in its body and answers a repeat with the first result, or 409 `REQUEST_ID_REUSED` when the same id carries a different change. `/money/decrease` lowers the balance, `/money/decrease-eda` is gone, and balances and amounts are 64-bit in money-service, remittance-service and money-aggregation-service. Wallets live in the new `wallet` table, so wallets in a local database from before start again from zero ([#96](https://github.com/chrysaor/JayPay/issues/96))
 
+### Fixed
+
+- A wallet balance stays correct: money-service refuses an amount that is not a whole number from 1 to `MONEY_AMOUNT_MAX` (10,000,000 by default) with 400 and changes nothing, a decrease never takes a balance below zero, each member has one wallet, and concurrent or repeated requests count exactly once ([#96](https://github.com/chrysaor/JayPay/issues/96))
 ### Security
 
 - The customer site forwards only the 11 requests its screens make and answers 404 to every other `/api/` path, so the services' internal endpoints, Actuator and the OpenAPI pages no longer answer through it ([#110](https://github.com/chrysaor/JayPay/pull/110))
