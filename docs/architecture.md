@@ -29,8 +29,8 @@ sequenceDiagram
     Note over banking: stores the firm banking request,<br/>the fake bank moves the money
     banking->>money: RequestFirmBankingFinishedEvent
     banking->>query: RequestFirmBankingFinishedEvent
-    Note over money: the saga adds the amount<br/>to the balance in PostgreSQL
-    alt the balance update fails
+    Note over money: the saga adds the amount<br/>to the balance in PostgreSQL once
+    alt money-service has no record of the request
         money->>banking: RollbackFirmBankingRequestCommand
         banking->>money: RollbackFirmBankingFinishedEvent
     end
