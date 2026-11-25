@@ -4,7 +4,7 @@ The [root README](../README.md) shows the services, the messaging and the observ
 
 ## Money top-up through the saga
 
-`POST /money/increase-eda` on money-service tops a wallet up through Axon. `make smoke` calls it through the customer site's proxy at `/api/money/money/increase-eda`. The top-up form on the customer site calls the synchronous `POST /money/increase` instead. money-service answers `increase-eda` as soon as it sends the first command. The rest of the flow runs on Axon commands and events, and a saga in money-service drives it. Every command and event below travels through Axon Server, which the diagram leaves out.
+`POST /money/increase-eda` on money-service tops a wallet up through Axon. `make smoke` calls it through the customer site's proxy at `/api/money/money/increase-eda`. The top-up form on the customer site calls the synchronous `POST /money/increase` instead. money-service answers `increase-eda` with the running wallet change as soon as it sends the first command. The rest of the flow runs on Axon commands and events, and a saga in money-service drives it. Every command and event below travels through Axon Server, which the diagram leaves out.
 
 ```mermaid
 sequenceDiagram
@@ -17,23 +17,24 @@ sequenceDiagram
     participant dynamodb as DynamoDB
 
     web->>money: POST /money/increase-eda
-    money-->>web: 200, empty body
+    money-->>web: 200, wallet change with the status 0
     Note over money: the member money aggregate handles<br/>RechargingMoneyRequestCreateCommand
     money->>banking: GET /banking/account/{membershipId}
     banking-->>money: registered bank account
-    Note over money: RechargingRequestCreatedEvent<br/>starts the recharge saga
+    Note over money: RechargingRequestCreatedEvent<br/>starts the recharge saga and its deadline
     money->>banking: CheckRegisteredBankAccountCommand
     Note over banking: the fake bank confirms the account
     banking->>money: CheckedRegisteredBankAccountEvent
     money->>banking: RequestFirmBankingCommand
-    Note over banking: stores the firm banking request,<br/>the fake bank moves the money
+    Note over banking: stores the transfer under recharge-<id>,<br/>the fake bank moves the money once
     banking->>money: RequestFirmBankingFinishedEvent
     banking->>query: RequestFirmBankingFinishedEvent
-    Note over money: the saga adds the amount<br/>to the balance in PostgreSQL once
-    alt money-service has no record of the request
+    Note over money: a confirmed charge adds the amount<br/>to the balance in PostgreSQL once,<br/>a refused one fails the wallet change
+    alt the deadline passes or the wallet change is no longer running
         money->>banking: RollbackFirmBankingRequestCommand
         banking->>money: RollbackFirmBankingFinishedEvent
     end
+    Note over query: only a confirmed charge counts
     query->>membership: GET /memberships/{membershipId}
     membership-->>query: member address
     query->>dynamodb: add the amount to the total of that address

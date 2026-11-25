@@ -55,11 +55,11 @@ Registered bank accounts and firm banking requests against a fake bank.
 | --- | --- |
 | Host port | `8082` |
 | Memory limit | `512m` |
-| Database | PostgreSQL `banking`, tables `registered_bank_account` and `request_firm_banking` |
+| Database | PostgreSQL `banking`, tables `registered_bank_account` and `bank_transfer` |
 | Calls | `membership-service` |
 | Called by | `money-service`, `remittance-service`, `settlement-service`, `frontend-web` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
-| Axon | Aggregates `RegisteredBankAccountAggregate` and `FirmBankingRequestAggregate`. Command handlers for `CreateRegisteredBankAccountCommand`, `CheckRegisteredBankAccountCommand`, `CreateFirmBankingRequestCommand`, `RequestFirmBankingCommand`, `RollbackFirmBankingRequestCommand` and `UpdateFirmBankingRequestCommand`. Applies `CreateRegisteredBankAccountEvent`, `CheckedRegisteredBankAccountEvent`, `FirmBankingRequestCreatedEvent`, `RequestFirmBankingFinishedEvent`, `RollbackFirmBankingFinishedEvent` and `FirmBankingRequestUpdatedEvent`. |
+| Axon | Aggregates `RegisteredBankAccountAggregate` and `FirmBankingRequestAggregate`. Command handlers for `CreateRegisteredBankAccountCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. Applies `CreateRegisteredBankAccountEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`. |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
@@ -68,9 +68,12 @@ banking-service calls membership-service for the member check before it register
 ### What it does
 
 - Registering an account checks the member, asks the fake bank whether the account exists, creates a `RegisteredBankAccountAggregate` through Axon, and stores the account with the aggregate id. The `-eda` variant skips the two checks and stores the account when the command completes.
-- A firm banking request asks the fake bank to move money from one account to another and stores the request with its status. The status is `1` when the bank answers success and `2` otherwise.
-- In the money top-up saga, `CheckRegisteredBankAccountCommand` checks the account and answers with `CheckedRegisteredBankAccountEvent`. `RequestFirmBankingCommand` records a transfer to the company account `jaypay-company` and answers with `RequestFirmBankingFinishedEvent`. `RollbackFirmBankingRequestCommand` sends the amount back and answers with `RollbackFirmBankingFinishedEvent`. [docs/architecture.md](architecture.md) shows the whole saga.
-- `BankAccountAdapter` is the fake bank. It reports every account as valid and every transfer as a success.
+- A firm banking request moves money from one account to another once per `requestId`. `POST /banking/firmbanking/request` takes `requestId`, `fromBankName`, `fromBankAccountNumber`, `toBankName`, `toBankAccountNumber` and `moneyAmount`. `requestId` is 1 to 64 letters, digits, `-` or `_`, and `moneyAmount` is a whole number from 1 to `banking.amount.max`, 10000000. A bad id, amount or account answers 400 with `INVALID_REQUEST_ID`, `INVALID_AMOUNT` or `INVALID_BANK_ACCOUNT`.
+- The first request with an id stores a `bank_transfer` row as `PENDING` through `INSERT ... ON CONFLICT (request_id) DO NOTHING`, locks it, and sends the transfer to the bank under that id. The bank's answer moves the row to `SUCCEEDED` or `FAILED` once. A repeated request with the same content answers with the stored result and sends nothing, and concurrent copies wait for the first. A request that reuses an id for another transfer answers 409 with `REQUEST_ID_REUSED`.
+- When the bank does not answer, the row stays `PENDING` and the request answers 503 with `TRANSFER_NOT_CONFIRMED`. Sending the same request again asks the bank again under the same id. This relies on the bank deduplicating a transfer by its request id, the way a firm banking transaction number works. The fake bank keeps that memory in the process.
+- The answer carries the request with `transferStatus` `SUCCEEDED` or `FAILED`.
+- In the money top-up saga, `CheckRegisteredBankAccountCommand` checks the account and answers with `CheckedRegisteredBankAccountEvent`. `RequestFirmBankingCommand` sends the transfer to the company account `jaypay-company` under the request id `recharge-<rechargingRequestId>` and answers with `RequestFirmBankingFinishedEvent`, whose status is `0` when the bank confirmed it, `1` when the bank refused it and `2` when the bank did not answer. `RollbackFirmBankingRequestCommand` sends the amount back under `recharge-<rechargingRequestId>-refund` only when the charge landed, and first records the charge id as cancelled, so a charge the bank never confirmed cannot land later. It answers with `RollbackFirmBankingFinishedEvent`. [docs/architecture.md](architecture.md) shows the whole saga.
+- `BankAccountAdapter` is the fake bank. It reports every account as valid, refuses a transfer from or to an account number that ends in `-refused`, and accepts every other transfer.
 
 ### Endpoints
 
@@ -78,15 +81,15 @@ banking-service calls membership-service for the member check before it register
 - `POST /banking/account/register-eda` registers a bank account through an Axon command and returns no body.
 - `GET /banking/account/{membershipId}` returns the registered account of a member.
 - `POST /banking/info` asks the fake bank whether an account is valid.
-- `POST /banking/firmbanking/request` runs a firm banking transfer and returns the stored request.
-- `POST /banking/firmbanking/request-eda` runs a firm banking transfer through an Axon command and returns no body.
-- `PUT /banking/firmbanking/update-eda` changes the status of a firm banking aggregate and of its stored request.
+- `POST /banking/firmbanking/request` sends a bank transfer once per request id and returns its result.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
 ### Known limitations
 
-- The fake bank accepts every account and every transfer.
+- The fake bank accepts every account and every transfer to an account number that does not end in `-refused`. It forgets the transfers it answered when banking-service restarts.
+- A transfer left `PENDING` stays that way until the same request is sent again. Nothing retries it in the background.
+- Firm banking requests from before the `bank_transfer` table stay in the old `request_firm_banking` table, which banking-service no longer reads.
 - `POST /banking/account/register` throws a `NullPointerException` when the member is not valid, because the membership adapter returns no status for such a member.
 - `GET /banking/account/{membershipId}` throws `NoSuchElementException` when the member has no registered account.
 
@@ -120,15 +123,16 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. An invalid member answers with the status `2`.
 - `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
 - `POST /money/increase-async` writes a task with two subtasks to `jaypay.task.topic` and blocks the request until the result arrives on `jaypay.task.result.topic`. When every subtask is done, it adds the amount the same way as `POST /money/increase` and answers.
-- `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once. A repeated request id sends nothing. The saga then checks the bank account through banking-service, requests the firm banking, and adds the amount to the balance once, however often `RequestFirmBankingFinishedEvent` arrives. When the request is unknown, it sends `RollbackFirmBankingRequestCommand`.
-- `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created.
+- `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account fails at once with the status `2`.
+- The saga checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. An account that fails the check or a charge the bank refuses ends the wallet change as `2` and moves no money. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
+- `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created. It waits for the command, so a failure answers as an error. A wallet keeps the first aggregate it was linked to. A saga top-up for a member without an aggregate creates one first.
 - `POST /money/member-money` returns the wallets of a list of member ids. money-aggregation-service uses it to read balances.
 
 ### Endpoints
 
 - `POST /money/increase` tops a wallet up synchronously.
 - `POST /money/increase-async` tops a wallet up through the Kafka task.
-- `POST /money/increase-eda` tops a wallet up through the Axon saga and returns no body.
+- `POST /money/increase-eda` tops a wallet up through the Axon saga and returns the wallet change.
 - `POST /money/decrease` lowers a wallet synchronously.
 - `POST /money/create-member-money` creates a wallet.
 - `POST /money/member-money` returns the wallets of the given members.
@@ -137,8 +141,9 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 
 ### Known limitations
 
-- `POST /money/increase` is open to the customer site and tops up any member's wallet without a bank withdrawal. Moving the wallet page to the saga needs the saga's failure handling ([#99](https://github.com/chrysaor/JayPay/issues/99)) and the member from the token ([#91](https://github.com/chrysaor/JayPay/issues/91)) first.
-- The saga adds the amount even when the firm banking reports a failure, and a saga that stops early leaves its `wallet_change` row at the status `0` ([#99](https://github.com/chrysaor/JayPay/issues/99)).
+- `POST /money/increase` is open to the customer site and tops up any member's wallet without a bank withdrawal. Moving the wallet page to the saga needs the member from the token ([#91](https://github.com/chrysaor/JayPay/issues/91)) first.
+- The saga deadline lives in the memory of the money-service instance, so a restart drops it and a saga that was waiting on the bank stays at the status `0`. A rollback the bank does not confirm is logged and not sent again.
+- Two concurrent first top-ups of a member without an aggregate can each create an aggregate. The wallet keeps one, and the other stays unused.
 - Wallets from before the `wallet` table stay in the old `member_money` table, which money-service no longer reads.
 - `POST /money/increase-async` waits for the task result with no timeout. A failed task returns an empty body.
 - The task result goes to an in-memory latch, so the request returns only when the same money-service instance reads the result.
@@ -193,11 +198,11 @@ The statuses move only this way, and each move is one `UPDATE ... WHERE remittan
 
 `COMPLETED`, `FAILED` and `REFUNDED` are final and answer 200 with the remittance. When money-service gives no answer, the request answers 503 with `{"error":"REMITTANCE_NOT_CONFIRMED"}` and the remittance stays `REQUESTED`, `DEBITED` or `REFUNDING`. Nothing retries it in the background. Sending the same request again repeats the unanswered call with the same request id and finishes the remittance, so a remittance whose credit failed ends `REFUNDED` with the sender's balance as before.
 
-banking-service takes no idempotency key, so a bank remittance sends at most one transfer. The request that moves the remittance from `DEBITED` to `TRANSFERRING` is the only one that calls `POST /banking/firmbanking/request`, and it does so after the sender was debited, so the company account never pays out money the sender still holds. When the bank gives no answer, or the service stops between the status change and the call, the remittance stays `TRANSFERRING` and answers 200 with that status. Repeating the request answers the same and sends nothing. The amount stays taken from the sender until someone checks the firm banking records of banking-service and finishes the remittance by hand.
+A bank remittance sends its transfer with the request id `remittance-<remittanceId>-transfer`, after the sender was debited, so the company account never pays out money the sender still holds. banking-service sends a transfer once per request id. When the bank gives no answer, or the service stops between the status change and the call, the remittance stays `TRANSFERRING` and the request answers 503 with `REMITTANCE_NOT_CONFIRMED`. Sending the same request again asks banking-service again under the same id, so the transfer lands once, and a refused transfer ends `REFUNDED`.
 
 - `GET /remittance/{membershipId}` returns the remittances the member sent or received, newest first.
 
-Every answer with a remittance carries `remittanceId`, `requestId`, `fromMembershipId`, `remittanceType`, `toMembershipId`, `toBankName`, `toBankAccountNumber`, `amount` and `remittanceStatus`. `make smoke` sends money between two members, repeats the remittance, reuses its id for another amount, sends more than the balance, a bad amount and a remittance to the sender, sends money to a bank account, and checks that the two wallets always hold the same total.
+Every answer with a remittance carries `remittanceId`, `requestId`, `fromMembershipId`, `remittanceType`, `toMembershipId`, `toBankName`, `toBankAccountNumber`, `amount` and `remittanceStatus`. `make smoke` sends money between two members, repeats the remittance, reuses its id for another amount, sends more than the balance, a bad amount and a remittance to the sender, sends money to a bank account and repeats it, and checks that the two wallets always hold the same total.
 
 ### Endpoints
 
@@ -209,8 +214,7 @@ Every answer with a remittance carries `remittanceId`, `requestId`, `fromMembers
 ### Known limitations
 
 - The sender comes from the request body, not from a token, so a caller can send money from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)). `GET /remittance/{membershipId}` answers for any member.
-- A bank remittance that the bank did not confirm stays `TRANSFERRING` with the amount taken from the sender, and needs a person to compare it with the firm banking records ([#99](https://github.com/chrysaor/JayPay/issues/99)).
-- A remittance left `REQUESTED`, `DEBITED` or `REFUNDING` after money-service did not answer stays that way until the same request is sent again. A refund that money-service refuses, because the sender is no longer a valid member, keeps the remittance `REFUNDING`.
+- A remittance left `REQUESTED`, `DEBITED`, `TRANSFERRING` or `REFUNDING` after money-service did not answer stays that way until the same request is sent again. A refund that money-service refuses, because the sender is no longer a valid member, keeps the remittance `REFUNDING`.
 - remittance-service trusts any caller and calls money-service and banking-service without service-to-service authentication ([#100](https://github.com/chrysaor/JayPay/issues/100)).
 - Remittances from before the `remittance` table stay in the old `request_remittance` table, which remittance-service no longer reads.
 
@@ -248,15 +252,15 @@ payment-service calls `GET /memberships/{membershipId}` on membership-service to
 The statuses move only this way: `REQUESTED` to `PAID` or `FAILED`, and `PAID` to `SETTLED`.
 
 - `GET /payment/normal-status` returns the `PAID` payments, the ones that wait for settlement.
-- `POST /payment/finish-settlement` takes `{"paymentId":"<id>"}` and runs one `UPDATE ... SET payment_status = 'SETTLED' WHERE payment_id = ? AND payment_status = 'PAID'`. The call that changes the row answers `{"paymentId":<id>,"paymentStatus":"SETTLED","alreadySettled":false}`. A payment that is already settled answers the same with `"alreadySettled":true` and changes nothing. A `REQUESTED` or `FAILED` payment answers 409 with `{"error":"PAYMENT_NOT_PAID"}`, and an unknown id answers 404 with `{"error":"PAYMENT_NOT_FOUND"}`. settlement-service calls it before it pays a payment out, and the admin console calls it from **Mark settled**.
+- `POST /payment/finish-settlement` takes `{"paymentId":"<id>"}` and runs one `UPDATE ... SET payment_status = 'SETTLED' WHERE payment_id = ? AND payment_status = 'PAID'`. The call that changes the row answers `{"paymentId":<id>,"paymentStatus":"SETTLED","alreadySettled":false}`. A payment that is already settled answers the same with `"alreadySettled":true` and changes nothing. A `REQUESTED` or `FAILED` payment answers 409 with `{"error":"PAYMENT_NOT_PAID"}`, and an unknown id answers 404 with `{"error":"PAYMENT_NOT_FOUND"}`. settlement-service calls it after the bank confirmed the payout. The admin console has no button for it, and auth-service refuses it to every staff role.
 
-Every answer with a payment carries `paymentId`, `requestId`, `requestMembershipId`, `franchiseId`, `requestPrice`, `feeRateBasisPoints`, `fee`, `payout`, `paymentStatus` and `approvedAt`. `make smoke` pays a merchant, repeats the payment, pays above the balance, and checks that a settled payment is not settled again.
+Every answer with a payment carries `paymentId`, `requestId`, `requestMembershipId`, `franchiseId`, `requestPrice`, `feeRateBasisPoints`, `fee`, `payout`, `paymentStatus` and `approvedAt`. `make smoke` pays a merchant, repeats the payment, pays above the balance, checks that no staff role may settle a payment by hand, and checks that the settlement job settles the payment once the bank holds its payout.
 
 ### Endpoints
 
 - `POST /payment/request` takes a payment from the paying member's wallet. It reads a JSON body and answers 415 to a form.
 - `GET /payment/normal-status` returns the paid payments that wait for settlement.
-- `POST /payment/finish-settlement` marks one paid payment as settled.
+- `POST /payment/finish-settlement` marks one paid payment as settled. Only settlement-service calls it.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
@@ -314,7 +318,7 @@ money-query-service calls membership-service to read the address of the member i
 
 ### What it does
 
-- For each `RequestFirmBankingFinishedEvent`, the service reads the member's address from `GET /memberships/{membershipId}`. It writes one item for the top-up under the key `<address>#<yyyyMMdd>`, and adds the amount to two totals: the day total under `<address>#<yyyyMMdd>#summary` and the overall total under `<address>`. Both totals use the sort key `-1`.
+- For each `RequestFirmBankingFinishedEvent` with the status `0`, a charge the bank confirmed, the service reads the member's address from `GET /memberships/{membershipId}`. It writes one item for the top-up under the key `<address>#<yyyyMMdd>`, and adds the amount to two totals: the day total under `<address>#<yyyyMMdd>#summary` and the overall total under `<address>`. Both totals use the sort key `-1`.
 - The HTTP endpoint reads the overall total of an address straight from DynamoDB and returns 0 when there is none.
 - `AWS_REGION` defaults to `ap-northeast-2`. Compose points the client at DynamoDB Local through `AWS_ENDPOINT_URL_DYNAMODB`. [infra/terraform/README.md](../infra/terraform/README.md) points it at the AWS table.
 
@@ -327,7 +331,6 @@ money-query-service calls membership-service to read the address of the member i
 ### Known limitations
 
 - Only top-ups through the Axon saga reach the read model. `POST /money/increase` and `POST /money/increase-async` publish no event, so the total can differ from the sum that money-aggregation-service returns.
-- The handler adds the amount of every `RequestFirmBankingFinishedEvent`, whatever status the event carries.
 - Two top-ups of the same amount on the same day at the same address write the same per-top-up item, so the second overwrites the first. The totals still count both.
 
 ## settlement-service
@@ -354,17 +357,16 @@ settlement-service calls payment-service for the paid payments and to finish eac
 
 1. It reads the paid payments from `GET /payment/normal-status`.
 2. It reads each merchant's account from `GET /banking/account/{franchiseId}`, once per merchant. A payment whose merchant has no registered bank account stays `PAID` for a later run.
-3. It calls `POST /payment/finish-settlement` for the payment. Only when the answer says `"alreadySettled":false` does this run own the payment.
-4. It sends one firm banking request for that payment's `payout`, from the account `jaypay` `111-222-333`.
+3. It sends one firm banking request for that payment's `payout`, from the account `jaypay` `111-222-333`, under the request id `settlement-<paymentId>`.
+4. Only when the bank confirmed the transfer does it call `POST /payment/finish-settlement`. A refused transfer is logged as an error and an unanswered one as a warning, and both leave the payment `PAID`.
 
-The amounts are whole won. payment-service computes the fee and the payout when it takes the payment, so settlement-service does no arithmetic and pays out exactly the stored `payout`. Because a payment moves from `PAID` to `SETTLED` only once, a second run, a run on another replica or an operator's **Mark settled** never pays the same payment twice. `SettlementJobTest` runs the settlement four times at once and the job twice more, and checks that each payment is paid out once.
+The amounts are whole won. payment-service computes the fee and the payout when it takes the payment, so settlement-service does no arithmetic and pays out exactly the stored `payout`. Every run sends the same request id for a payment, and banking-service sends a transfer once per request id, so a second run, a run on another replica or a run after an unanswered transfer never pays the same payment twice. `SettlementJobTest` lets the bank stay silent for the first run, then runs the settlement four times at once and the job twice more, and checks that each payment lands at the bank once.
 
 The service has no HTTP endpoints of its own. The host port serves Actuator.
 
 ### Known limitations
 
-- A payment is marked settled before its transfer. A transfer that fails or gets no answer is logged and not retried, so the payout of that payment is paid at most once and may need a manual transfer. A safe retry needs a firm banking request that banking-service deduplicates by a request id, which it does not have yet.
-- **Mark settled** in the admin console settles a payment without a transfer.
+- A payout the bank refuses keeps its payment `PAID`, and every later run asks again under the same id and gets the same refusal. Someone has to fix the merchant's account and settle it.
 
 ## auth-service
 

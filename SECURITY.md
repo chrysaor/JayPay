@@ -53,7 +53,9 @@ What this does not cover:
 
 - The sender comes from the request body, so anyone who reaches the customer site can send money from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)).
 - remittance-service trusts any caller of money-service, membership-service and banking-service, and they trust it, with no service-to-service authentication ([#100](https://github.com/chrysaor/JayPay/issues/100)).
-- A bank transfer that the bank does not confirm is never sent again and never refunded on its own. It waits for a person ([#99](https://github.com/chrysaor/JayPay/issues/99)).
+- banking-service sends a bank transfer once per request id, and a repeated request asks the bank again under the same id. That is safe only while the bank deduplicates by that id. The fake bank keeps its memory in the process. A transfer the bank does not answer waits until the same request is sent again.
+- No staff role may settle a payment by hand. settlement-service settles a payment only after the bank confirmed its payout.
+- The log topic carries the name of the called method and none of its arguments, and the saga, the events and the bank transfer leave account numbers out of their log text.
 
 ## Known findings
 

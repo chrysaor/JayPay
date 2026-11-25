@@ -192,10 +192,11 @@ JayPay is a study project and is not safe to run with real money or real users.
 - Disabling a staff account in Keycloak stops its next sign-in at once, but an access token it already holds keeps working for up to 3 minutes.
 - The local stack runs Keycloak over plain HTTP.
 - Login takes a member id only, with no password or other credential.
-- The fake bank in banking-service accepts every account and every transfer.
-- A bank remittance that the bank does not confirm stays `TRANSFERRING` with the amount taken from the sender, because firm banking takes no idempotency key and remittance-service never sends a transfer twice. Someone has to compare it with the firm banking records ([#99](https://github.com/chrysaor/JayPay/issues/99)).
+- The fake bank in banking-service accepts every account and every transfer to an account number that does not end in `-refused`, and forgets its answers when it restarts. A real bank has to deduplicate a transfer by its request id for a repeated request to stay safe.
+- A bank transfer, a bank remittance or a payout that the bank does not answer waits until the same request is sent again or the next settlement run. Nothing retries a remittance in the background.
+- The saga top-up deadline lives in the memory of one money-service instance. A restart drops it, and a top-up that was waiting on the bank stays running.
 - The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
-- Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, and a payment and a remittance take the paying or sending member from the request body ([#91](https://github.com/chrysaor/JayPay/issues/91), [#99](https://github.com/chrysaor/JayPay/issues/99)).
-- settlement-service marks a payment settled before it sends the transfer and does not retry a transfer that fails, so a failed payout needs a manual transfer.
+- Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, and a payment and a remittance take the paying or sending member from the request body ([#91](https://github.com/chrysaor/JayPay/issues/91)).
+- A payout the bank refuses keeps its payment unsettled, and someone has to fix the merchant's account.
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.
