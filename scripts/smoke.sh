@@ -235,18 +235,40 @@ open_wallet "$membership_id"
 
 log "top up 10000 through the Axon saga"
 saga_trace=$(hex 16)
-request "saga top-up" POST "$money/money/increase-eda" "$saga_trace" '{"targetMembershipId":"'$membership_id'","amount":10000}'
+saga_top_up='{"requestId":"smoke-saga-'$run'","targetMembershipId":"'$membership_id'","amount":10000}'
+request "saga top-up" POST "$money/money/increase-eda" "$saga_trace" "$saga_top_up"
 eventually 90 "the saga top-up never reached the wallet" wallet_balance_is "$membership_id" 10000
+request "repeated saga top-up" POST "$money/money/increase-eda" "$(hex 16)" "$saga_top_up"
 
 log "top up 5000 through the Kafka task"
 task_trace=$(hex 16)
-request "Kafka task top-up" POST "$money/money/increase-async" "$task_trace" '{"targetMembershipId":"'$membership_id'","amount":5000}'
+request "Kafka task top-up" POST "$money/money/increase-async" "$task_trace" '{"requestId":"smoke-task-'$run'","targetMembershipId":"'$membership_id'","amount":5000}'
 eventually 60 "the Kafka task top-up never reached the wallet" wallet_balance_is "$membership_id" 15000
 
 log "top up 2000 directly, the way the wallet page does"
-request "direct top-up" POST "$web/api/money/money/increase" "$(hex 16)" '{"targetMembershipId":"'$membership_id'","amount":2000}'
-[ -n "$(json_field moneyChangingRequestId)" ] || fail "direct top-up returned $(response)"
+direct_top_up='{"requestId":"smoke-direct-'$run'","targetMembershipId":"'$membership_id'","amount":2000}'
+request "direct top-up" POST "$web/api/money/money/increase" "$(hex 16)" "$direct_top_up"
+[ "$(json_field moneyChangingResultStatus)" = 1 ] || fail "direct top-up returned $(response)"
+first_result=$(cat "$work/body")
 eventually 30 "the direct top-up never reached the wallet" wallet_balance_is "$membership_id" 17000
+
+log "a repeated top-up answers with the first result and changes nothing"
+request "repeated direct top-up" POST "$web/api/money/money/increase" "$(hex 16)" "$direct_top_up"
+[ "$(cat "$work/body")" = "$first_result" ] || fail "the repeated top-up answered $(response) instead of $first_result"
+expect "a reused request id for another amount" 409 POST "$web/api/money/money/increase" "$(hex 16)" \
+  '{"requestId":"smoke-direct-'$run'","targetMembershipId":"'$membership_id'","amount":3000}'
+wallet_balance_is "$membership_id" 17000 || fail "a repeated top-up changed the wallet: $(cat "$work/last")"
+
+log "money-service refuses amounts that are not positive or above the limit, and a decrease beyond the balance"
+for amount in -1000 0 10000001 1.5; do
+  expect "a top-up of $amount" 400 POST "$web/api/money/money/increase" "$(hex 16)" \
+    '{"requestId":"smoke-bad-'$(hex 8)'","targetMembershipId":"'$membership_id'","amount":'$amount'}'
+  [ "$(json_field error)" = INVALID_AMOUNT ] || fail "a top-up of $amount answered $(response)"
+done
+request "decrease beyond the balance" POST "$money/money/decrease" "$(hex 16)" \
+  '{"requestId":"smoke-overdraw-'$run'","targetMembershipId":"'$membership_id'","amount":17001}'
+[ "$(json_field moneyChangingResultStatus)" = 2 ] || fail "a decrease beyond the balance answered $(response)"
+wallet_balance_is "$membership_id" 17000 || fail "a refused change moved the wallet: $(cat "$work/last")"
 
 log "send 5000 to another member"
 sign_up "Smoke Receiver" "smoke-receiver-$run@example.com"
@@ -266,7 +288,7 @@ request "synchronous bank account registration" POST "$web/api/banking/banking/a
 [ -n "$(json_field aggregateIdentifier)" ] || fail "synchronous registration stored no aggregate: $(response)"
 open_wallet "$sync_member"
 request "saga top-up of the synchronously registered account" POST "$money/money/increase-eda" "$(hex 16)" \
-  '{"targetMembershipId":"'$sync_member'","amount":4000}'
+  '{"requestId":"smoke-sync-'$run'","targetMembershipId":"'$sync_member'","amount":4000}'
 eventually 90 "the saga top-up of the synchronously registered account never reached the wallet" wallet_balance_is "$sync_member" 4000
 
 log "pay a merchant"
