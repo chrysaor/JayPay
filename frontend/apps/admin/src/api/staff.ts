@@ -1,7 +1,7 @@
 import { call, postJson, request } from '@jaypay/api/client'
 import { z } from 'zod'
 
-export const passwordHint = 'At least 12 characters with upper and lower case letters, a digit and a symbol.'
+export const passwordHint = '12 to 72 characters with upper and lower case letters, a digit and a symbol. Not the username, not a common password.'
 
 export const roleSchema = z.enum(['ADMIN', 'OPERATOR', 'VIEWER'])
 

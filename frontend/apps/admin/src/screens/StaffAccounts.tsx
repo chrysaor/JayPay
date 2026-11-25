@@ -86,7 +86,6 @@ function NewAccountForm() {
           <input name="mfaEnabled" type="checkbox" />
           MFA enabled
         </label>
-        <p className="hint">{mfaNote}</p>
         <button className="primary" disabled={create.isPending}>
           Create account
         </button>
