@@ -5,7 +5,9 @@ import com.jaypay.auth.domain.StaffAccount;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.apache.tomcat.util.buf.EncodedSolidusHandling;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.tomcat.TomcatConnectorCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -135,6 +137,14 @@ class StaffSecurityConfig {
     @Bean
     RequestRejectedHandler forbidAmbiguousPaths() {
         return new HttpStatusRequestRejectedHandler(HttpServletResponse.SC_FORBIDDEN);
+    }
+
+    @Bean
+    TomcatConnectorCustomizer leaveEncodedSlashesToTheFirewall() {
+        return connector -> {
+            connector.setEncodedSolidusHandling(EncodedSolidusHandling.PASS_THROUGH.getValue());
+            connector.setEncodedReverseSolidusHandling(EncodedSolidusHandling.PASS_THROUGH.getValue());
+        };
     }
 
     private static UserDetails userDetails(StaffAccount account) {
