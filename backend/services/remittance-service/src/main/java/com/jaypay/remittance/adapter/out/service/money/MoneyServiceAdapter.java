@@ -29,29 +29,29 @@ public class MoneyServiceAdapter implements MoneyPort {
                 new MemberMoneyRequest(List.of(membershipId)),
                 new TypeReference<List<MemberMoney>>() {}
         );
-        int balance = wallets == null || wallets.isEmpty() ? 0 : wallets.getFirst().balance();
+        long balance = wallets == null || wallets.isEmpty() ? 0 : wallets.getFirst().balance();
         return new MoneyInfo(membershipId, balance);
     }
 
     @Override
-    public boolean requestMoneyRecharging(String membershipId, int amount) {
-        return changeMoney(membershipId, amount);
+    public boolean requestMoneyRecharging(String requestId, String membershipId, long amount) {
+        return changeMoney("increase", requestId, membershipId, amount);
     }
 
     @Override
-    public boolean requestMoneyIncrease(String membershipId, int amount) {
-        return changeMoney(membershipId, amount);
+    public boolean requestMoneyIncrease(String requestId, String membershipId, long amount) {
+        return changeMoney("increase", requestId, membershipId, amount);
     }
 
     @Override
-    public boolean requestMoneyDecrease(String membershipId, int amount) {
-        return changeMoney(membershipId, -amount);
+    public boolean requestMoneyDecrease(String requestId, String membershipId, long amount) {
+        return changeMoney("decrease", requestId, membershipId, amount);
     }
 
-    private boolean changeMoney(String membershipId, int amount) {
+    private boolean changeMoney(String path, String requestId, String membershipId, long amount) {
         MoneyChangingResult result = moneyServiceHttpClient.post(
-                url("increase"),
-                new MoneyChangingRequest(membershipId, amount),
+                url(path),
+                new MoneyChangingRequest(requestId, membershipId, amount),
                 MoneyChangingResult.class
         );
         return result != null && result.moneyChangingResultStatus() == MONEY_CHANGING_SUCCEEDED;
@@ -64,10 +64,10 @@ public class MoneyServiceAdapter implements MoneyPort {
     record MemberMoneyRequest(List<String> targetMembershipIds) {
     }
 
-    record MemberMoney(String membershipId, int balance) {
+    record MemberMoney(String membershipId, long balance) {
     }
 
-    record MoneyChangingRequest(String targetMembershipId, int amount) {
+    record MoneyChangingRequest(String requestId, String targetMembershipId, long amount) {
     }
 
     record MoneyChangingResult(int moneyChangingResultStatus) {

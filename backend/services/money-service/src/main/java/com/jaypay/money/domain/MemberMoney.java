@@ -11,7 +11,7 @@ public class MemberMoney {
 
     private final String memberMoneyId;
     private final String membershipId;
-    private final int balance;
+    private final long balance;
 
     public static MemberMoney generateMemberMoney (
             MemberMoneyId memberMoneyId,
@@ -43,10 +43,10 @@ public class MemberMoney {
 
     @Value
     public static class Balance {
-        public Balance(int value) {
+        public Balance(long value) {
             this.balance = value;
         }
-        int balance;
+        long balance;
     }
 
     @Value

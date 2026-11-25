@@ -98,23 +98,30 @@ Wallet balances and the three ways to top a wallet up.
 | --- | --- |
 | Host port | `8083` |
 | Memory limit | `512m` |
-| Database | PostgreSQL `money`, tables `member_money` and `money_changing_request` |
+| Database | PostgreSQL `money`, tables `wallet` and `wallet_change` |
 | Calls | `membership-service`, `banking-service` |
 | Called by | `remittance-service`, `money-aggregation-service`, `frontend-web` |
 | Kafka | Produces `jaypay.task.topic`. Consumes `jaypay.task.result.topic` in the group `my-group`. Produces `jaypay.logging.out.stdout`, one record for each controller call and one for each task result. |
 | Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, and sends `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. |
 | Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `TASK_TOPIC`, `TASK_RESULT_TOPIC`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `TASK_TOPIC`, `TASK_RESULT_TOPIC`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `MONEY_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
 money-service calls membership-service for the member check of a synchronous top-up. It calls `GET /banking/account/{membershipId}` on banking-service to find the registered account before a saga top-up.
 
 ### What it does
 
-- `POST /money/increase` checks the member, adds the amount to the balance, and records a `money_changing_request` row with the status `1` for success or `2` for failure. A member without a `member_money` row gets one.
-- `POST /money/increase-async` writes a task with two subtasks to `jaypay.task.topic` and blocks the request until the result arrives on `jaypay.task.result.topic`. When every subtask is done, it adds the amount and answers.
-- `POST /money/increase-eda` sends `RechargingMoneyRequestCreateCommand` and answers at once. The saga then checks the bank account through banking-service, requests the firm banking, and adds the amount to the balance. When the balance update fails, it sends `RollbackFirmBankingRequestCommand`.
-- `POST /money/decrease-eda` runs the same saga with the negative amount.
-- `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0.
+Every change of a balance takes a JSON body with `requestId`, `targetMembershipId` and `amount`.
+
+- `amount` is a whole number from 1 to `money.amount.max`, 10000000 unless `MONEY_AMOUNT_MAX` sets another limit. Any other amount answers 400 with `{"error":"INVALID_AMOUNT"}` and writes nothing.
+- `requestId` is 1 to 64 letters, digits, `-` or `_`, chosen by the caller. The first request with an id records a `wallet_change` row under it. A repeated request answers with the result of the first and changes nothing. A request that reuses an id for another member, direction or amount answers 409 with `{"error":"REQUEST_ID_REUSED"}`. A missing or malformed id answers 400 with `{"error":"INVALID_REQUEST_ID"}`.
+- `wallet` holds one row per member, a unique `membership_id`, and a `bigint` balance that a check constraint keeps at or above 0. An increase is one `INSERT ... ON CONFLICT DO UPDATE` that adds the amount, so concurrent top-ups all count and a first top-up creates the only row. A decrease is one `UPDATE ... WHERE balance >= amount`, so it fails instead of going below 0.
+- The answer carries `moneyChangingRequestId`, the request id, `moneyChangingType` `1` for an increase or `2` for a decrease, `moneyChangingResultStatus` `1` for success, `2` for failure or `0` while a saga top-up is still running, and `amount`.
+
+- `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. An invalid member answers with the status `2`.
+- `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
+- `POST /money/increase-async` writes a task with two subtasks to `jaypay.task.topic` and blocks the request until the result arrives on `jaypay.task.result.topic`. When every subtask is done, it adds the amount the same way as `POST /money/increase` and answers.
+- `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once. A repeated request id sends nothing. The saga then checks the bank account through banking-service, requests the firm banking, and adds the amount to the balance once, however often `RequestFirmBankingFinishedEvent` arrives. When the request is unknown, it sends `RollbackFirmBankingRequestCommand`.
+- `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created.
 - `POST /money/member-money` returns the wallets of a list of member ids. remittance-service and money-aggregation-service use it to read balances.
 
 ### Endpoints
@@ -122,8 +129,7 @@ money-service calls membership-service for the member check of a synchronous top
 - `POST /money/increase` tops a wallet up synchronously.
 - `POST /money/increase-async` tops a wallet up through the Kafka task.
 - `POST /money/increase-eda` tops a wallet up through the Axon saga and returns no body.
-- `POST /money/decrease` does nothing and returns no body.
-- `POST /money/decrease-eda` lowers a wallet through the Axon saga and returns no body.
+- `POST /money/decrease` lowers a wallet synchronously.
 - `POST /money/create-member-money` creates a wallet.
 - `POST /money/member-money` returns the wallets of the given members.
 
@@ -131,8 +137,9 @@ money-service calls membership-service for the member check of a synchronous top
 
 ### Known limitations
 
-- `POST /money/decrease` logs the request and changes nothing.
-- `POST /money/increase` accepts a negative amount and does not check that the balance stays at or above 0.
+- `POST /money/increase` is open to the customer site and tops up any member's wallet without a bank withdrawal. Moving the wallet page to the saga needs the saga's failure handling ([#99](https://github.com/chrysaor/JayPay/issues/99)) and the member from the token ([#91](https://github.com/chrysaor/JayPay/issues/91)) first.
+- The saga adds the amount even when the firm banking reports a failure, and a saga that stops early leaves its `wallet_change` row at the status `0` ([#99](https://github.com/chrysaor/JayPay/issues/99)).
+- Wallets from before the `wallet` table stay in the old `member_money` table, which money-service no longer reads.
 - `POST /money/increase-async` waits for the task result with no timeout. A failed task returns an empty body.
 - The task result goes to an in-memory latch, so the request returns only when the same money-service instance reads the result.
 
@@ -152,15 +159,15 @@ Sends money from one member to another member or to a bank account.
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `SERVICE_MONEY_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
-remittance-service calls membership-service for the member check of the sender. It calls `POST /money/member-money` and `POST /money/increase` on money-service, and `POST /banking/info` and `POST /banking/firmbanking/request` on banking-service.
+remittance-service calls membership-service for the member check of the sender. It calls `POST /money/member-money`, `POST /money/increase` and `POST /money/decrease` on money-service, and `POST /banking/info` and `POST /banking/firmbanking/request` on banking-service.
 
 ### What it does
 
 `POST /remittance/request` stores a `request_remittance` row first. Then it runs these steps:
 
 1. It checks that the sender is a valid member.
-2. It reads the sender's balance. When the balance is lower than the amount, it tops the wallet up through `POST /money/increase` by the missing amount, rounded up to a multiple of 10000.
-3. For `remittanceType` `0`, it lowers the sender's wallet and raises the receiver's wallet, both through `POST /money/increase`.
+2. It reads the sender's balance. When the balance is lower than the amount, it tops the wallet up through `POST /money/increase` by the missing amount, rounded up to a multiple of 10000, with the request id `remittance-<id>-recharge`.
+3. For `remittanceType` `0`, it lowers the sender's wallet through `POST /money/decrease` and raises the receiver's wallet through `POST /money/increase`, with the request ids `remittance-<id>-decrease` and `remittance-<id>-increase`, where `<id>` is the `request_remittance` row.
 4. For `remittanceType` `1`, it checks the target account through `POST /banking/info` and sends a firm banking transfer from the company account `jaypay-company` to the target account.
 5. It sets the status of the row to `success` and returns it.
 
@@ -426,7 +433,7 @@ The site has these pages:
 
 - `/sign-up` signs a member up and signs the member in.
 - `/sign-in` signs a member in by member id.
-- `/` shows the wallet balance and tops it up through `POST /money/increase`.
+- `/` shows the wallet balance and tops it up through `POST /money/increase`. It keeps the request id of a failed top-up and sends it again when the member retries the same amount, so a retry never charges twice.
 - `/account` shows or registers the bank account.
 - `/send` sends money to a member or to a bank account.
 - `/pay` pays a merchant.

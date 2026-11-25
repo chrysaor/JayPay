@@ -5,37 +5,42 @@ import com.jaypay.common.CountDownLatchManager;
 import com.jaypay.common.RechargingMoneyTask;
 import com.jaypay.common.SubTask;
 import com.jaypay.common.UseCase;
+import com.jaypay.money.application.port.in.ChangeMoneyCommand;
+import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
 import com.jaypay.money.application.port.in.CreateMemberMoneyCommand;
 import com.jaypay.money.application.port.in.CreateMemberMoneyUseCase;
-import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
-import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
+import com.jaypay.money.application.port.out.ChangeMoneyPort;
 import com.jaypay.money.application.port.out.CreateMemberMoneyAggregatePort;
 import com.jaypay.money.application.port.out.CreateMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
-import com.jaypay.money.application.port.out.IncreaseMoneyPort;
 import com.jaypay.money.application.port.out.RequestMoneyRechargingPort;
 import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
+import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
+import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingType;
+import com.jaypay.money.domain.RequestId;
+import com.jaypay.money.domain.RequestIdReusedException;
 import lombok.RequiredArgsConstructor;
 
 import jakarta.transaction.Transactional;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @UseCase
 @RequiredArgsConstructor
 @Transactional
 @Slf4j
-public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase, CreateMemberMoneyUseCase {
+public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoneyUseCase {
 
     private final CountDownLatchManager countDownLatchManager;
     private final SendRechargingMoneyTaskPort sendRechargingMoneyTaskPort;
     private final GetMembershipPort getMembershipPort;
-    private final IncreaseMoneyPort increaseMoneyPort;
+    private final ChangeMoneyPort changeMoneyPort;
     private final CreateMemberMoneyPort createMemberMoneyPort;
     private final GetMemberMoneyPort getMemberMoneyPort;
     private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
@@ -43,19 +48,17 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
     private final RequestMoneyRechargingPort requestMoneyRechargingPort;
 
     @Override
-    public MoneyChangingRequest increaseMoneyRequest(IncreaseMoneyRequestCommand command) {
-        boolean validMember = getMembershipPort.getMembership(command.targetMembershipId()).isValid();
-        if (validMember) {
-            increaseMoney(command);
-        }
-
-        return recordIncrease(command, validMember
-                ? MoneyChangingRequest.MoneyChangingStatus.SUCCEEDED
-                : MoneyChangingRequest.MoneyChangingStatus.FAILED);
+    public MoneyChangingRequest increaseMoney(ChangeMoneyCommand command) {
+        return change(command, MoneyChangingType.INCREASE);
     }
 
     @Override
-    public MoneyChangingRequest increaseMoneyRequestAsync(IncreaseMoneyRequestCommand command) {
+    public MoneyChangingRequest decreaseMoney(ChangeMoneyCommand command) {
+        return change(command, MoneyChangingType.DECREASE);
+    }
+
+    @Override
+    public MoneyChangingRequest increaseMoneyRequestAsync(ChangeMoneyCommand command) {
         SubTask validMemberTask = SubTask.builder()
                 .subTaskName("validMemberTask : " + "Validation of the membership")
                 .membershipID(command.targetMembershipId())
@@ -78,7 +81,7 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
                 .taskID(UUID.randomUUID().toString())
                 .taskName("Increase Money Task")
                 .subTaskList(subTaskList)
-                .moneyAmount(command.amount())
+                .moneyAmount(Math.toIntExact(command.amount().value()))
                 .membershipID(command.targetMembershipId())
                 .toBankName("jay")
                 .build();
@@ -94,8 +97,7 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
 
         String result = countDownLatchManager.getDataForKey(task.getTaskID());
         if (result.equals("success")) {
-            increaseMoney(command);
-            return recordIncrease(command, MoneyChangingRequest.MoneyChangingStatus.SUCCEEDED);
+            return increaseMoney(command);
         }
 
         return null;
@@ -115,9 +117,14 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
     }
 
     @Override
-    public void increaseMoneyRequestByEvent(IncreaseMoneyRequestCommand command) {
+    public void increaseMoneyRequestByEvent(ChangeMoneyCommand command) {
+        MoneyChangingRequest pending = pending(command, MoneyChangingType.INCREASE);
+        if (findEarlier(pending).isPresent()) {
+            return;
+        }
         MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.targetMembershipId());
         requestMoneyRechargingPort.requestMoneyRecharging(
+                command.requestId(),
                 getMemberMoneyPort.getMoneyAggregateIdentifier(membershipId),
                 membershipId,
                 command.amount(),
@@ -126,18 +133,46 @@ public class IncreaseMoneyRequestService implements IncreaseMoneyRequestUseCase,
     }
 
     @Override
-    public MemberMoney increaseMoney(IncreaseMoneyRequestCommand command) {
-        return increaseMoneyPort.increaseMoney(new MemberMoney.MembershipId(command.targetMembershipId()), command.amount());
+    public boolean finishRecharging(RequestId requestId) {
+        return changeMoneyPort.findForUpdate(requestId).map(request -> {
+            if (request.status() != MoneyChangingStatus.PENDING) {
+                return request.status() == MoneyChangingStatus.SUCCEEDED;
+            }
+            changeMoneyPort.increaseBalance(new MemberMoney.MembershipId(request.targetMembershipId()), request.amount());
+            changeMoneyPort.settle(request.settled(true));
+            return true;
+        }).orElse(false);
     }
 
-    private MoneyChangingRequest recordIncrease(IncreaseMoneyRequestCommand command, MoneyChangingRequest.MoneyChangingStatus status) {
-        return increaseMoneyPort.createMoneyChangingRequest(
-                new MoneyChangingRequest.TargetMembershipId(command.targetMembershipId()),
-                new MoneyChangingRequest.MoneyChangingType(1),
-                new MoneyChangingRequest.ChangingMoneyAmount(command.amount()),
-                status,
-                new MoneyChangingRequest.Uuid(UUID.randomUUID().toString())
-        );
+    private MoneyChangingRequest change(ChangeMoneyCommand command, MoneyChangingType type) {
+        MoneyChangingRequest pending = pending(command, type);
+        Optional<MoneyChangingRequest> earlier = findEarlier(pending);
+        if (earlier.isPresent()) {
+            return earlier.get();
+        }
+        boolean applied = getMembershipPort.getMembership(command.targetMembershipId()).isValid() && apply(pending);
+        return changeMoneyPort.settle(pending.settled(applied));
+    }
+
+    private boolean apply(MoneyChangingRequest request) {
+        MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(request.targetMembershipId());
+        if (request.type() == MoneyChangingType.DECREASE) {
+            return changeMoneyPort.decreaseBalance(membershipId, request.amount());
+        }
+        changeMoneyPort.increaseBalance(membershipId, request.amount());
+        return true;
+    }
+
+    private Optional<MoneyChangingRequest> findEarlier(MoneyChangingRequest pending) {
+        Optional<MoneyChangingRequest> earlier = changeMoneyPort.findEarlierOrClaim(pending);
+        if (earlier.isPresent() && !earlier.get().sameChangeAs(pending)) {
+            throw new RequestIdReusedException(pending.requestId());
+        }
+        return earlier;
+    }
+
+    private static MoneyChangingRequest pending(ChangeMoneyCommand command, MoneyChangingType type) {
+        return MoneyChangingRequest.pending(command.requestId(), command.targetMembershipId(), type, command.amount());
     }
 
 }

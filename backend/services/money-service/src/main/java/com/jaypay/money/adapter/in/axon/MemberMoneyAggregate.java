@@ -24,7 +24,7 @@ public class MemberMoneyAggregate {
     @AggregateIdentifier
     private String id;
     private Long membershipId;
-    private int balance;
+    private long balance;
 
     @CommandHandler
     public MemberMoneyAggregate(MemberMoneyCreatedCommand command) {
@@ -61,7 +61,7 @@ public class MemberMoneyAggregate {
         log.info("IncreaseMemberMoneyEvent Sourcing Handler");
         id = event.aggregateIdentifier();
         membershipId = Long.parseLong(event.targetMembershipId());
-        balance = event.amount();
+        balance += event.amount();
     }
 
     public MemberMoneyAggregate() {

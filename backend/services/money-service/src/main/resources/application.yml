@@ -10,6 +10,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+money:
+  amount:
+    max: 10000000
 task:
   topic: ${TASK_TOPIC:jaypay.task.topic}
   result:

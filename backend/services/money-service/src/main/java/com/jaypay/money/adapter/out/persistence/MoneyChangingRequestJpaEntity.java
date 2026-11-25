@@ -1,45 +1,45 @@
 package com.jaypay.money.adapter.out.persistence;
 
+import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
+import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import jakarta.persistence.*;
-import java.sql.Timestamp;
-import java.util.Date;
-import java.util.UUID;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.time.Instant;
 
 
 @Entity
-@Table(name = "money_changing_request")
+@Table(name = "wallet_change")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class MoneyChangingRequestJpaEntity {
 
     @Id
-    @GeneratedValue
-    private Long moneyChangingRequestId;
+    private String requestId;
 
-    private String targetMembershipId;
+    @Column(nullable = false)
+    private Long membershipId;
 
-    private int moneyChangingType;
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private MoneyChangingType changeType;
 
-    private int moneyAmount;
+    @Column(nullable = false)
+    private long amount;
 
-    private Date timestamp;
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private MoneyChangingStatus status;
 
-    private int changingMoneyStatus;
-
-    private String uuid;
-
-    public MoneyChangingRequestJpaEntity(String targetMembershipId, int moneyChangingType, int moneyAmount, Timestamp timestamp, int changingMoneyStatus, UUID uuid) {
-        this.targetMembershipId = targetMembershipId;
-        this.moneyChangingType = moneyChangingType;
-        this.moneyAmount = moneyAmount;
-        this.timestamp = timestamp;
-        this.changingMoneyStatus = changingMoneyStatus;
-        this.uuid = uuid.toString();
-    }
+    @Column(nullable = false)
+    private Instant requestedAt;
 
 }

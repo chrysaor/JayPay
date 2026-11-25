@@ -2,6 +2,9 @@ package com.jaypay.money.adapter.in.web;
 
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import com.jaypay.money.adapter.out.persistence.SpringDataMemberMoneyRepository;
+import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
+import com.jaypay.money.domain.RequestId;
+import com.jaypay.common.kafka.KafkaTestBroker;
 import com.sun.net.httpserver.HttpServer;
 import org.axonframework.eventsourcing.eventstore.EventStore;
 import org.junit.jupiter.api.AfterAll;
@@ -51,11 +54,15 @@ class IncreaseMoneyTest {
     @Autowired
     private EventStore eventStore;
 
+    @Autowired
+    private ChangeMoneyUseCase changeMoneyUseCase;
+
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
         String url = "http://127.0.0.1:" + OTHER_SERVICES.getAddress().getPort();
         registry.add("service.membership.url", () -> url);
         registry.add("service.banking.url", () -> url);
+        registry.add("spring.kafka.bootstrap-servers", KafkaTestBroker::bootstrapServers);
     }
 
     @AfterAll
@@ -66,9 +73,9 @@ class IncreaseMoneyTest {
     @Test
     void chargesTheWalletOfAValidMember() throws Exception {
         mockMvc.perform(post("/money/increase").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetMembershipId\":\"7\",\"amount\":1000}"))
+                        .content("{\"requestId\":\"charge-7\",\"targetMembershipId\":\"7\",\"amount\":1000}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.moneyChangingRequestId").value(isA(String.class)))
+                .andExpect(jsonPath("$.moneyChangingRequestId").value("charge-7"))
                 .andExpect(jsonPath("$.moneyChangingType").value(1))
                 .andExpect(jsonPath("$.moneyChangingResultStatus").value(1))
                 .andExpect(jsonPath("$.amount").value(1000));
@@ -84,9 +91,9 @@ class IncreaseMoneyTest {
     @Test
     void reportsAFailedChargeForAnInvalidMemberAndLeavesTheWalletAlone() throws Exception {
         mockMvc.perform(post("/money/increase").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetMembershipId\":\"8\",\"amount\":1000}"))
+                        .content("{\"requestId\":\"charge-8\",\"targetMembershipId\":\"8\",\"amount\":1000}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.moneyChangingRequestId").value(isA(String.class)))
+                .andExpect(jsonPath("$.moneyChangingRequestId").value("charge-8"))
                 .andExpect(jsonPath("$.moneyChangingType").value(1))
                 .andExpect(jsonPath("$.moneyChangingResultStatus").value(2))
                 .andExpect(jsonPath("$.amount").value(1000));
@@ -102,21 +109,30 @@ class IncreaseMoneyTest {
         mockMvc.perform(post("/money/create-member-money").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"membershipId\":\"9\"}"))
                 .andExpect(status().isOk());
-        String aggregateIdentifier = memberMoneyRepository.findByMembershipId(9L).getFirst().getAggregateIdentifier();
+        String aggregateIdentifier = memberMoneyRepository.findByMembershipId(9L).orElseThrow().getAggregateIdentifier();
 
-        mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetMembershipId\":\"9\",\"amount\":500}"))
-                .andExpect(status().isOk());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"requestId\":\"recharge-9\",\"targetMembershipId\":\"9\",\"amount\":500}"))
+                    .andExpect(status().isOk());
+        }
 
-        Object lastEvent = eventStore.readEvents(aggregateIdentifier).asStream()
-                .reduce((first, second) -> second).orElseThrow().getPayload();
-        assertThat(lastEvent).isInstanceOf(RechargingRequestCreatedEvent.class);
-        RechargingRequestCreatedEvent recharging = (RechargingRequestCreatedEvent) lastEvent;
-        assertThat(recharging.rechargingRequestId()).isNotBlank();
+        List<Object> rechargings = eventStore.readEvents(aggregateIdentifier).asStream()
+                .<Object>map(event -> event.getPayload())
+                .filter(RechargingRequestCreatedEvent.class::isInstance)
+                .toList();
+        assertThat(rechargings).hasSize(1);
+        RechargingRequestCreatedEvent recharging = (RechargingRequestCreatedEvent) rechargings.getFirst();
+        assertThat(recharging.rechargingRequestId()).isEqualTo("recharge-9");
         assertThat(List.of(recharging.membershipId(), recharging.registeredBankAccountAggregateIdentifier(),
                 recharging.bankName(), recharging.bankAccountNumber()))
                 .containsExactly("9", "bank-aggregate-9", "jay-bank", "1002-9");
         assertThat(recharging.amount()).isEqualTo(500);
+
+        assertThat(changeMoneyUseCase.finishRecharging(new RequestId("recharge-9"))).isTrue();
+        assertThat(changeMoneyUseCase.finishRecharging(new RequestId("recharge-9"))).isTrue();
+        assertThat(changeMoneyUseCase.finishRecharging(new RequestId("never-requested"))).isFalse();
+        assertThat(memberMoneyRepository.findByMembershipId(9L).orElseThrow().getBalance()).isEqualTo(500);
     }
 
     private static String member(String membershipId, boolean valid) {

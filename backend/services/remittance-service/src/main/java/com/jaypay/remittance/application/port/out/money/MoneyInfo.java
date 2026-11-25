@@ -10,6 +10,6 @@ import lombok.NoArgsConstructor;
 public class MoneyInfo {
 
     private String membershipId;
-    private int balance;
+    private long balance;
 
 }

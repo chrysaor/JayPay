@@ -22,7 +22,7 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
     private final GetMembershipPort getMembershipPort;
 
     @Override
-    public int getMoneySumByAddress(GetMoneySumByAddressCommand command) {
+    public long getMoneySumByAddress(GetMoneySumByAddressCommand command) {
         String targetAddress = command.address();
         List<String> membershipIds = getMembershipPort.getMembershipByAddress(targetAddress);
 
@@ -34,7 +34,7 @@ public class GetMoneySumByAggregationService implements GetMoneySumByAddressUseC
         }
         membershipPartitionList = partitionList(membershipIds, partitionSize);
 
-        int sum = 0;
+        long sum = 0;
         for (List<String> partitionedList : membershipPartitionList) {
             List<MemberMoney> memberMoneyList = getMoneySumPort.getMoneySumByMembershipIds(partitionedList);
 

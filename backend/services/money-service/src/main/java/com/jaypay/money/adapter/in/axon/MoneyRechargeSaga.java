@@ -3,9 +3,8 @@ package com.jaypay.money.adapter.in.axon;
 import lombok.extern.slf4j.Slf4j;
 import com.jaypay.common.event.*;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
-import com.jaypay.money.application.port.in.IncreaseMoneyRequestCommand;
-import com.jaypay.money.application.port.in.IncreaseMoneyRequestUseCase;
-import com.jaypay.money.domain.MemberMoney;
+import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
+import com.jaypay.money.domain.RequestId;
 import lombok.NoArgsConstructor;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.modelling.saga.EndSaga;
@@ -95,7 +94,7 @@ public class MoneyRechargeSaga {
     }
 
     @SagaEventHandler(associationProperty = "requestFirmBankingId")
-    public void handle(RequestFirmBankingFinishedEvent event, IncreaseMoneyRequestUseCase increaseMoneyRequestUseCase) {
+    public void handle(RequestFirmBankingFinishedEvent event, ChangeMoneyUseCase changeMoneyUseCase) {
         log.info("RequestFirmBankingFinishedEvent saga: {}", event);
 
         boolean status = event.getStatus() == 0;
@@ -105,11 +104,9 @@ public class MoneyRechargeSaga {
             log.warn("RequestFirmBankingFinishedEvent event Failed");
         }
 
-        MemberMoney increased = increaseMoneyRequestUseCase.increaseMoney(
-                new IncreaseMoneyRequestCommand(event.getMembershipId(), event.getMoneyAmount())
-        );
+        boolean recharged = changeMoneyUseCase.finishRecharging(new RequestId(event.getRechargingRequestId()));
 
-        if (increased == null) {
+        if (!recharged) {
             String rollbackFirmBankingId = UUID.randomUUID().toString();
             SagaLifecycle.associateWith("rollbackFirmBankingId", rollbackFirmBankingId);
             commandGateway.send(new RollbackFirmBankingRequestCommand(

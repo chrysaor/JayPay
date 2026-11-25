@@ -14,7 +14,7 @@ const memberMoneySchema = z.object({
   balance: z.number(),
 })
 
-export function increaseMoney(input: { targetMembershipId: string; amount: number }) {
+export function increaseMoney(input: { requestId: string; targetMembershipId: string; amount: number }) {
   return call('money', '/money/increase', moneyChangingResultSchema, postJson(input))
 }
 
