@@ -1,0 +1,7 @@
+services:
+  money-query-service:
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?export the credentials of your AWS profile, see infra/terraform/README.md}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?export the credentials of your AWS profile, see infra/terraform/README.md}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_ENDPOINT_URL_DYNAMODB: https://dynamodb.ap-northeast-2.amazonaws.com

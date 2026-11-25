@@ -108,6 +108,20 @@ bank_account_registered() {
   [ -n "$aggregate" ]
 }
 
+region_total_is() {
+  local expected=$1 total=""
+  call GET "$admin/api/money-query/money/query/get-money-sum-by-address/$region" "$(hex 16)"
+  [ "$http_status" != 200 ] || total=$(cat "$work/body")
+  observed "HTTP $http_status, total ${total:-none}: $(response)"
+  [ "$total" = "$expected" ]
+}
+
+recreate_dynamodb() {
+  docker compose -f "$compose_file" rm --stop --force dynamodb >"$work/compose" 2>&1 &&
+    docker compose -f "$compose_file" up --detach --wait dynamodb >>"$work/compose" 2>&1 ||
+    fail "could not recreate the dynamodb container: $(tail -5 "$work/compose")"
+}
+
 service_logged_since_start() {
   local service=$1 container started count
   container=$(docker compose -f "$compose_file" ps -q "$service")
@@ -161,6 +175,7 @@ clickhouse_password=$(sed -n 's/^CLICKHOUSE_PASSWORD=//p' "$env_file")
 umask 077
 printf 'X-ClickHouse-User: otel\nX-ClickHouse-Key: %s\n' "$clickhouse_password" >"$work/clickhouse-auth"
 run=$(date +%s)
+region="Smoke-$run"
 
 log "both sites answer"
 for site in "$web" "$admin"; do
@@ -170,7 +185,7 @@ done
 sign_up() {
   local name=$1 email=$2
   request "sign up of $name" POST "$web/api/membership/memberships" "$(hex 16)" \
-    '{"name":"'"$name"'","email":"'"$email"'","address":"Gangnam","corp":false}'
+    '{"name":"'"$name"'","email":"'"$email"'","address":"'"$region"'","corp":false}'
   signed_up=$(json_field membershipId)
   [ -n "$signed_up" ] || fail "sign up of $name answered without a membershipId: $(response)"
   ! json_has refreshToken || fail "sign up of $name answered with a refresh token: $(response)"
@@ -278,6 +293,11 @@ as "$viewer_token" request "settlement list for a viewer" GET "$admin/api/paymen
 as "$viewer_token" expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
 [ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
 as "$viewer_token" expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
+
+log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
+as "$viewer_token" eventually 60 "the region total never reached 14000" region_total_is 14000
+recreate_dynamodb
+as "$viewer_token" eventually 30 "the region total did not survive a new DynamoDB container" region_total_is 14000
 
 log "an operator edits a member but cannot manage staff accounts"
 as "$operator_token" request "member edit by an operator" PUT "$member_url" "$(hex 16)" "$member"

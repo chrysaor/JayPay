@@ -13,3 +13,6 @@ spring:
 service:
   membership:
     url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}
+dynamodb:
+  table-name: ${DYNAMODB_TABLE_NAME}
+  region: ${AWS_REGION:ap-northeast-2}

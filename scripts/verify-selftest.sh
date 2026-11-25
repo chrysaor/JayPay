@@ -60,6 +60,14 @@ dir=$(copy_repo terraform)
 printf 'locals {\n  selftest   = 1\n}\n' >>"$dir/infra/terraform/envs/dev/main.tf"
 expect terraform fail "$dir" selftest
 
+dir=$(copy_repo terraform-schema)
+perl -0pi -e 's/\n\}\s*\z/,\n  "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_IMAGE"}\n}\n/' "$dir/infra/terraform/modules/dynamodb-money-sum/table.json"
+expect terraform fail "$dir" StreamSpecification
+
+dir=$(copy_repo terraform-mapping)
+perl -pi -e 's/^(\s*range_key\s*=).*/$1 null/' "$dir/infra/terraform/modules/dynamodb-money-sum/main.tf"
+expect terraform fail "$dir" "differs from table.json"
+
 dir=$(copy_repo actionlint)
 printf 'on: push\njobs:\n  broken:\n    steps:\n      - run: "true"\n' >"$dir/.github/workflows/broken.yml"
 expect actionlint fail "$dir" broken.yml
