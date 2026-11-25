@@ -18,12 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 record StaffApi(MockMvc mockMvc) {
 
     static final String ADMIN = "test-admin";
-    static final String ADMIN_PASSWORD = "Quiet-River-Stone-71";
+    static final String ADMIN_PASSWORD = "Aaaaaaaaaaaa1!";
     static final String OPERATOR = "test-operator";
-    static final String OPERATOR_PASSWORD = "Amber-Field-Glass-52";
+    static final String OPERATOR_PASSWORD = "Oooooooooooo2!";
     static final String VIEWER = "test-viewer";
-    static final String VIEWER_PASSWORD = "Silver-Moss-Kite-38";
-    static final String STRONG_PASSWORD = "Copper-Lantern-Fog-94";
+    static final String VIEWER_PASSWORD = "Vvvvvvvvvvvv3!";
+    static final String STRONG_PASSWORD = "Ssssssssssss4!";
 
     private static final RandomGenerator RANDOM = new SecureRandom();
 
