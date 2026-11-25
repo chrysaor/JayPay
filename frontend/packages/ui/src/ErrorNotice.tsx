@@ -1,8 +1,15 @@
-export function ErrorNotice({ error }: { error: Error | null }) {
+export function ErrorNotice({ error }: { error: (Error & { violations?: readonly string[] }) | null }) {
   if (!error) return null
   return (
-    <p className="notice notice-error" role="alert">
+    <div className="notice notice-error" role="alert">
       {error.message}
-    </p>
+      {error.violations?.length ? (
+        <ul>
+          {error.violations.map((violation) => (
+            <li key={violation}>{violation}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   )
 }

@@ -5,8 +5,10 @@ import { readForm } from '@jaypay/ui/form'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import { modifyMembership } from '../api/membership'
+import { useAccess } from '../permissions'
 
 function ProfileForm({ member }: { member: Membership }) {
+  const { editMembers } = useAccess()
   const queryClient = useQueryClient()
   const save = useMutation({
     mutationFn: modifyMembership,
@@ -30,29 +32,33 @@ function ProfileForm({ member }: { member: Membership }) {
           })
         }}
       >
-        <label>
-          Name
-          <input name="name" defaultValue={member.name ?? ''} required />
-        </label>
-        <label>
-          Email
-          <input name="email" type="email" defaultValue={member.email ?? ''} required />
-        </label>
-        <label>
-          Address
-          <input name="address" defaultValue={member.address ?? ''} required />
-        </label>
-        <label className="check">
-          <input name="valid" type="checkbox" defaultChecked={member.valid} />
-          Active
-        </label>
-        <label className="check">
-          <input name="corp" type="checkbox" defaultChecked={member.corp} />
-          Corporate account
-        </label>
-        <button className="primary" disabled={save.isPending}>
-          Save changes
-        </button>
+        <fieldset disabled={!editMembers}>
+          <label>
+            Name
+            <input name="name" defaultValue={member.name ?? ''} required />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" defaultValue={member.email ?? ''} required />
+          </label>
+          <label>
+            Address
+            <input name="address" defaultValue={member.address ?? ''} required />
+          </label>
+          <label className="check">
+            <input name="valid" type="checkbox" defaultChecked={member.valid} />
+            Active
+          </label>
+          <label className="check">
+            <input name="corp" type="checkbox" defaultChecked={member.corp} />
+            Corporate account
+          </label>
+        </fieldset>
+        {editMembers ? (
+          <button className="primary" disabled={save.isPending}>
+            Save changes
+          </button>
+        ) : null}
       </form>
       {save.isSuccess ? (
         <p className="notice notice-success" role="status">

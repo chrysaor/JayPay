@@ -1,14 +1,14 @@
 import { fakeRoutes, jsonBody } from '@jaypay/api/testing'
 import { screen } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
-import { region, renderApp } from '../test/render'
+import { region, renderApp, signedInAs } from '../test/render'
 
 const aggregationRoute = 'POST /api/money-aggregation/money/aggregation/get-money-sum-by-address'
 const queryRoute = 'GET /api/money-query/money/query/get-money-sum-by-address/Seoul'
 
 describe('regional money', () => {
   test('shows the live aggregation and the query model total for a region', async () => {
-    const requests = fakeRoutes({ [aggregationRoute]: { body: 150000 }, [queryRoute]: { body: 149000 } })
+    const requests = fakeRoutes({ ...signedInAs(), [aggregationRoute]: { body: 150000 }, [queryRoute]: { body: 149000 } })
     const user = renderApp('/money')
 
     await user.type(await screen.findByLabelText('Region'), 'Seoul')
@@ -22,7 +22,7 @@ describe('regional money', () => {
   })
 
   test('a region link opens with its totals', async () => {
-    fakeRoutes({ [aggregationRoute]: { body: 0 }, [queryRoute]: { body: 0 } })
+    fakeRoutes({ ...signedInAs(), [aggregationRoute]: { body: 0 }, [queryRoute]: { body: 0 } })
     renderApp('/money?region=Seoul')
 
     expect(await (await region('Live aggregation')).findByText('₩0')).toBeInTheDocument()
@@ -30,7 +30,7 @@ describe('regional money', () => {
   })
 
   test('one failing source does not hide the other', async () => {
-    fakeRoutes({ [aggregationRoute]: { status: 502 }, [queryRoute]: { body: 149000 } })
+    fakeRoutes({ ...signedInAs(), [aggregationRoute]: { status: 502 }, [queryRoute]: { body: 149000 } })
     renderApp('/money?region=Seoul')
 
     expect(await (await region('Live aggregation')).findByRole('alert')).toHaveTextContent('HTTP 502')

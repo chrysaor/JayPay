@@ -294,6 +294,115 @@ tbody tr:last-child td {
   color: var(--danger);
 }
 
+.notice-info {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.notice ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.stack fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.staff {
+  display: grid;
+  gap: 2px;
+  margin-top: 24px;
+  padding: 16px 12px 0;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+}
+
+.staff-name {
+  color: #fff;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.staff-role {
+  font-size: 13px;
+}
+
+.link-button {
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #5eead4;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 12px 0 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.loading {
+  padding: 28px 32px;
+}
+
+.auth {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 28px;
+}
+
+.auth-card .brand {
+  padding: 0 0 12px;
+  margin: 0;
+  color: var(--ink);
+}
+
+.auth-card .brand span {
+  color: var(--accent);
+}
+
+.auth-card .stack {
+  max-width: none;
+}
+
+.auth-card input {
+  width: 100%;
+}
+
 @media (max-width: 760px) {
   .console {
     grid-template-columns: 1fr;

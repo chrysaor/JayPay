@@ -134,7 +134,7 @@ services:
       - postgres-data:/var/lib/postgresql
       - ./postgres/initdb.d:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "settlement", "-tAc", "select 1"]
+      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "auth", "-tAc", "select 1"]
       interval: 5s
       timeout: 5s
       start_period: 30s
@@ -385,6 +385,23 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/settlement
       SERVICE_BANKING_URL: http://banking-service:8080
       SERVICE_PAYMENT_URL: http://payment-service:8080
+    depends_on: *jpa-service-depends-on
+
+  auth-service:
+    <<: *service
+    image: jaypay/auth-service
+    ports:
+      - "127.0.0.1:8089:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
+      STAFF_JWT_SECRET: ${STAFF_JWT_SECRET:?run scripts/init-env.py}
+      STAFF_ADMIN_USERNAME: ${STAFF_ADMIN_USERNAME:?run scripts/init-env.py}
+      STAFF_ADMIN_PASSWORD: ${STAFF_ADMIN_PASSWORD:?run scripts/init-env.py}
+      STAFF_OPERATOR_USERNAME: ${STAFF_OPERATOR_USERNAME:?run scripts/init-env.py}
+      STAFF_OPERATOR_PASSWORD: ${STAFF_OPERATOR_PASSWORD:?run scripts/init-env.py}
+      STAFF_VIEWER_USERNAME: ${STAFF_VIEWER_USERNAME:?run scripts/init-env.py}
+      STAFF_VIEWER_PASSWORD: ${STAFF_VIEWER_PASSWORD:?run scripts/init-env.py}
     depends_on: *jpa-service-depends-on
 
   task-consumer:

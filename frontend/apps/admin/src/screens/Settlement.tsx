@@ -2,10 +2,12 @@ import { ErrorNotice } from '@jaypay/ui/ErrorNotice'
 import { formatDateTime, formatWon } from '@jaypay/ui/format'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { findAwaitingSettlement, finishSettlement } from '../api/settlement'
+import { useAccess } from '../permissions'
 
 const queueKey = ['settlement-queue']
 
 export function Settlement() {
+  const { settlePayments } = useAccess()
   const queryClient = useQueryClient()
   const queue = useQuery({ queryKey: queueKey, queryFn: findAwaitingSettlement })
   const settle = useMutation({
@@ -46,7 +48,7 @@ export function Settlement() {
                 <th>Fee rate</th>
                 <th>Approved at</th>
                 <th>Status</th>
-                <th />
+                {settlePayments ? <th /> : null}
               </tr>
             </thead>
             <tbody>
@@ -61,17 +63,19 @@ export function Settlement() {
                   <td>
                     <span className="badge badge-warn">Awaiting settlement</span>
                   </td>
-                  <td>
-                    <button
-                      type="button"
-                      disabled={settle.isPending}
-                      onClick={() => {
-                        settle.mutate(payment.paymentId)
-                      }}
-                    >
-                      Mark settled
-                    </button>
-                  </td>
+                  {settlePayments ? (
+                    <td>
+                      <button
+                        type="button"
+                        disabled={settle.isPending}
+                        onClick={() => {
+                          settle.mutate(payment.paymentId)
+                        }}
+                      >
+                        Mark settled
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

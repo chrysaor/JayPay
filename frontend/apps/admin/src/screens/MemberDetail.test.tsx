@@ -1,14 +1,14 @@
 import { fakeRoutes, jsonBody } from '@jaypay/api/testing'
 import { screen } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
-import { member, region, renderApp } from '../test/render'
+import { member, region, renderApp, signedInAs } from '../test/render'
 
 const findRoute = 'GET /api/membership/memberships/1'
 const modifyRoute = 'PUT /api/membership/memberships/1'
 
 describe('member detail', () => {
   test('shows the member in an edit form', async () => {
-    fakeRoutes({ [findRoute]: { body: member } })
+    fakeRoutes({ ...signedInAs(), [findRoute]: { body: member } })
     renderApp('/members/1')
 
     expect(await screen.findByRole('heading', { name: 'Member #1' })).toBeInTheDocument()
@@ -22,6 +22,7 @@ describe('member detail', () => {
 
   test('saves changes with the boolean fields the backend reads', async () => {
     const requests = fakeRoutes({
+      ...signedInAs(),
       [findRoute]: { body: member },
       [modifyRoute]: { body: { ...member, email: 'gildong@example.com', valid: false } },
     })
@@ -48,7 +49,7 @@ describe('member detail', () => {
   })
 
   test('a rejected save shows the server error', async () => {
-    fakeRoutes({ [findRoute]: { body: member }, [modifyRoute]: { status: 500 } })
+    fakeRoutes({ ...signedInAs(), [findRoute]: { body: member }, [modifyRoute]: { status: 500 } })
     const user = renderApp('/members/1')
 
     const form = await region('Profile')
@@ -58,9 +59,22 @@ describe('member detail', () => {
   })
 
   test('a member that cannot be loaded shows the error', async () => {
-    fakeRoutes({ [findRoute]: { body: undefined } })
+    fakeRoutes({ ...signedInAs(), [findRoute]: { body: undefined } })
     renderApp('/members/1')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('empty response')
+  })
+
+  test('a viewer sees the profile without a way to change it', async () => {
+    fakeRoutes({ ...signedInAs('VIEWER'), [findRoute]: { body: member } })
+    renderApp('/members/1')
+
+    const form = await region('Profile')
+    expect(form.getByLabelText('Name')).toBeDisabled()
+    expect(form.getByLabelText('Email')).toBeDisabled()
+    expect(form.getByLabelText('Address')).toBeDisabled()
+    expect(form.getByLabelText('Active')).toBeDisabled()
+    expect(form.getByLabelText('Corporate account')).toBeDisabled()
+    expect(form.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
   })
 })

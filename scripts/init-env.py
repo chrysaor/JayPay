@@ -2,11 +2,26 @@
 import os
 import re
 import secrets
+import string
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLE = os.path.join(ROOT, "infra", "docker", ".env.example")
-PLACEHOLDER = re.compile(r"^<hex:(\d+)>$")
+PLACEHOLDER = re.compile(r"^([a-z-]*)<(hex|password):(\d+)>$")
+PASSWORD_CLASSES = (string.ascii_uppercase, string.ascii_lowercase, string.digits, "!@%+-.:=^_~")
+
+
+def password(length):
+    alphabet = "".join(PASSWORD_CLASSES)
+    while True:
+        value = "".join(secrets.choice(alphabet) for _ in range(length))
+        if all(any(character in group for character in value) for group in PASSWORD_CLASSES):
+            return value
+
+
+def generate(placeholder):
+    prefix, kind, size = placeholder.group(1), placeholder.group(2), int(placeholder.group(3))
+    return prefix + (secrets.token_hex(size) if kind == "hex" else password(size))
 
 
 def read_env(path):
@@ -22,7 +37,7 @@ def read_env(path):
 
 
 def is_set(value):
-    return value != "" and not (value.startswith("<") and value.endswith(">"))
+    return value != "" and not PLACEHOLDER.match(value) and not (value.startswith("<") and value.endswith(">"))
 
 
 def main():
@@ -37,7 +52,7 @@ def main():
             continue
         placeholder = PLACEHOLDER.match(example_value)
         if placeholder:
-            value = secrets.token_hex(int(placeholder.group(1)))
+            value = generate(placeholder)
             print(f"init-env: generated {key}")
         else:
             value = example_value
