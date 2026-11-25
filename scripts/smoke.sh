@@ -10,13 +10,14 @@ clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
 services=(
   membership-service banking-service money-service remittance-service payment-service
-  money-aggregation-service money-query-service settlement-service task-consumer logging-consumer
+  money-aggregation-service money-query-service settlement-service auth-service task-consumer logging-consumer
 )
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 : >"$work/last"
 http_status=000
+bearer=""
 
 log() { echo "smoke: $*"; }
 fail() { echo "smoke: FAILED: $*" >&2; exit 1; }
@@ -31,6 +32,9 @@ call() {
   if [ -n "$body" ]; then
     args+=(-H "Content-Type: $type" --data-binary "$body")
   fi
+  if [ -n "$bearer" ]; then
+    args+=(-H "Authorization: Bearer $bearer")
+  fi
   : >"$work/body"
   http_status=$(curl "${args[@]}" "$url" 2>"$work/curl-error") || true
 }
@@ -40,6 +44,20 @@ request() {
   shift
   call "$@"
   [ "$http_status" = 200 ] || fail "$what returned HTTP $http_status: $(response)"
+}
+
+expect() {
+  local what=$1 expected=$2
+  shift 2
+  call "$@"
+  [ "$http_status" = "$expected" ] || fail "$what returned HTTP $http_status instead of $expected: $(response)"
+}
+
+as() {
+  bearer=$1
+  shift
+  "$@"
+  bearer=""
 }
 
 json_field() {
@@ -168,11 +186,6 @@ sign_up "Smoke Tester" "smoke-$run@example.com"
 membership_id=$signed_up
 log "member $membership_id"
 
-log "look the member up through the admin console"
-request "admin member lookup" GET "$admin/api/membership/memberships/$membership_id" "$(hex 16)"
-[ "$(json_field membershipId)" = "$membership_id" ] || fail "admin member lookup returned $(response)"
-! json_has refreshToken || fail "admin member lookup answered with a refresh token: $(response)"
-
 log "register a bank account"
 account='{"membershipId":"'$membership_id'","bankName":"Jay Bank","bankAccountNumber":"1002-'$run'","valid":true}'
 request "bank account registration" POST "$web/api/banking/banking/account/register-eda" "$(hex 16)" "$account"
@@ -221,7 +234,85 @@ log "pay a merchant"
 payment_trace=$(hex 16)
 request "payment" POST "$web/api/payment/payment/request" "$payment_trace" \
   "requestMembershipId=$membership_id&requestPrice=3000&franchiseId=1&franchiseFeeRate=3" application/x-www-form-urlencoded
-[ -n "$(json_field paymentId)" ] || fail "payment returned $(response)"
+payment_id=$(json_field paymentId)
+[ -n "$payment_id" ] || fail "payment returned $(response)"
+
+staff_setting() { sed -n "s/^STAFF_$1=//p" "$env_file"; }
+
+sign_in_staff() {
+  call POST "$admin/api/auth/staff/sign-in" "$(hex 16)" \
+    "$(python3 -c 'import json, sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$1" "$2")"
+}
+
+sign_in_default_staff() {
+  sign_in_staff "$(staff_setting "$1_USERNAME")" "$(staff_setting "$1_PASSWORD")"
+  [ "$http_status" = 200 ] || fail "sign in of the default $1 account returned HTTP $http_status: $(response)"
+  [ "$(json_field account.role)" = "$1" ] || fail "the default $1 account signed in as $(response)"
+  signed_in=$(json_field token)
+}
+
+log "staff sign in to the admin console with the default accounts"
+sign_in_default_staff ADMIN
+admin_token=$signed_in
+sign_in_default_staff OPERATOR
+operator_token=$signed_in
+sign_in_default_staff VIEWER
+viewer_token=$signed_in
+
+log "the admin console turns away a request without a staff token"
+member_url="$admin/api/membership/memberships/$membership_id"
+expect "admin member lookup without a token" 401 GET "$member_url" "$(hex 16)"
+[ "$(json_field error)" = UNAUTHENTICATED ] || fail "admin member lookup without a token answered $(response)"
+request "customer sign in" POST "$web/api/membership/memberships/login" "$(hex 16)" '{"membershipId":"'$membership_id'"}'
+customer_token=$(json_field jwtToken)
+[ -n "$customer_token" ] || fail "customer sign in returned no token: $(response)"
+as "$customer_token" expect "admin member lookup with a customer token" 401 GET "$member_url" "$(hex 16)"
+
+log "a viewer reads every screen but writes nothing"
+gate_trace=$(hex 16)
+as "$viewer_token" request "admin member lookup by a viewer" GET "$member_url" "$gate_trace"
+[ "$(json_field membershipId)" = "$membership_id" ] || fail "admin member lookup returned $(response)"
+! json_has refreshToken || fail "admin member lookup answered with a refresh token: $(response)"
+member=$(cat "$work/body")
+as "$viewer_token" request "settlement list for a viewer" GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
+as "$viewer_token" expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
+[ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
+as "$viewer_token" expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
+
+log "an operator edits a member but cannot manage staff accounts"
+as "$operator_token" request "member edit by an operator" PUT "$member_url" "$(hex 16)" "$member"
+as "$operator_token" expect "staff account list for an operator" 403 GET "$admin/api/auth/staff/accounts" "$(hex 16)"
+as "$operator_token" expect "staff account creation by an operator" 403 POST "$admin/api/auth/staff/accounts" "$(hex 16)" \
+  '{"username":"smoke-operator-'$run'","password":"Smoke-Operator-'$run'!","role":"ADMIN","mfaEnabled":false}'
+
+log "an admin creates a staff account, and once deactivated it can no longer sign in"
+new_staff="smoke-$run"
+new_password="Smoke-$(hex 8)-Pass-42!"
+as "$admin_token" expect "staff account with a weak password" 400 POST "$admin/api/auth/staff/accounts" "$(hex 16)" \
+  '{"username":"'$new_staff'","password":"weak","role":"OPERATOR","mfaEnabled":false}'
+[ "$(json_field violations.0.rule)" = MIN_LENGTH ] || fail "the weak password was not refused for its length: $(response)"
+as "$admin_token" request "staff account creation by an admin" POST "$admin/api/auth/staff/accounts" "$(hex 16)" \
+  '{"username":"'$new_staff'","password":"'$new_password'","role":"OPERATOR","mfaEnabled":false}'
+sign_in_staff "$new_staff" "$new_password"
+[ "$http_status" = 200 ] || fail "sign in of the new staff account returned HTTP $http_status: $(response)"
+new_token=$(json_field token)
+as "$new_token" request "member lookup by the new staff account" GET "$member_url" "$(hex 16)"
+as "$admin_token" request "deactivation of the new staff account" PUT "$admin/api/auth/staff/accounts/$new_staff" "$(hex 16)" \
+  '{"role":"OPERATOR","active":false,"mfaEnabled":false}'
+sign_in_staff "$new_staff" "$new_password"
+[ "$http_status" = 401 ] || fail "sign in of the deactivated staff account returned HTTP $http_status: $(response)"
+as "$new_token" expect "member lookup with the token of a deactivated account" 401 GET "$member_url" "$(hex 16)"
+
+log "the gate refuses what the admin console never asks for"
+as "$admin_token" expect "payment request through the admin console" 403 POST "$admin/api/payment/payment/request" "$(hex 16)" \
+  "requestMembershipId=$membership_id&requestPrice=1&franchiseId=1&franchiseFeeRate=3" application/x-www-form-urlencoded
+as "$admin_token" expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
+as "$admin_token" expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
+expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
+
+log "a staff token means nothing to the customer site"
+call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
+[ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
 
 log "every service shipped its logs to ClickHouse"
 for service in "${services[@]}"; do
@@ -231,6 +322,7 @@ done
 log "traces cross the service boundaries and lead to their logs"
 for check in \
   "HTTP:$payment_trace:payment-service,membership-service" \
+  "Gate:$gate_trace:auth-service,membership-service" \
   "Kafka:$task_trace:money-service,task-consumer" \
   "Axon:$saga_trace:money-service,banking-service"; do
   IFS=: read -r boundary trace required <<<"$check"

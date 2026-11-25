@@ -1,7 +1,7 @@
 import { fakeRoutes, jsonBody } from '@jaypay/api/testing'
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
-import { renderApp } from '../test/render'
+import { renderApp, signedInAs } from '../test/render'
 
 const listRoute = 'GET /api/payment/payment/normal-status'
 const finishRoute = 'POST /api/payment/payment/finish-settlement'
@@ -19,7 +19,7 @@ const another = { ...payment, paymentId: 11, requestPrice: 8000, franchiseId: 'f
 
 describe('settlement', () => {
   test('lists the payments awaiting settlement with their total', async () => {
-    fakeRoutes({ [listRoute]: { body: [payment, another] } })
+    fakeRoutes({ ...signedInAs(), [listRoute]: { body: [payment, another] } })
     renderApp('/settlement')
 
     const row = within(await screen.findByRole('row', { name: /f-1/ }))
@@ -31,7 +31,7 @@ describe('settlement', () => {
   })
 
   test('marking a payment settled sends its ID and reloads the list', async () => {
-    const routes = { [listRoute]: { body: [payment, another] }, [finishRoute]: { body: undefined } }
+    const routes = { ...signedInAs(), [listRoute]: { body: [payment, another] }, [finishRoute]: { body: undefined } }
     const requests = fakeRoutes(routes)
     const user = renderApp('/settlement')
     const row = within(await screen.findByRole('row', { name: /f-1/ }))
@@ -47,7 +47,7 @@ describe('settlement', () => {
   })
 
   test('a failed settlement shows the server error', async () => {
-    fakeRoutes({ [listRoute]: { body: [payment] }, [finishRoute]: { status: 500 } })
+    fakeRoutes({ ...signedInAs(), [listRoute]: { body: [payment] }, [finishRoute]: { status: 500 } })
     const user = renderApp('/settlement')
 
     const row = within(await screen.findByRole('row', { name: /f-1/ }))
@@ -57,16 +57,24 @@ describe('settlement', () => {
   })
 
   test('an empty queue says nothing is waiting', async () => {
-    fakeRoutes({ [listRoute]: { body: [] } })
+    fakeRoutes({ ...signedInAs(), [listRoute]: { body: [] } })
     renderApp('/settlement')
 
     expect(await screen.findByText('No payments are awaiting settlement.')).toBeInTheDocument()
   })
 
   test('a queue that cannot be loaded shows the error', async () => {
-    fakeRoutes({ [listRoute]: { status: 502 } })
+    fakeRoutes({ ...signedInAs(), [listRoute]: { status: 502 } })
     renderApp('/settlement')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 502')
+  })
+
+  test('a viewer sees the queue without a way to settle it', async () => {
+    fakeRoutes({ ...signedInAs('VIEWER'), [listRoute]: { body: [payment] } })
+    renderApp('/settlement')
+
+    expect(await screen.findByRole('row', { name: /f-1/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark settled' })).not.toBeInTheDocument()
   })
 })
