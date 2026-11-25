@@ -6,6 +6,8 @@ compose_file="$root/infra/docker/compose.yaml"
 env_file="$root/infra/docker/.env"
 web=${SMOKE_WEB_URL:-http://localhost:8090}
 admin=${SMOKE_ADMIN_URL:-http://localhost:8091}
+banking=${SMOKE_BANKING_URL:-http://localhost:8082}
+money=${SMOKE_MONEY_URL:-http://localhost:8083}
 clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
 stack=${SMOKE_STACK:-compose}
@@ -29,7 +31,7 @@ hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
 
 call() {
   local method=$1 url=$2 trace=$3 body=${4:-} type=${5:-application/json}
-  local args=(-sS -o "$work/body" -w '%{http_code}' --max-time 90 -X "$method" -H "traceparent: 00-$trace-$(hex 8)-01")
+  local args=(-sS --path-as-is -o "$work/body" -w '%{http_code}' --max-time 90 -X "$method" -H "traceparent: 00-$trace-$(hex 8)-01")
   if [ -n "$body" ]; then
     args+=(-H "Content-Type: $type" --data-binary "$body")
   fi
@@ -214,7 +216,7 @@ sign_up() {
 }
 
 open_wallet() {
-  request "wallet creation for member $1" POST "$web/api/money/money/create-member-money" "$(hex 16)" '{"membershipId":"'"$1"'"}'
+  request "wallet creation for member $1" POST "$money/money/create-member-money" "$(hex 16)" '{"membershipId":"'"$1"'"}'
   eventually 60 "the wallet of member $1 never appeared" wallet_balance_is "$1" 0
 }
 
@@ -225,7 +227,7 @@ log "member $membership_id"
 
 log "register a bank account"
 account='{"membershipId":"'$membership_id'","bankName":"Jay Bank","bankAccountNumber":"1002-'$run'","valid":true}'
-request "bank account registration" POST "$web/api/banking/banking/account/register-eda" "$(hex 16)" "$account"
+request "bank account registration" POST "$banking/banking/account/register-eda" "$(hex 16)" "$account"
 eventually 60 "the bank account never got an aggregate" bank_account_registered "$membership_id"
 
 log "open a wallet"
@@ -233,12 +235,12 @@ open_wallet "$membership_id"
 
 log "top up 10000 through the Axon saga"
 saga_trace=$(hex 16)
-request "saga top-up" POST "$web/api/money/money/increase-eda" "$saga_trace" '{"targetMembershipId":"'$membership_id'","amount":10000}'
+request "saga top-up" POST "$money/money/increase-eda" "$saga_trace" '{"targetMembershipId":"'$membership_id'","amount":10000}'
 eventually 90 "the saga top-up never reached the wallet" wallet_balance_is "$membership_id" 10000
 
 log "top up 5000 through the Kafka task"
 task_trace=$(hex 16)
-request "Kafka task top-up" POST "$web/api/money/money/increase-async" "$task_trace" '{"targetMembershipId":"'$membership_id'","amount":5000}'
+request "Kafka task top-up" POST "$money/money/increase-async" "$task_trace" '{"targetMembershipId":"'$membership_id'","amount":5000}'
 eventually 60 "the Kafka task top-up never reached the wallet" wallet_balance_is "$membership_id" 15000
 
 log "top up 2000 directly, the way the wallet page does"
@@ -263,7 +265,7 @@ request "synchronous bank account registration" POST "$web/api/banking/banking/a
   '{"membershipId":"'$sync_member'","bankName":"Jay Bank","bankAccountNumber":"2002-'$run'","valid":true}'
 [ -n "$(json_field aggregateIdentifier)" ] || fail "synchronous registration stored no aggregate: $(response)"
 open_wallet "$sync_member"
-request "saga top-up of the synchronously registered account" POST "$web/api/money/money/increase-eda" "$(hex 16)" \
+request "saga top-up of the synchronously registered account" POST "$money/money/increase-eda" "$(hex 16)" \
   '{"targetMembershipId":"'$sync_member'","amount":4000}'
 eventually 90 "the saga top-up of the synchronously registered account never reached the wallet" wallet_balance_is "$sync_member" 4000
 
@@ -287,6 +289,23 @@ sign_in_default_staff() {
   [ "$(json_field account.role)" = "$1" ] || fail "the default $1 account signed in as $(response)"
   signed_in=$(json_field token)
 }
+
+log "the customer site forwards only the requests its screens make"
+for refused in \
+  "POST $web/api/payment/payment/finish-settlement" \
+  "PUT $web/api/banking/banking/firmbanking/update-eda" \
+  "POST $web/api/money/money/increase-eda" \
+  "GET $web/api/money/actuator/prometheus" \
+  "GET $web/api/membership/actuator/health" \
+  "GET $web/api/money/v3/api-docs" \
+  "GET $web/api/payment/swagger-ui/index.html" \
+  "PUT $web/api/membership/memberships/$membership_id" \
+  "GET $web/api/membership/memberships/$membership_id/..%2F..%2Factuator/health" \
+  "GET $web/api/money/money/..%2Factuator/prometheus" \
+  "GET $web/api/membership/memberships/$membership_id;jsessionid=x"; do
+  read -r method url <<<"$refused"
+  expect "$method ${url#"$web"} through the customer site" 404 "$method" "$url" "$(hex 16)" '{}'
+done
 
 log "staff sign in to the admin console with the default accounts"
 sign_in_default_staff ADMIN
@@ -351,6 +370,8 @@ as "$admin_token" expect "payment request through the admin console" 403 POST "$
 as "$admin_token" expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
 as "$admin_token" expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
 expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
+expect "a staff path reached through another service's prefix" 401 GET "$admin/api/membership/..%2Fauth/staff/me" "$(hex 16)"
+[ "$(json_field error)" = UNAUTHENTICATED ] || fail "the staff path behind another service's prefix answered $(response)"
 
 log "a staff token means nothing to the customer site"
 call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
