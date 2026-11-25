@@ -12,7 +12,12 @@ KUBECTL_IMAGE=registry.k8s.io/kubectl:v1.34.9@sha256:06a7ce6adc8e89486cedf0afe1e
 KUBERNETES_VERSION=1.34.0
 ARGOCD_VERSION=v3.5.9
 ARGOCD_INSTALL_SHA256=6eb366a0a0719a82ea084e382ce09ac67be53da3c3190c2ede8f82e4102e87d6
-ALL_STEPS=(contract docs english env terraform actionlint charts frontend backend)
+ALL_STEPS=(changelog contract docs english env terraform actionlint charts frontend backend)
+
+step_changelog() {
+  python3 scripts/changelog.py check CHANGELOG.md &&
+    { [ -z "${CHANGELOG_BASE:-}" ] || python3 scripts/changelog.py entry CHANGELOG.md "$CHANGELOG_BASE"; }
+}
 
 step_contract() {
   python3 scripts/extract-endpoints.py backend | diff -u docs/api-contract.md -
