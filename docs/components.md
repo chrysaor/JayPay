@@ -34,7 +34,7 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 | --- | --- | --- |
 | PostgreSQL | One database per service | `infra/docker/compose.yaml` |
 | Apache Kafka | Tasks and logging events between services | `infra/docker/compose.yaml` |
-| Axon Server | Event store and command, event and query routing | `infra/docker/compose.yaml` |
+| Axon Server | Event store and command and event routing | `infra/docker/compose.yaml` |
 | HashiCorp Vault | Holds the encryption key of membership-service, dev mode | `infra/docker/compose.yaml` |
 | DynamoDB Local | Regional money totals, stands in for the AWS table | `infra/docker/compose.yaml` |
 | ClickHouse | Stores logs and traces | `infra/docker/compose.yaml` |

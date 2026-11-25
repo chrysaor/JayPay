@@ -17,6 +17,7 @@ Nobody pushes to `master` or `develop` directly; every change goes through a PR.
 Who merges:
 
 - Into `develop`: an agent merges once CI passes.
+- Dependabot PRs into `develop`: patch and minor updates merge by themselves once the required checks pass. Major updates wait for a person.
 - Into `master`, and every `vX.Y.Z` tag: an agent acts only after the owner confirms explicitly in the conversation. Without that, nobody merges into `master` or tags.
 
 ## Making a change

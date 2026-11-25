@@ -16,9 +16,9 @@ Docker must be running. Backend tests start PostgreSQL through Testcontainers, a
 
 ## The gate
 
-`make verify` runs the endpoint contract diff, the English-only check, terraform fmt and validate, actionlint, the Helm lint and render of every workload with the Kubernetes schema check and the comparison with `compose.yaml`, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
+`make verify` runs the endpoint contract diff, the check of `docs/diagrams/`, `docs/services.md` and the README Service table against their sources, the English-only check, terraform fmt and validate, actionlint, the Helm lint and render of every workload with the Kubernetes schema check and the comparison with `compose.yaml`, the frontend lint, tests and build, and the backend build with tests. It exits non-zero when any step fails and prints `FAILED: <steps>`. `make verify STEPS="contract backend"` runs a subset. CI calls the same target.
 
-Do not report work as done until `make verify` passes. Changed an HTTP endpoint on purpose? Run `make contract` and commit `docs/api-contract.md`. Changed a workload's environment or `mem_limit` in `infra/docker/compose.yaml`? Change `deploy/envs/local` the same way.
+Do not report work as done until `make verify` passes. Changed an HTTP endpoint on purpose? Run `make contract` and commit `docs/api-contract.md`. Changed a workload's environment or `mem_limit` in `infra/docker/compose.yaml`? Change `deploy/envs/local` the same way. Changed a port, a memory limit, a call between workloads, a Kafka topic or an Axon handler? Run `make diagrams` and update `docs/services.md`.
 
 ## Workflow
 
