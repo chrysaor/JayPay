@@ -1,0 +1,42 @@
+{{- if eq .Release.Name "clickhouse" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "config.xml" "files/clickhouse/config.d/jaypay.xml" "users.xml" "files/clickhouse/users.d/jaypay.xml")) }}
+---
+{{ include "dependency.service" . }}
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: native
+      port: 9000
+      targetPort: native
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: files
+              mountPath: /etc/clickhouse-server/config.d/jaypay.xml
+              subPath: config.xml
+              readOnly: true
+            - name: files
+              mountPath: /etc/clickhouse-server/users.d/jaypay.xml
+              subPath: users.xml
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: clickhouse-files
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

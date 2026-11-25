@@ -1,0 +1,8 @@
+image: ""
+secretName: jaypay
+env: {}
+secretEnv: {}
+storage: 1Gi
+resources:
+  requests:
+    cpu: 100m

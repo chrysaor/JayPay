@@ -1,0 +1,40 @@
+{{- if eq .Release.Name "axon-server" }}
+{{ include "dependency.service" . }}
+    - name: http
+      port: 8024
+      targetPort: http
+    - name: grpc
+      port: 8124
+      targetPort: grpc
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 8024
+            - name: grpc
+              containerPort: 8124
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            {{- range list "data" "events" "log" "config" }}
+            - name: data
+              mountPath: /axonserver/{{ . }}
+              subPath: {{ . }}
+            {{- end }}
+            {{- range list "exts" "plugins" "transformation" }}
+            - name: {{ . }}
+              mountPath: /axonserver/{{ . }}
+            {{- end }}
+      volumes:
+        {{- range list "exts" "plugins" "transformation" }}
+        - name: {{ . }}
+          emptyDir: {}
+        {{- end }}
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

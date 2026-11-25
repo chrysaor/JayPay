@@ -101,8 +101,8 @@ flowchart LR
 | `frontend/` | npm workspace with the two sites and their shared packages, see [frontend/README.md](frontend/README.md) |
 | `infra/docker/` | `compose.yaml` for the local stack and the configuration of every container in it, see [infra/docker/README.md](infra/docker/README.md) |
 | `infra/terraform/` | The AWS DynamoDB table that money-query-service uses, see [infra/terraform/README.md](infra/terraform/README.md) |
-| `deploy/` | Helm charts for the services and the two sites, and the values of every workload per environment, see [deploy/README.md](deploy/README.md) |
-| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke`, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, and the checks that `make verify` runs |
+| `deploy/` | Helm charts for the services, the two sites and the dependencies of the local cluster, and the values of every workload per environment, see [deploy/README.md](deploy/README.md) |
+| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke` and `make k8s-smoke`, `k8s.sh` behind the `make k8s-*` targets, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, and the checks that `make verify` runs |
 | `docs/` | The HTTP API contract, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
 
 ## Quick start
@@ -204,12 +204,13 @@ Every command runs from the repository root. Run `make` to list them.
 | `make images` | Builds every service image and both frontend images |
 | `make up`, `make down` | Starts the local stack and waits until it is healthy, or stops it |
 | `make smoke` | Drives the running stack end to end |
+| `make k8s-up`, `make k8s-smoke`, `make k8s-down` | Runs the same stack on a local minikube cluster, drives it through its ingress, or deletes the cluster, see [deploy/README.md](deploy/README.md#local-cluster) |
 | `make scan`, `make scan-images` | Runs the Trivy and gitleaks scans, or the Trivy image scan |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
 | `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` |
 
-Docker must be running for `make test` and `make verify`. The terraform, actionlint, Helm, kubeconform, Trivy and gitleaks checks run from images pinned by digest, so you install none of them.
+Docker must be running for `make test` and `make verify`. The terraform, actionlint, Helm, kubeconform, Trivy and gitleaks checks run from images pinned by digest, so you install none of them. The `make k8s-*` targets also need minikube and kubectl.
 
 ### Branches and releases
 

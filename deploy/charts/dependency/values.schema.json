@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "secretName", "env", "secretEnv", "storage", "resources"],
+  "properties": {
+    "image": { "type": "string", "pattern": "^[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$" },
+    "secretName": { "type": "string", "minLength": 1 },
+    "env": { "type": "object", "additionalProperties": { "type": "string" } },
+    "secretEnv": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } },
+    "storage": { "type": "string", "pattern": "^[0-9]+(Mi|Gi)$" },
+    "resources": { "type": "object" }
+  }
+}

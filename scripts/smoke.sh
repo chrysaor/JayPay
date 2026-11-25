@@ -8,6 +8,7 @@ web=${SMOKE_WEB_URL:-http://localhost:8090}
 admin=${SMOKE_ADMIN_URL:-http://localhost:8091}
 clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
+stack=${SMOKE_STACK:-compose}
 services=(
   membership-service banking-service money-service remittance-service payment-service
   money-aggregation-service money-query-service settlement-service auth-service task-consumer logging-consumer
@@ -116,10 +117,17 @@ region_total_is() {
   [ "$total" = "$expected" ]
 }
 
+cluster() { kubectl --context jaypay --namespace jaypay "$@"; }
+
 recreate_dynamodb() {
-  docker compose -f "$compose_file" rm --stop --force dynamodb >"$work/compose" 2>&1 &&
-    docker compose -f "$compose_file" up --detach --wait dynamodb >>"$work/compose" 2>&1 ||
-    fail "could not recreate the dynamodb container: $(tail -5 "$work/compose")"
+  if [ "$stack" = kubernetes ]; then
+    cluster delete pod dynamodb-0 >"$work/recreate" 2>&1 &&
+      until cluster get pod dynamodb-0 >/dev/null 2>&1; do sleep 1; done &&
+      cluster wait --for=condition=Ready pod/dynamodb-0 --timeout=120s >>"$work/recreate" 2>&1
+  else
+    docker compose -f "$compose_file" rm --stop --force dynamodb >"$work/recreate" 2>&1 &&
+      docker compose -f "$compose_file" up --detach --wait dynamodb >>"$work/recreate" 2>&1
+  fi || fail "could not recreate the dynamodb container: $(tail -5 "$work/recreate")"
 }
 
 service_logged_since_start() {
@@ -170,6 +178,10 @@ PY
   return 1
 }
 
+case "$stack" in
+  compose | kubernetes) ;;
+  *) fail "SMOKE_STACK is $stack, use compose or kubernetes" ;;
+esac
 [ -f "$env_file" ] || fail "$env_file is missing, run scripts/init-env.py first"
 clickhouse_password=$(sed -n 's/^CLICKHOUSE_PASSWORD=//p' "$env_file")
 umask 077
@@ -333,6 +345,11 @@ expect "the actuator of the auth service through the console" 404 GET "$admin/ap
 log "a staff token means nothing to the customer site"
 call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
 [ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
+
+if [ "$stack" = kubernetes ]; then
+  log "PASSED, without the log, trace and scrape checks, because the cluster runs no collector and no Prometheus yet"
+  exit 0
+fi
 
 log "every service shipped its logs to ClickHouse"
 for service in "${services[@]}"; do

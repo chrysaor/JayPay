@@ -4,10 +4,13 @@ set -eu
 out=$1
 namespace=jaypay
 
+messages=$(mktemp)
 render() {
   release=$1 chart=$2 target=$3
   shift 3
-  if ! helm lint --strict --quiet "$chart" "$@" || ! helm template "$release" "$chart" --namespace "$namespace" "$@" >"$target"; then
+  if ! helm lint --strict --quiet "$chart" "$@" >"$messages" 2>&1 ||
+    ! helm template "$release" "$chart" --namespace "$namespace" "$@" >"$target" 2>"$messages"; then
+    cat "$messages" >&2
     echo "render-charts: $release from $chart $* failed" >&2
     exit 1
   fi

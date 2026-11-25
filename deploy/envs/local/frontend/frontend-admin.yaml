@@ -4,3 +4,7 @@ upstreams:
   JAYPAY_MONEY_AGGREGATION_URL: money-aggregation-service
   JAYPAY_MONEY_QUERY_URL: money-query-service
   JAYPAY_PAYMENT_URL: payment-service
+ingress:
+  enabled: true
+  className: nginx
+  host: admin.jaypay.localhost

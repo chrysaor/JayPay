@@ -1,0 +1,4 @@
+{{- $known := list "postgres" "kafka" "axon-server" "vault" "dynamodb" "clickhouse" }}
+{{- if not (has .Release.Name $known) }}
+{{- fail (printf "dependency: no template for release %s, known releases: %s" .Release.Name (join ", " $known)) }}
+{{- end }}

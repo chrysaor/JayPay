@@ -1,6 +1,6 @@
 # Kubernetes packaging
 
-This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. Nothing here is deployed yet. `make verify STEPS=charts` renders every workload and checks the result. The cluster, the dependencies and GitOps come in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
+This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. It also packages the six dependencies that the local cluster runs. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` runs `deploy/envs/local` on a local minikube cluster. GitOps and the cloud come in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
 
 ## Layout
 
@@ -10,14 +10,19 @@ deploy/
     spring-service/          one chart for all eleven Spring Boot services
     frontend/                one chart for frontend-web and frontend-admin
       ci/ingress-values.yaml values that only the gate renders, to cover the Ingress template
+    dependency/              one chart for the dependencies of the local cluster
+      files/                 links to the Compose and Terraform files that configure them
   envs/
     local/
       spring-service.yaml    shared by every spring-service workload in local
       frontend.yaml          shared by every frontend workload in local
+      dependency.yaml        shared by every dependency in local
       spring-service/
         <workload>.yaml      one file per service, named after its Compose service
       frontend/
         <workload>.yaml      frontend-web.yaml and frontend-admin.yaml
+      dependency/
+        <dependency>.yaml    postgres, kafka, axon-server, vault, dynamodb and clickhouse
 ```
 
 The path of a workload file says everything needed to render it. In `deploy/envs/<env>/<chart>/<workload>.yaml`, the directory names the chart and the file name is the release name. The release name is also the name of the Deployment, the Service and the ServiceAccount, and it picks the image.
@@ -38,8 +43,8 @@ The `values.yaml` of each chart lists every key with its default, and `values.sc
 | Key | Chart | Meaning |
 | --- | --- | --- |
 | `image.registry` | both | Registry and owner. The image is `<registry>/jaypay-<release>:<tag>`. The default is `ghcr.io/chrysaor`. |
-| `image.tag` | both | No default. The environment sets it. It must be a release tag such as `v0.2.0` or a release candidate tag such as `0.2.0-rc.1a2b3c4`, the two forms that `release.yml` publishes. |
-| `image.pullPolicy` | both | `IfNotPresent` by default. |
+| `image.tag` | both | No default. The environment sets it. It must be a release tag such as `v0.2.0` or a release candidate tag such as `0.2.0-rc.1a2b3c4`, the two forms that `release.yml` publishes. The one exception is `working-tree`, which the schema accepts only together with `pullPolicy: Never`. |
+| `image.pullPolicy` | both | `IfNotPresent` by default. `Never` means the image is already on the node and no registry serves it. The gate allows `Never` only in `deploy/envs/local`. |
 | `replicas` | both | 1 by default. |
 | `env` | spring-service | Plain environment variables, by name. |
 | `secretEnv` | spring-service | Environment variables read from the Secret, as `NAME: SECRET_KEY`. |
@@ -48,7 +53,31 @@ The `values.yaml` of each chart lists every key with its default, and `values.sc
 | `ingress.enabled`, `ingress.className`, `ingress.host` | frontend | An Ingress to the site. Off by default. |
 | `resources` | both | Requests and limits. The memory limit equals the `mem_limit` of the workload in `compose.yaml`. |
 
+`deploy/envs/local` runs `localhost/jaypay-<release>:working-tree` with `pullPolicy: Never`, the images that `make images` builds from the working tree and `make k8s-up` loads into the node. The release images on ghcr.io are `linux/amd64` only, and a tag that a rebuild moves is fine only where no registry is involved.
+
 `deploy/envs/local` gives every workload the environment that `infra/docker/compose.yaml` gives it. The addresses of the dependencies are Service names that the local cluster phase still has to create: `kafka:9092`, `axon-server:8124`, `http://otel-collector:4318`, `postgres:5432`, `vault` and `http://dynamodb:8000`.
+
+### The dependency chart
+
+Each file in `deploy/envs/local/dependency/` is one release, and the release name picks the template: `postgres`, `kafka`, `axon-server`, `vault`, `dynamodb` or `clickhouse`. Any other name fails to render. Each release is a StatefulSet and a Service with the name that the workloads already use, such as `postgres:5432` or `kafka:9092`. Every one except `vault` keeps its data on a `data` volume claim.
+
+| Key | Meaning |
+| --- | --- |
+| `image` | The image with its digest, the same reference as in `compose.yaml`. |
+| `env`, `secretEnv`, `secretName` | As in the spring-service chart. |
+| `storage` | The size of the `data` volume claim, `1Gi` by default. |
+| `resources` | The memory limit equals `mem_limit` in `compose.yaml`. |
+
+The dependencies start from the same files as in Compose. `files/` holds symbolic links to them, and Helm reads through the links:
+
+| Dependency | File | What it does |
+| --- | --- | --- |
+| postgres | `infra/docker/postgres/initdb.d/01-databases.sql` | creates one database per service on the first start |
+| vault | `infra/docker/vault/encryption-key.sh` | writes the encryption key in a `postStart` hook and is the readiness probe |
+| dynamodb | `infra/docker/dynamodb/table.sh` and `infra/terraform/modules/dynamodb-money-sum/table.json` | creates the table in a `postStart` hook from the definition that Terraform also reads |
+| clickhouse | `infra/docker/clickhouse/config.d/jaypay.xml` and `users.d/jaypay.xml` | the same server and user settings |
+
+The OpenTelemetry Collector, Prometheus, Grafana and Kafka UI are not in the cluster yet. The services still send OTLP to `http://otel-collector:4318`, which does not resolve, so the exporters log failures and drop the data.
 
 ## Secrets
 
@@ -92,12 +121,33 @@ The comparison checks the facts that break a workload when they drift. It leaves
 - Every Secret key is in `infra/docker/.env.example`.
 - Every upstream of a site names a Service that `deploy/envs/local` renders.
 - The memory limit equals `mem_limit` in Compose.
+- Every dependency is a Compose service, with the same image and the same memory limit.
+- No environment other than `local` uses `imagePullPolicy: Never`.
 
-`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, a missing workload, a missing variable and a wrong upstream, and checks that the step fails on each one.
+`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable and a wrong upstream, and checks that the step fails on each one.
+
+## Local cluster
+
+```sh
+make k8s-up
+make k8s-smoke
+make k8s-down
+```
+
+- `make k8s-up` builds the images with `make images`, runs `make verify STEPS=charts`, and starts the minikube profile `jaypay` with the ingress addon. It writes the cluster's credentials to `build/k8s/kubeconfig`, so the current context of `~/.kube/config` stays as it is. It creates the namespace `jaypay` and the Secret `jaypay` from `infra/docker/.env`, applies the dependencies and loads the working tree images into the node while they start, waits until the dependencies are ready, then applies the workloads and waits until all thirteen are available. Run it again at any time. It loads only the images that changed and restarts only the workloads that run them.
+- `make k8s-smoke` forwards `127.0.0.1:8480` to the ingress controller and runs `scripts/smoke.sh` against `http://web.jaypay.localhost:8480` and `http://admin.jaypay.localhost:8480`. curl resolves every `*.localhost` name to the loopback address. Set `K8S_INGRESS_PORT` to use another port. With `SMOKE_STACK=kubernetes` the smoke test recreates the `dynamodb` pod instead of the container, and it skips the log, trace and scrape checks until the cluster runs a collector and Prometheus.
+- `make k8s-down` deletes the profile and everything in it.
+
+The profile asks for every CPU of the Docker VM and 10 GiB of memory. Set `K8S_CPUS` and `K8S_MEMORY` to change that. The memory requests of the workloads and the dependencies add up to about 8.5 GiB, because each request equals the Compose `mem_limit`. Do not run the Compose stack at the same time.
+
+To look around, point kubectl at the profile's own kubeconfig:
+
+```sh
+KUBECONFIG=build/k8s/kubeconfig kubectl --namespace jaypay get pods
+```
 
 ## Next phases
 
-1. Local cluster. `make k8s-up` starts minikube with PostgreSQL, Kafka, Axon Server, Vault, DynamoDB Local, ClickHouse and the workloads, and `make k8s-smoke` runs `scripts/smoke.sh` through an ingress. `release.yml` publishes `linux/amd64` images only, so a cluster on an arm64 machine needs locally built images or multi-architecture release images.
-2. GitOps. Argo CD syncs the local cluster from `deploy/envs/local`, one Application per workload file.
-3. Observability and policy. The OpenTelemetry Collector, Prometheus and Grafana run in the cluster, and NetworkPolicy lets only the admin console reach the backends it proxies.
-4. Cloud. Terraform modules for the network, an EKS cluster, workload identity for DynamoDB and the secret store, validated in the gate and applied only from a private copy of this repository.
+1. GitOps. Argo CD syncs the local cluster from `deploy/envs/local`, one Application per workload file.
+2. Observability and policy. The OpenTelemetry Collector, Prometheus and Grafana run in the cluster, and NetworkPolicy lets only the admin console reach the backends it proxies.
+3. Cloud. Terraform modules for the network, an EKS cluster, workload identity for DynamoDB and the secret store, validated in the gate and applied only from a private copy of this repository.

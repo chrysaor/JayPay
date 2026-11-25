@@ -1,0 +1,12 @@
+image: clickhouse/clickhouse-server:26.10.12.13-alpine@sha256:f3b3c02741a77758052d300a167c75324ef4d53f1c0ee7270ac2c7829fe743cd
+env:
+  CLICKHOUSE_DB: otel
+  CLICKHOUSE_USER: otel
+secretEnv:
+  CLICKHOUSE_PASSWORD: CLICKHOUSE_PASSWORD
+resources:
+  requests:
+    cpu: 100m
+    memory: 1Gi
+  limits:
+    memory: 1Gi

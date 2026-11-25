@@ -1,0 +1,12 @@
+image: axoniq/axonserver:2026.1.8-nonroot@sha256:9f7171b3b47b0310f897fe14fb803838c0fdd80b40f5293fab55e2356c76cf70
+env:
+  AXONIQ_AXONSERVER_STANDALONE: "true"
+  AXONIQ_AXONSERVER_NAME: axon-server
+  AXONIQ_AXONSERVER_HOSTNAME: axon-server
+  JAVA_TOOL_OPTIONS: -Xmx384m
+resources:
+  requests:
+    cpu: 100m
+    memory: 768Mi
+  limits:
+    memory: 768Mi
