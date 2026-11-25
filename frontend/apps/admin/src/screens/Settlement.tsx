@@ -1,20 +1,11 @@
 import { ErrorNotice } from '@jaypay/ui/ErrorNotice'
 import { formatFeeRate } from '@jaypay/api/payment'
 import { formatDateTime, formatWon } from '@jaypay/ui/format'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { findAwaitingSettlement, finishSettlement } from '../api/settlement'
-import { useAccess } from '../permissions'
-
-const queueKey = ['settlement-queue']
+import { useQuery } from '@tanstack/react-query'
+import { findAwaitingSettlement } from '../api/settlement'
 
 export function Settlement() {
-  const { settlePayments } = useAccess()
-  const queryClient = useQueryClient()
-  const queue = useQuery({ queryKey: queueKey, queryFn: findAwaitingSettlement })
-  const settle = useMutation({
-    mutationFn: finishSettlement,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queueKey }),
-  })
+  const queue = useQuery({ queryKey: ['settlement-queue'], queryFn: findAwaitingSettlement })
   const payments = queue.data ?? []
   const total = payments.reduce((sum, payment) => sum + payment.requestPrice, 0)
   const payout = payments.reduce((sum, payment) => sum + payment.payout, 0)
@@ -32,14 +23,10 @@ export function Settlement() {
           Refresh
         </button>
       </div>
-      <ErrorNotice error={queue.error ?? settle.error} />
-      {settle.data ? (
-        <p className="notice notice-success" role="status">
-          {settle.data.alreadySettled
-            ? `Payment #${String(settle.data.paymentId)} was already settled. Nothing changed.`
-            : `Payment #${String(settle.data.paymentId)} is marked settled.`}
-        </p>
-      ) : null}
+      <p className="muted">
+        The settlement batch pays each merchant. A payment leaves this list once the bank confirms its transfer.
+      </p>
+      <ErrorNotice error={queue.error} />
       {queue.data?.length === 0 ? <p className="empty">No payments are awaiting settlement.</p> : null}
       {payments.length > 0 ? (
         <>
@@ -59,7 +46,6 @@ export function Settlement() {
                 <th>Payout</th>
                 <th>Approved at</th>
                 <th>Status</th>
-                {settlePayments ? <th /> : null}
               </tr>
             </thead>
             <tbody>
@@ -74,21 +60,8 @@ export function Settlement() {
                   <td>{formatWon(payment.payout)}</td>
                   <td>{formatDateTime(payment.approvedAt)}</td>
                   <td>
-                    <span className="badge badge-warn">Awaiting settlement</span>
+                    <span className="badge badge-warn">Awaiting payout</span>
                   </td>
-                  {settlePayments ? (
-                    <td>
-                      <button
-                        type="button"
-                        disabled={settle.isPending}
-                        onClick={() => {
-                          settle.mutate(payment.paymentId)
-                        }}
-                      >
-                        Mark settled
-                      </button>
-                    </td>
-                  ) : null}
                 </tr>
               ))}
             </tbody>

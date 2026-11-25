@@ -51,8 +51,10 @@ The admin console signs staff in through Keycloak with the Authorization Code fl
 | Role | Members | Settlement |
 | --- | --- | --- |
 | Viewer | Read | Read |
-| Operator | Read and edit | Read and mark settled |
-| Admin | Read and edit | Read and mark settled |
+| Operator | Read and edit | Read |
+| Admin | Read and edit | Read |
+
+The Settlement screen only lists the payments awaiting payout. settlement-service pays each merchant and settles a payment once the bank confirms the transfer, and auth-service refuses `POST /payment/finish-settlement` from every staff role.
 
 Staff change their password and add an authenticator app in the Keycloak account console, linked from My account. Admins manage staff accounts in the Keycloak admin console. The server decides every request on its own, so the console only hides what a role cannot do. In the image, nginx asks auth-service about every `/api` request before it forwards it.
 

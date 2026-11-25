@@ -45,7 +45,7 @@ class AdminConsoleGateTest {
             "POST,   /authorize/api/money-aggregation/money/aggregation/get-money-sum-by-address,           401, 204, 204, 204",
             "GET,    /authorize/api/money-query/money/query/get-money-sum-by-address/%EC%84%9C%EC%9A%B8,     401, 204, 204, 204",
             "GET,    /authorize/api/payment/payment/normal-status,                                           401, 204, 204, 204",
-            "POST,   /authorize/api/payment/payment/finish-settlement,                                       401, 403, 204, 204",
+            "POST,   /authorize/api/payment/payment/finish-settlement,                                       401, 403, 403, 403",
             "POST,   /authorize/api/membership/memberships/register,                                         401, 403, 403, 403",
             "DELETE, /authorize/api/membership/memberships/1,                                                401, 403, 403, 403",
             "GET,    /authorize/api/membership/memberships/1/extra,                                          401, 403, 403, 403",
@@ -125,7 +125,7 @@ class AdminConsoleGateTest {
 
     @Test
     void aForbiddenRequestLearnsItsRoleIsNotEnough() throws Exception {
-        send(StaffTokens.of("viewer"), request(HttpMethod.POST, "/authorize/api/payment/payment/finish-settlement"))
+        send(StaffTokens.of("viewer"), request(HttpMethod.PUT, MEMBER))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("FORBIDDEN"));
     }

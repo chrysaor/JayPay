@@ -378,7 +378,6 @@ log "a payment above the balance fails and keeps the balance, and bad payments a
 request "payment above the balance" POST "$web/api/payment/payment/request" "$(hex 16)" \
   '{"requestId":"smoke-overpay-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":9001}'
 [ "$(json_field paymentStatus)" = FAILED ] || fail "a payment above the balance answered $(response)"
-failed_payment_id=$(json_field paymentId)
 wallet_balance_is "$membership_id" 9000 || fail "a failed payment moved the wallet: $(cat "$work/last")"
 for amount in -1000 0 10000001 1.5; do
   expect "a payment of $amount" 400 POST "$web/api/payment/payment/request" "$(hex 16)" \
@@ -505,16 +504,13 @@ member=$(cat "$work/body")
 as_staff VIEWER request "settlement list for a viewer" GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
 as_staff VIEWER expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
 [ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
-as_staff VIEWER expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
+for role in VIEWER OPERATOR; do
+  as_staff "$role" expect "settling a payment by hand as $role" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+    '{"paymentId":"'$payment_id'"}'
+done
 
-log "the settlement job settles the payment once, and settling it again changes nothing"
+log "the settlement job settles the payment once the bank confirms its payout"
 as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
-as_staff OPERATOR request "Mark settled of a settled payment" POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
-  '{"paymentId":"'$payment_id'"}'
-[ "$(json_field alreadySettled)" = True ] || fail "settling a settled payment answered $(response)"
-as_staff OPERATOR expect "Mark settled of a failed payment" 409 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
-  '{"paymentId":"'$failed_payment_id'"}'
-[ "$(json_field error)" = PAYMENT_NOT_PAID ] || fail "settling a failed payment answered $(response)"
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
 as_staff VIEWER eventually 60 "the region total never reached 14000" region_total_is 14000
