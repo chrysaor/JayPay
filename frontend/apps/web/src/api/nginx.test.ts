@@ -20,7 +20,13 @@ const screenCalls: Record<string, () => Promise<unknown>> = {
   findBalance: () => money.findBalance('1'),
   increaseMoney: () => money.increaseMoney({ requestId: 'r', targetMembershipId: '1', amount: 1 }),
   requestRemittance: () =>
-    remittance.requestRemittance({ fromMembershipId: '1', toMembershipId: '2', remittanceType: remittance.toMembership, amount: 1 }),
+    remittance.requestRemittance({
+      requestId: 'r',
+      fromMembershipId: '1',
+      toMembershipId: '2',
+      remittanceType: remittance.toMembership,
+      amount: 1,
+    }),
   requestPayment: () => payment.requestPayment({ requestId: 'r', requestMembershipId: '1', franchiseId: '2', requestPrice: 1 }),
 }
 
