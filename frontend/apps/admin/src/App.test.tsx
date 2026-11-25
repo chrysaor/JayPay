@@ -146,7 +146,9 @@ describe('signing in', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The sign-in server refused the request. Sign in again.')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(lastExit().path).toBe(`${endpoints}/auth`)
+    await waitFor(() => {
+      expect(lastExit().path).toBe(`${endpoints}/auth`)
+    })
     expect(requests).toHaveLength(1)
   })
 })
@@ -230,7 +232,9 @@ describe('signing out', () => {
     expect(await screen.findByText('You signed out.')).toBeInTheDocument()
     expect(leaveFor).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(lastExit().path).toBe(`${endpoints}/auth`)
+    await waitFor(() => {
+      expect(lastExit().path).toBe(`${endpoints}/auth`)
+    })
     expect(pending()?.returnTo).toBe('/members')
   })
 })
@@ -247,7 +251,9 @@ describe('the end of a session', () => {
     expect(leaveFor).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(lastExit().path).toBe(`${endpoints}/auth`)
+    await waitFor(() => {
+      expect(lastExit().path).toBe(`${endpoints}/auth`)
+    })
     expect(pending()?.returnTo).toBe('/settlement')
   })
 
