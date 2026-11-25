@@ -94,10 +94,10 @@ Every service and site has a section in [docs/services.md](docs/services.md) wit
 | [banking-service](docs/services.md#banking-service) | Register bank accounts and run firm banking requests against a fake bank | 8082 | PostgreSQL `banking` | Axon aggregates for bank accounts and firm banking, writes the log topic |
 | [money-service](docs/services.md#money-service) | Wallet balances and top-ups: synchronous, through a Kafka task, or through the Axon saga | 8083 | PostgreSQL `money` | Axon aggregate and recharge saga, Kafka task topics, writes the log topic |
 | [remittance-service](docs/services.md#remittance-service) | Send money to a member or a bank account through money-service and banking-service | 8084 | PostgreSQL `remittance` | Writes the log topic |
-| [payment-service](docs/services.md#payment-service) | Record payments to merchants, list unsettled payments, and mark them settled | 8085 | PostgreSQL `payment` | Writes the log topic |
+| [payment-service](docs/services.md#payment-service) | Take payments from wallets to corporate merchants at a server-set fee, list paid payments, and mark each settled once | 8085 | PostgreSQL `payment` | Writes the log topic |
 | [money-aggregation-service](docs/services.md#money-aggregation-service) | Sum the wallet balances of the members at one address | 8086 | PostgreSQL `money_aggregation`, no tables | Writes the log topic |
 | [money-query-service](docs/services.md#money-query-service) | Read model of saga top-ups per address, read over HTTP | 8087 | DynamoDB `MoneyIncreaseEventByRegion`, PostgreSQL `money_query` with no tables | Axon event handler, writes the log topic |
-| [settlement-service](docs/services.md#settlement-service) | Spring Batch job every 30 seconds that pays merchants through firm banking and marks the payments settled | 8088 | PostgreSQL `settlement` for the batch tables | none |
+| [settlement-service](docs/services.md#settlement-service) | Spring Batch job every 30 seconds that settles each paid payment once and pays its payout through firm banking | 8088 | PostgreSQL `settlement` for the batch tables | none |
 | [auth-service](docs/services.md#auth-service) | Staff accounts with the roles viewer, operator and admin, sign-in, staff tokens, and the decision for every admin console request | 8089 | PostgreSQL `auth` | none |
 | [task-consumer](docs/services.md#task-consumer) | Reads top-up tasks, marks every subtask done, and writes the result | none | none | Kafka `jaypay.task.topic` in, `jaypay.task.result.topic` out |
 | [logging-consumer](docs/services.md#logging-consumer) | Writes each record of the log topic to its own log | none | none | Kafka `jaypay.logging.out.stdout` in |
@@ -193,7 +193,7 @@ JayPay is a study project and is not safe to run with real money or real users.
 - The fake bank in banking-service accepts every account and every transfer.
 - remittance-service stores every remittance, but `GET /remittance/{membershipId}` always returns an empty body, and a remittance to a bank account does not take the money from the sender's wallet.
 - The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
-- The customer site forwards every path of the five services it proxies, so their internal endpoints, Actuator and OpenAPI pages answer without a login ([#95](https://github.com/chrysaor/JayPay/issues/95)).
-- Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, a payment does not debit the payer and takes the merchant and fee from the request, and a remittance accepts any sender ([#91](https://github.com/chrysaor/JayPay/issues/91), [#97](https://github.com/chrysaor/JayPay/issues/97), [#98](https://github.com/chrysaor/JayPay/issues/98), [#99](https://github.com/chrysaor/JayPay/issues/99)).
+- Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, a payment takes the paying member from the request body, and a remittance accepts any sender ([#91](https://github.com/chrysaor/JayPay/issues/91), [#98](https://github.com/chrysaor/JayPay/issues/98), [#99](https://github.com/chrysaor/JayPay/issues/99)).
+- settlement-service marks a payment settled before it sends the transfer and does not retry a transfer that fails, so a failed payout needs a manual transfer.
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.

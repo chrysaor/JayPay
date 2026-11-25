@@ -4,8 +4,7 @@ import java.util.List;
 
 public interface PaymentPort {
 
-    List<Payment> getNormalStatusPayments();
+    List<Payment> getPaidPayments();
 
-    void finishSettlement(long paymentId);
-
+    boolean finishSettlement(long paymentId);
 }

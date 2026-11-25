@@ -23,6 +23,7 @@ public class MembershipServiceAdapter implements GetMembershipPort {
     public MembershipStatus getMembership(String membershipId) {
         String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
         MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class);
-        return new MembershipStatus(membership.membershipId(), membership.valid());
+        boolean found = membership != null && membershipId.equals(membership.membershipId());
+        return new MembershipStatus(membershipId, found && membership.valid(), found && membership.corp());
     }
 }

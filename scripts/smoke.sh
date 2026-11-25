@@ -111,6 +111,12 @@ bank_account_registered() {
   [ -n "$aggregate" ]
 }
 
+payment_settled() {
+  call GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
+  observed "HTTP $http_status: $(response)"
+  [ "$http_status" = 200 ] && ! python3 -c 'import json, sys; sys.exit(any(p["paymentId"] == int(sys.argv[2]) for p in json.load(open(sys.argv[1]))))' "$work/body" "$1"
+}
+
 region_total_is() {
   local expected=$1 total=""
   call GET "$admin/api/money-query/money/query/get-money-sum-by-address/$region" "$(hex 16)"
@@ -207,9 +213,9 @@ for site in "$web" "$admin"; do
 done
 
 sign_up() {
-  local name=$1 email=$2
+  local name=$1 email=$2 corp=${3:-false}
   request "sign up of $name" POST "$web/api/membership/memberships" "$(hex 16)" \
-    '{"name":"'"$name"'","email":"'"$email"'","address":"'"$region"'","corp":false}'
+    '{"name":"'"$name"'","email":"'"$email"'","address":"'"$region"'","corp":'"$corp"'}'
   signed_up=$(json_field membershipId)
   [ -n "$signed_up" ] || fail "sign up of $name answered without a membershipId: $(response)"
   ! json_has refreshToken || fail "sign up of $name answered with a refresh token: $(response)"
@@ -291,12 +297,42 @@ request "saga top-up of the synchronously registered account" POST "$money/money
   '{"requestId":"smoke-sync-'$run'","targetMembershipId":"'$sync_member'","amount":4000}'
 eventually 90 "the saga top-up of the synchronously registered account never reached the wallet" wallet_balance_is "$sync_member" 4000
 
-log "pay a merchant"
+log "pay a corporate merchant 3000 from the wallet of 12000, at the server's fee of 3%"
+sign_up "Smoke Merchant" "smoke-merchant-$run@example.com" true
+merchant=$signed_up
+request "merchant bank account registration" POST "$web/api/banking/banking/account/register" "$(hex 16)" \
+  '{"membershipId":"'$merchant'","bankName":"Jay Bank","bankAccountNumber":"3002-'$run'","valid":true}'
 payment_trace=$(hex 16)
-request "payment" POST "$web/api/payment/payment/request" "$payment_trace" \
-  "requestMembershipId=$membership_id&requestPrice=3000&franchiseId=1&franchiseFeeRate=3" application/x-www-form-urlencoded
+payment='{"requestId":"smoke-pay-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":3000}'
+request "payment" POST "$web/api/payment/payment/request" "$payment_trace" "$payment"
 payment_id=$(json_field paymentId)
 [ -n "$payment_id" ] || fail "payment returned $(response)"
+[ "$(json_field paymentStatus)" = PAID ] || fail "payment was not paid: $(response)"
+[ "$(json_field fee)/$(json_field payout)" = 90/2910 ] || fail "payment charged the wrong fee: $(response)"
+first_payment=$(cat "$work/body")
+eventually 30 "the payment never left the payer's wallet" wallet_balance_is "$membership_id" 9000
+
+log "a repeated payment answers with the first result and takes nothing more"
+request "repeated payment" POST "$web/api/payment/payment/request" "$(hex 16)" "$payment"
+[ "$(cat "$work/body")" = "$first_payment" ] || fail "the repeated payment answered $(response) instead of $first_payment"
+expect "a reused payment request id for another price" 409 POST "$web/api/payment/payment/request" "$(hex 16)" \
+  '{"requestId":"smoke-pay-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":3001}'
+wallet_balance_is "$membership_id" 9000 || fail "a repeated payment changed the wallet: $(cat "$work/last")"
+
+log "a payment above the balance fails and keeps the balance, and bad payments are refused"
+request "payment above the balance" POST "$web/api/payment/payment/request" "$(hex 16)" \
+  '{"requestId":"smoke-overpay-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":9001}'
+[ "$(json_field paymentStatus)" = FAILED ] || fail "a payment above the balance answered $(response)"
+failed_payment_id=$(json_field paymentId)
+wallet_balance_is "$membership_id" 9000 || fail "a failed payment moved the wallet: $(cat "$work/last")"
+for amount in -1000 0 10000001 1.5; do
+  expect "a payment of $amount" 400 POST "$web/api/payment/payment/request" "$(hex 16)" \
+    '{"requestId":"smoke-bad-'$(hex 8)'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":'$amount'}'
+  [ "$(json_field error)" = INVALID_AMOUNT ] || fail "a payment of $amount answered $(response)"
+done
+expect "a payment to a member that is not corporate" 400 POST "$web/api/payment/payment/request" "$(hex 16)" \
+  '{"requestId":"smoke-personal-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$receiver'","requestPrice":1000}'
+[ "$(json_field error)" = INVALID_MERCHANT ] || fail "a payment to a personal member answered $(response)"
 
 staff_setting() { sed -n "s/^STAFF_$1=//p" "$env_file"; }
 
@@ -357,6 +393,15 @@ as "$viewer_token" expect "member edit by a viewer" 403 PUT "$member_url" "$(hex
 [ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
 as "$viewer_token" expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
 
+log "the settlement job settles the payment once, and settling it again changes nothing"
+as "$viewer_token" eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
+as "$operator_token" request "Mark settled of a settled payment" POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+  '{"paymentId":"'$payment_id'"}'
+[ "$(json_field alreadySettled)" = True ] || fail "settling a settled payment answered $(response)"
+as "$operator_token" expect "Mark settled of a failed payment" 409 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+  '{"paymentId":"'$failed_payment_id'"}'
+[ "$(json_field error)" = PAYMENT_NOT_PAID ] || fail "settling a failed payment answered $(response)"
+
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
 as "$viewer_token" eventually 60 "the region total never reached 14000" region_total_is 14000
 recreate_dynamodb
@@ -388,7 +433,7 @@ as "$new_token" expect "member lookup with the token of a deactivated account" 4
 
 log "the gate refuses what the admin console never asks for"
 as "$admin_token" expect "payment request through the admin console" 403 POST "$admin/api/payment/payment/request" "$(hex 16)" \
-  "requestMembershipId=$membership_id&requestPrice=1&franchiseId=1&franchiseFeeRate=3" application/x-www-form-urlencoded
+  '{"requestId":"smoke-admin-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":1}'
 as "$admin_token" expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
 as "$admin_token" expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
 expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
@@ -406,7 +451,7 @@ done
 
 log "traces cross the service boundaries and lead to their logs"
 for check in \
-  "HTTP:$payment_trace:payment-service,membership-service" \
+  "HTTP:$payment_trace:payment-service,membership-service,money-service" \
   "Gate:$gate_trace:auth-service,membership-service" \
   "Kafka:$task_trace:money-service,task-consumer" \
   "Axon:$saga_trace:money-service,banking-service"; do

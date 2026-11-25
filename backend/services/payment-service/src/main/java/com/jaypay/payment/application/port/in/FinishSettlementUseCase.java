@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface FinishSettlementUseCase {
 
-    List<Payment> getNormalStatusPayments();
-    void finishPayment(FinishSettlementCommand command);
+    List<Payment> getPaidPayments();
 
+    SettlementOutcome finishSettlement(long paymentId);
 }

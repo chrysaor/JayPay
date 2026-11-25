@@ -1,50 +1,63 @@
 package com.jaypay.payment.adapter.out.persistence;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import com.jaypay.payment.domain.PaymentStatus;
+import jakarta.persistence.CheckConstraint;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.util.Date;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.Instant;
 
 @Entity
-@Table(name = "payment_request")
-@Data
-@AllArgsConstructor
+@Table(name = "payment", check = {
+        @CheckConstraint(name = "payment_price_positive", constraint = "request_price > 0"),
+        @CheckConstraint(name = "payment_fee_rate_in_range", constraint = "fee_rate_basis_points BETWEEN 0 AND 10000"),
+        @CheckConstraint(name = "payment_fee_and_payout_make_the_price", constraint = "fee >= 0 AND payout >= 0 AND fee + payout = request_price")
+})
+@Getter
 @NoArgsConstructor
 public class PaymentJpaEntity {
+
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long paymentId;
-    private String requestMembershipId;
-    private int requestPrice;
-    private String franchiseId;
-    private String franchiseFeeRate;
-    private int paymentStatus;
-    private Date approvedAt;
 
-    public PaymentJpaEntity(String requestMembershipId, int requestPrice, String franchiseId, String franchiseFeeRate, int paymentStatus, Date approvedAt) {
-        this.requestMembershipId = requestMembershipId;
-        this.requestPrice = requestPrice;
-        this.franchiseId = franchiseId;
-        this.franchiseFeeRate = franchiseFeeRate;
-        this.paymentStatus = paymentStatus;
-        this.approvedAt = approvedAt;
-    }
+    @Column(nullable = false, unique = true, length = 64)
+    private String requestId;
 
-    @Override
-    public String toString() {
-        return "PaymentJpaEntity{" +
-                "paymentId=" + paymentId +
-                ", requestMembershipId='" + requestMembershipId + '\'' +
-                ", requestPrice=" + requestPrice +
-                ", franchiseId='" + franchiseId + '\'' +
-                ", franchiseFeeRate='" + franchiseFeeRate + '\'' +
-                ", paymentStatus=" + paymentStatus +
-                ", approvedAt=" + approvedAt +
-                '}';
-    }
+    @Column(nullable = false)
+    private Long requestMembershipId;
+
+    @Column(nullable = false)
+    private Long franchiseId;
+
+    @Column(nullable = false)
+    private long requestPrice;
+
+    @Column(nullable = false)
+    private int feeRateBasisPoints;
+
+    @Column(nullable = false)
+    private long fee;
+
+    @Column(nullable = false)
+    private long payout;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus paymentStatus;
+
+    @Column(nullable = false)
+    private Instant requestedAt;
+
+    private Instant approvedAt;
+
+    private Instant settledAt;
 }

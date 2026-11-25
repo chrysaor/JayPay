@@ -7,13 +7,15 @@ import com.jaypay.settlement.application.port.out.BankingPort;
 import com.jaypay.settlement.application.port.out.Payment;
 import com.jaypay.settlement.application.port.out.PaymentPort;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @UseCase
 @RequiredArgsConstructor
+@Slf4j
 public class SettlementService implements SettlementUseCase {
 
     private final BankingPort bankingPort;
@@ -21,25 +23,24 @@ public class SettlementService implements SettlementUseCase {
 
     @Override
     public void settleNormalStatusPayments() {
-        List<Payment> payments = paymentPort.getNormalStatusPayments();
-
-        Map<String, BankAccount> accountByFranchise = new LinkedHashMap<>();
-        Map<String, Integer> amountByFranchise = new LinkedHashMap<>();
-        for (Payment payment : payments) {
-            accountByFranchise.computeIfAbsent(payment.franchiseId(), bankingPort::getRegisteredBankAccount);
-            amountByFranchise.merge(payment.franchiseId(), settledAmount(payment), Integer::sum);
-        }
-
-        accountByFranchise.forEach((franchiseId, account) ->
-                bankingPort.requestFirmBanking(account, amountByFranchise.get(franchiseId)));
-
-        for (Payment payment : payments) {
-            paymentPort.finishSettlement(payment.paymentId());
+        Map<String, Optional<BankAccount>> accounts = new HashMap<>();
+        for (Payment payment : paymentPort.getPaidPayments()) {
+            Optional<BankAccount> account = accounts.computeIfAbsent(payment.franchiseId(), bankingPort::getRegisteredBankAccount);
+            if (account.isEmpty()) {
+                log.warn("Merchant {} has no bank account, so payment {} stays paid", payment.franchiseId(), payment.paymentId());
+            } else if (paymentPort.finishSettlement(payment.paymentId())) {
+                pay(payment, account.get());
+            }
         }
     }
 
-    private static int settledAmount(Payment payment) {
-        double fee = Double.parseDouble(payment.franchiseFeeRate());
-        return (int) ((100 - fee) * payment.requestPrice() * 100);
+    private void pay(Payment payment, BankAccount account) {
+        try {
+            if (!bankingPort.requestFirmBanking(account, payment.payout())) {
+                log.error("The bank refused the payout of payment {} to merchant {}", payment.paymentId(), payment.franchiseId());
+            }
+        } catch (RuntimeException e) {
+            log.error("The payout of payment {} to merchant {} got no answer", payment.paymentId(), payment.franchiseId(), e);
+        }
     }
 }

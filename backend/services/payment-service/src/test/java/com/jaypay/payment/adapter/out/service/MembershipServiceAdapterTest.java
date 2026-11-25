@@ -50,7 +50,11 @@ class MembershipServiceAdapterTest {
     void readsTheMemberFromTheMembershipService() {
         MembershipStatus status = adapter.getMembership("7");
 
-        assertThat(status.getMembershipId()).isEqualTo("7");
-        assertThat(status.isValid()).isTrue();
+        assertThat(status).isEqualTo(new MembershipStatus("7", true, false));
+    }
+
+    @Test
+    void treatsAnUnknownMemberAsNeitherValidNorCorporate() {
+        assertThat(adapter.getMembership("8")).isEqualTo(new MembershipStatus("8", false, false));
     }
 }

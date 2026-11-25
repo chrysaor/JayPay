@@ -14,11 +14,15 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 - The tag workflow fails before it publishes any image when `CHANGELOG.md` has no section for the version, and it retries creating the GitHub Release when GitHub answers with an error ([#113](https://github.com/chrysaor/JayPay/issues/113))
 - Every money-service change takes a `requestId` in its body and answers a repeat with the first result, or 409 `REQUEST_ID_REUSED` when the same id carries a different change. `/money/decrease` lowers the balance, `/money/decrease-eda` is gone, and balances and amounts are 64-bit in money-service, remittance-service and money-aggregation-service. Wallets live in the new `wallet` table, so wallets in a local database from before start again from zero ([#96](https://github.com/chrysaor/JayPay/issues/96))
 
+- `POST /payment/request` takes a JSON body with a `requestId` and a whole-number `requestPrice`, and answers with `fee`, `payout`, `feeRateBasisPoints` and a `paymentStatus` of `REQUESTED`, `PAID`, `FAILED` or `SETTLED`. `POST /payment/finish-settlement` answers with `alreadySettled`. Payments live in the new `payment` table, so payments in a local database from before are no longer listed or paid out ([#97](https://github.com/chrysaor/JayPay/issues/97))
+
 ### Fixed
 
+- Settlement pays each payment out once with integer arithmetic: payment-service stores the fee, rounded down to the won, and the payout, which always add up to the price, and settlement-service pays a payment only after its own `PAID` to `SETTLED` update succeeded, so repeated or concurrent runs pay nothing twice ([#97](https://github.com/chrysaor/JayPay/issues/97))
 - A wallet balance stays correct: money-service refuses an amount that is not a whole number from 1 to `MONEY_AMOUNT_MAX` (10,000,000 by default) with 400 and changes nothing, a decrease never takes a balance below zero, each member has one wallet, and concurrent or repeated requests count exactly once ([#96](https://github.com/chrysaor/JayPay/issues/96))
 ### Security
 
+- A payment takes its price from the payer's wallet once, records `FAILED` when the balance is too low, refuses a price that is not a whole number from 1 to `PAYMENT_AMOUNT_MAX` (10,000,000 by default) and a merchant that is not a valid corporate member, and ignores a fee rate in the request ([#97](https://github.com/chrysaor/JayPay/issues/97))
 - The customer site forwards only the 11 requests its screens make and answers 404 to every other `/api/` path, so the services' internal endpoints, Actuator and the OpenAPI pages no longer answer through it ([#110](https://github.com/chrysaor/JayPay/pull/110))
 - The admin site picks the upstream from the normalized path, so a path with an encoded `..` such as `/api/membership/..%2Fauth/staff/me` no longer reaches membership-service without the staff check ([#110](https://github.com/chrysaor/JayPay/pull/110))
 
