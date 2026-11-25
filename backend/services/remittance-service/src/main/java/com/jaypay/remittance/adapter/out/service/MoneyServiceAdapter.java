@@ -37,7 +37,7 @@ public class MoneyServiceAdapter implements WalletPort {
             MoneyChangingResult result = commonHttpClient.post(
                     String.join("/", moneyServiceUrl, "money", direction),
                     new MoneyChangingRequest(requestId, membershipId, amount),
-                    MoneyChangingResult.class);
+                    MoneyChangingResult.class).body();
             if (result != null && requestId.equals(result.moneyChangingRequestId())) {
                 if (result.moneyChangingResultStatus() == SUCCEEDED) {
                     return Outcome.SUCCEEDED;

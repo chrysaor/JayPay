@@ -14,6 +14,10 @@ axon:
     general: xstream
     events: jackson
     messages: jackson
+jaypay:
+  http:
+    connect-timeout: 2s
+    request-timeout: 10s
 logging:
   topic: jaypay.logging.out.stdout
   structured:

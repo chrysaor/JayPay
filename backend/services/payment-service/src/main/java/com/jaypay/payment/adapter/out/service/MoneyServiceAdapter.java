@@ -28,7 +28,7 @@ public class MoneyServiceAdapter implements DecreaseMoneyPort {
             MoneyChangingResult result = commonHttpClient.post(
                     String.join("/", moneyServiceUrl, "money", "decrease"),
                     new MoneyChangingRequest(requestId, membershipId, amount),
-                    MoneyChangingResult.class);
+                    MoneyChangingResult.class).body();
             if (result != null && requestId.equals(result.moneyChangingRequestId())) {
                 if (result.moneyChangingResultStatus() == SUCCEEDED) {
                     return Debit.SUCCEEDED;

@@ -23,7 +23,7 @@ public class MembershipServiceAdapter implements GetMemberAddressInfoPort {
     @Override
     public MemberAddressInfo getMemberAddressInfo(String membershipId) {
         String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
-        MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class);
+        MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class).body();
         return new MemberAddressInfo(membership.membershipId(), membership.address());
     }
 }

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.java11.instrument.binder.jdk.MicrometerHttpClient;
 import io.micrometer.observation.ObservationRegistry;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 
 @Component
 public class CommonHttpClient {
@@ -27,36 +29,40 @@ public class CommonHttpClient {
             .build();
 
     private final HttpClient httpClient;
+    private final Duration requestTimeout;
 
-    public CommonHttpClient(MeterRegistry meterRegistry, ObservationRegistry observationRegistry) {
-        httpClient = MicrometerHttpClient.instrumentationBuilder(HttpClient.newHttpClient(), meterRegistry)
+    public CommonHttpClient(MeterRegistry meterRegistry, ObservationRegistry observationRegistry,
+                            @Value("${jaypay.http.connect-timeout}") Duration connectTimeout,
+                            @Value("${jaypay.http.request-timeout}") Duration requestTimeout) {
+        this.requestTimeout = requestTimeout;
+        httpClient = MicrometerHttpClient.instrumentationBuilder(HttpClient.newBuilder().connectTimeout(connectTimeout).build(), meterRegistry)
                 .observationRegistry(observationRegistry)
                 .build();
     }
 
-    public <T> T get(String url, Class<T> responseType) {
-        return send(HttpRequest.newBuilder(URI.create(url)).GET(), JSON.constructType(responseType));
+    public <T> HttpReply<T> get(String url, Class<T> responseType) {
+        return send(request(url).GET(), JSON.constructType(responseType));
     }
 
-    public <T> T get(String url, TypeReference<T> responseType) {
-        return send(HttpRequest.newBuilder(URI.create(url)).GET(), JSON.constructType(responseType));
+    public <T> HttpReply<T> get(String url, TypeReference<T> responseType) {
+        return send(request(url).GET(), JSON.constructType(responseType));
     }
 
-    public <T> T post(String url, Object body, Class<T> responseType) {
+    public <T> HttpReply<T> post(String url, Object body, Class<T> responseType) {
         return send(jsonPost(url, body), JSON.constructType(responseType));
     }
 
-    public <T> T post(String url, Object body, TypeReference<T> responseType) {
+    public <T> HttpReply<T> post(String url, Object body, TypeReference<T> responseType) {
         return send(jsonPost(url, body), JSON.constructType(responseType));
     }
 
-    public void post(String url, Object body) {
-        send(jsonPost(url, body), null);
+    private HttpRequest.Builder request(String url) {
+        return HttpRequest.newBuilder(URI.create(url)).timeout(requestTimeout);
     }
 
     private HttpRequest.Builder jsonPost(String url, Object body) {
         try {
-            return HttpRequest.newBuilder(URI.create(url))
+            return request(url)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)));
         } catch (IOException e) {
@@ -64,10 +70,11 @@ public class CommonHttpClient {
         }
     }
 
-    private <T> T send(HttpRequest.Builder request, JavaType responseType) {
+    private <T> HttpReply<T> send(HttpRequest.Builder request, JavaType responseType) {
         try {
-            String body = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString()).body();
-            return responseType == null || body.isBlank() ? null : JSON.readValue(body, responseType);
+            HttpResponse<String> response = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            boolean readable = response.statusCode() / 100 == 2 && !response.body().isBlank();
+            return new HttpReply<>(response.statusCode(), readable ? JSON.readValue(response.body(), responseType) : null);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {

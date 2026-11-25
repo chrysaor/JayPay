@@ -28,7 +28,7 @@ public class BankingServiceAdapter implements BankingPort {
     @Override
     public boolean isValid(Receiver.BankAccount account) {
         BankingInfo info = commonHttpClient.post(url("info"),
-                new BankingInfoRequest(account.bankName(), account.bankAccountNumber()), BankingInfo.class);
+                new BankingInfoRequest(account.bankName(), account.bankAccountNumber()), BankingInfo.class).body();
         return info != null && info.valid();
     }
 
@@ -38,7 +38,7 @@ public class BankingServiceAdapter implements BankingPort {
             FirmBankingResult result = commonHttpClient.post(url("firmbanking", "request"),
                     new FirmBankingRequest(JAYPAY_BANK_NAME, JAYPAY_BANK_ACCOUNT_NUMBER, account.bankName(), account.bankAccountNumber(),
                             Math.toIntExact(amount)),
-                    FirmBankingResult.class);
+                    FirmBankingResult.class).body();
             if (result != null && result.firmBankingStatus() == SUCCEEDED) {
                 return Outcome.SUCCEEDED;
             }

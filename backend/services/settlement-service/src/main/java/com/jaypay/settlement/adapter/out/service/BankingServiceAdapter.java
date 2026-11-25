@@ -27,7 +27,7 @@ public class BankingServiceAdapter implements BankingPort {
     @Override
     public Optional<BankAccount> getRegisteredBankAccount(String membershipId) {
         String url = String.join("/", bankingServiceUrl, "banking/account", membershipId);
-        return Optional.ofNullable(commonHttpClient.get(url, BankAccount.class))
+        return Optional.ofNullable(commonHttpClient.get(url, BankAccount.class).body())
                 .filter(account -> account.bankAccountNumber() != null && !account.bankAccountNumber().isBlank());
     }
 
@@ -39,7 +39,7 @@ public class BankingServiceAdapter implements BankingPort {
                 SETTLEMENT_BANK_ACCOUNT_NUMBER,
                 to.bankName(),
                 to.bankAccountNumber(),
-                amount), FirmBankingResult.class);
+                amount), FirmBankingResult.class).body();
         return result != null && result.firmBankingStatus() == TRANSFERRED;
     }
 

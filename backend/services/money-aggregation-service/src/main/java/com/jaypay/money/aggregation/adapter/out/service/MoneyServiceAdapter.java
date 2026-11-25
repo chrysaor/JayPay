@@ -24,7 +24,7 @@ public class MoneyServiceAdapter implements GetMoneySumPort {
     @Override
     public List<MemberMoney> getMoneySumByMembershipIds(List<String> membershipIds) {
         String url = String.join("/", moneyServiceUrl, "money/member-money");
-        return commonHttpClient.post(url, new FindMemberMoneyRequest(membershipIds), new TypeReference<>() {});
+        return commonHttpClient.post(url, new FindMemberMoneyRequest(membershipIds), new TypeReference<List<MemberMoney>>() {}).body();
     }
 
     record FindMemberMoneyRequest(List<String> targetMembershipIds) {
