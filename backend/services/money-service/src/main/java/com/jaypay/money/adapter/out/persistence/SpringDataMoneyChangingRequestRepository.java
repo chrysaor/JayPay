@@ -6,11 +6,13 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
 public interface SpringDataMoneyChangingRequestRepository extends JpaRepository<MoneyChangingRequestJpaEntity, String> {
 
+    @Transactional
     @Modifying
     @Query(nativeQuery = true, value = """
             INSERT INTO wallet_change (request_id, membership_id, change_type, amount, status, requested_at)

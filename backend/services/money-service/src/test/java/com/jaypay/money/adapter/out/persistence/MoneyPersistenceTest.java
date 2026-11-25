@@ -7,6 +7,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -53,5 +55,17 @@ class MoneyPersistenceTest {
     void refusesANegativeBalance() {
         assertThatThrownBy(() -> memberMoneyRepository.saveAndFlush(new MemberMoneyJpaEntity(5L, -1, "aggregate-5")))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void opensAWalletOutsideAnyTransaction() {
+        memberMoneyRepository.openWallet(6L, "aggregate-6");
+
+        assertThat(memberMoneyRepository.findByMembershipId(6L))
+                .get()
+                .extracting(MemberMoneyJpaEntity::getBalance, MemberMoneyJpaEntity::getAggregateIdentifier)
+                .containsExactly(0L, "aggregate-6");
+        memberMoneyRepository.deleteAll();
     }
 }
