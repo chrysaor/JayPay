@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: settlement-service
+  config:
+    import: classpath:jaypay-common.yml
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jaypay}
+    username: ${SPRING_DATASOURCE_USERNAME:jaypay}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+  batch:
+    job:
+      enabled: ${SPRING_BATCH_JOB_ENABLED:false}
+    jdbc:
+      initialize-schema: ${SPRING_BATCH_JDBC_INITIALIZE_SCHEMA:always}
+service:
+  banking:
+    url: ${SERVICE_BANKING_URL:http://localhost:8082}
+  payment:
+    url: ${SERVICE_PAYMENT_URL:http://localhost:8085}

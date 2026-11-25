@@ -1,0 +1,8 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:19.0-alpine:///jaypay
+    username: test
+    password: test
+axon:
+  axonserver:
+    enabled: false

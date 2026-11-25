@@ -1,0 +1,437 @@
+name: jaypay
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-service: &service
+  pull_policy: never
+  restart: unless-stopped
+  mem_limit: 512m
+  logging: *logging
+  depends_on: &service-depends-on
+    kafka:
+      condition: service_healthy
+    axon-server:
+      condition: service_healthy
+    otel-collector:
+      condition: service_healthy
+
+x-jpa-service-depends-on: &jpa-service-depends-on
+  <<: *service-depends-on
+  postgres:
+    condition: service_healthy
+
+x-service-env: &service-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  AXON_AXONSERVER_SERVERS: axon-server:8124
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  LOG_FORMAT: ecs
+
+x-jpa-service-env: &jpa-service-env
+  <<: *service-env
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.py}
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+
+services:
+  kafka:
+    image: apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
+    restart: unless-stopped
+    mem_limit: 768m
+    logging: *logging
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      CLUSTER_ID: jaypay-local-kraft-01
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms384m -Xmx384m
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    tmpfs:
+      - /etc/kafka/secrets
+      - /mnt/shared/config
+    healthcheck:
+      test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx64m /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 20s
+      start_period: 30s
+      retries: 10
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.1@sha256:c0585fdfed6a9b8adedc3b0965113d4a84f292d61e58a2c7dcc603394defb7d1
+    restart: unless-stopped
+    mem_limit: 384m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8989:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      JAVA_OPTS: -Xmx256m
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  axon-server:
+    image: axoniq/axonserver:2026.1.8-nonroot@sha256:9f7171b3b47b0310f897fe14fb803838c0fdd80b40f5293fab55e2356c76cf70
+    hostname: axon-server
+    restart: unless-stopped
+    mem_limit: 768m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8024:8024"
+      - "127.0.0.1:8124:8124"
+    environment:
+      AXONIQ_AXONSERVER_STANDALONE: "true"
+      JAVA_TOOL_OPTIONS: -Xmx384m
+    volumes:
+      - axon-data:/axonserver/data
+      - axon-events:/axonserver/events
+      - axon-log:/axonserver/log
+      - axon-config:/axonserver/config
+    tmpfs:
+      - /axonserver/exts:mode=1777
+      - /axonserver/plugins:mode=1777
+      - /axonserver/transformation:mode=1777
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8024/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  postgres:
+    image: postgres:19.0-alpine3.24@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: jaypay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "settlement", "-tAc", "select 1"]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+  vault:
+    image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:?run scripts/init-env.py}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_TOKEN: ${VAULT_TOKEN:?run scripts/init-env.py}
+    volumes:
+      - ./vault:/scripts:ro
+    tmpfs:
+      - /vault/file
+      - /vault/logs
+    post_start:
+      - command: ["sh", "/scripts/encryption-key.sh", "write"]
+        environment:
+          ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run scripts/init-env.py}
+    healthcheck:
+      test: ["CMD", "sh", "/scripts/encryption-key.sh", "check"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 12
+
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    volumes:
+      - ./dynamodb:/scripts:ro
+    post_start:
+      - command: ["bash", "/scripts/table.sh", "create"]
+    healthcheck:
+      test: ["CMD", "bash", "/scripts/table.sh", "check"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 12
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.10.12.13-alpine@sha256:f3b3c02741a77758052d300a167c75324ef4d53f1c0ee7270ac2c7829fe743cd
+    restart: unless-stopped
+    mem_limit: 1g
+    logging: *logging
+    ports:
+      - "127.0.0.1:8123:8123"
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: otel
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run scripts/init-env.py}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/config.d/jaypay.xml:/etc/clickhouse-server/config.d/jaypay.xml:ro
+      - ./clickhouse/users.d/jaypay.xml:/etc/clickhouse-server/users.d/jaypay.xml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+
+  otel-collector:
+    build: ./otel-collector
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run scripts/init-env.py}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=3d
+    volumes:
+      - prometheus-data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 12
+
+  grafana:
+    image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+    ports:
+      - "127.0.0.1:3030:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run scripts/init-env.py}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-clickhouse-datasource@4.23.5
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/service-overview.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+
+  membership-service:
+    <<: *service
+    image: jaypay/membership-service
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/membership
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.py}
+      SPRING_CLOUD_VAULT_TOKEN: ${VAULT_TOKEN:?run scripts/init-env.py}
+      SPRING_CLOUD_VAULT_HOST: vault
+      JWT_SECRET: ${JWT_SECRET:?run scripts/init-env.py}
+      ENCRYPTION_FALLBACK_KEY: ${ENCRYPTION_FALLBACK_KEY:?run scripts/init-env.py}
+    depends_on:
+      <<: *jpa-service-depends-on
+      vault:
+        condition: service_healthy
+
+  banking-service:
+    <<: *service
+    image: jaypay/banking-service
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banking
+      SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+    depends_on: *jpa-service-depends-on
+
+  money-service:
+    <<: *service
+    image: jaypay/money-service
+    ports:
+      - "127.0.0.1:8083:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/money
+      SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+      SERVICE_BANKING_URL: http://banking-service:8080
+    depends_on: *jpa-service-depends-on
+
+  remittance-service:
+    <<: *service
+    image: jaypay/remittance-service
+    ports:
+      - "127.0.0.1:8084:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/remittance
+      SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+      SERVICE_BANKING_URL: http://banking-service:8080
+      SERVICE_MONEY_URL: http://money-service:8080
+    depends_on: *jpa-service-depends-on
+
+  payment-service:
+    <<: *service
+    image: jaypay/payment-service
+    ports:
+      - "127.0.0.1:8085:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment
+      SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+    depends_on: *jpa-service-depends-on
+
+  money-aggregation-service:
+    <<: *service
+    image: jaypay/money-aggregation-service
+    ports:
+      - "127.0.0.1:8086:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/money_aggregation
+      SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+      SERVICE_MONEY_URL: http://money-service:8080
+    depends_on: *jpa-service-depends-on
+
+  money-query-service:
+    <<: *service
+    image: jaypay/money-query-service
+    ports:
+      - "127.0.0.1:8087:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/money_query
+      SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+      AWS_ACCESS_KEY_ID: dynamodb-local
+      AWS_SECRET_ACCESS_KEY: dynamodb-local
+      AWS_ENDPOINT_URL_DYNAMODB: http://dynamodb:8000
+    depends_on:
+      <<: *jpa-service-depends-on
+      dynamodb:
+        condition: service_healthy
+
+  settlement-service:
+    <<: *service
+    image: jaypay/settlement-service
+    ports:
+      - "127.0.0.1:8088:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/settlement
+      SERVICE_BANKING_URL: http://banking-service:8080
+      SERVICE_PAYMENT_URL: http://payment-service:8080
+    depends_on: *jpa-service-depends-on
+
+  task-consumer:
+    <<: *service
+    image: jaypay/task-consumer
+    mem_limit: 384m
+    environment: *service-env
+
+  logging-consumer:
+    <<: *service
+    image: jaypay/logging-consumer
+    mem_limit: 384m
+    environment: *service-env
+
+  frontend-web:
+    image: jaypay/frontend-web
+    build:
+      context: ../../frontend
+      args:
+        APP: web
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8090:8080"
+
+  frontend-admin:
+    image: jaypay/frontend-admin
+    build:
+      context: ../../frontend
+      args:
+        APP: admin
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8091:8080"
+
+volumes:
+  kafka-data:
+  axon-data:
+  axon-events:
+  axon-log:
+  axon-config:
+  postgres-data:
+  clickhouse-data:
+  prometheus-data:
+  grafana-data:
