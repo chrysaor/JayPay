@@ -186,7 +186,7 @@ The local stack uses DynamoDB Local and keeps its data in a volume. One file, `i
 
 JayPay is a study project and is not safe to run with real money or real users.
 
-- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8089` and the customer site do not. Anyone on the machine can call a service directly, and the customer site still forwards member edits and Mark settled without a login.
+- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8089` and the customer site do not. Anyone on the machine can call a service directly, internal endpoints, Actuator and Swagger UI included. The customer site forwards only the eleven requests its screens make and answers 404 to every other `/api/` path, but it forwards those without a login, so anyone can sign in as any member id, read any member and top up or spend any wallet.
 - Staff sign-in takes a password only. The MFA flag on an account is stored and shown but does not change sign-in yet, and nothing limits how often someone may try a password.
 - An admin cannot reset another account's password. Deactivate the account and create a new one instead.
 - Login takes a member id only, with no password or other credential.
