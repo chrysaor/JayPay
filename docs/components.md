@@ -8,7 +8,9 @@ A new component is added to this page in the PR that introduces it.
 
 | Component | Role | Version pinned in |
 | --- | --- | --- |
-| Java | Language and runtime of the eleven services | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
+| Java | Language of the eleven services. The images run a `jlink` runtime cut from the Temurin JDK with only the modules the services load | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
+| Distroless base, glibc without OpenSSL | Base of the service images: glibc, CA certificates, time zones and `/etc/passwd`, no shell or package manager | `backend/Dockerfile` |
+| Debian | Source of the `C.UTF-8` locale the service images copy, the same glibc as the distroless base | `backend/Dockerfile` |
 | Gradle | Backend build | `backend/gradle/wrapper/gradle-wrapper.properties` |
 | Spring Boot | Web, data access, Kafka, Actuator | `backend/gradle/libs.versions.toml` |
 | Spring Security | Staff sign-in, roles and the admin gate in auth-service | Spring Boot BOM |
@@ -22,7 +24,7 @@ A new component is added to this page in the PR that introduces it.
 | React, TypeScript, Vite, Vitest | The customer site and the admin console | `frontend/package.json` and the `package.json` of each app |
 | TanStack Query | Server state in both sites | `frontend/apps/*/package.json` |
 | Node | Frontend build | `frontend/Dockerfile` |
-| nginx unprivileged | Serves both sites and proxies `/api`, runs the admin gate through `auth_request` | `frontend/Dockerfile` |
+| nginx unprivileged, slim | Serves both sites and proxies `/api`, runs the admin gate through `auth_request` | `frontend/Dockerfile` |
 
 ## Stateful dependencies and messaging
 
@@ -59,7 +61,7 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
 | kubectl | Applies the bootstrap manifests and builds the Argo CD overlay | developer machine, gate | installed by the developer, `scripts/verify.sh` |
 | kubeconform | Validates rendered manifests against the Kubernetes and Argo CD schemas | gate | `scripts/verify.sh` |
-| BusyBox | Probe pods of `make k8s-policy-check` | local cluster | `infra/docker/otel-collector/Dockerfile` |
+| BusyBox | Probe pods of `make k8s-policy-check`, and the `wget` of the health checks in the service and Collector images | local cluster, compose | `infra/docker/otel-collector/Dockerfile`, `backend/Dockerfile` |
 
 Approved for the cloud phases and not in the repository yet: External Secrets with AWS Secrets Manager, CloudNativePG, Strimzi, Amazon EKS.
 

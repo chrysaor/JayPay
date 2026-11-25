@@ -13,7 +13,7 @@ ARG APP
 RUN test -n "$APP" || { echo "Build with --build-arg APP=web or APP=admin" >&2; exit 1; }
 RUN npm run build --workspace "apps/$APP"
 
-FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine-slim AS runtime
 USER root
 RUN apk upgrade --no-cache
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1

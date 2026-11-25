@@ -7,13 +7,18 @@ plugins {
 val libs = the<VersionCatalogsExtension>().named("libs")
 fun lib(alias: String) = libs.findLibrary(alias).get()
 
+dockerLayer(
+    "service",
+    implementation = listOf(
+        project(":libs:common"),
+        lib("spring-boot-starter-webmvc"),
+        lib("spring-boot-starter-actuator"),
+        lib("springdoc-openapi-starter-webmvc-ui"),
+    ),
+    runtimeOnly = listOf(lib("micrometer-registry-prometheus"), lib("axon-tracing-opentelemetry")),
+)
+
 dependencies {
-    implementation(project(":libs:common"))
-    implementation(lib("spring-boot-starter-webmvc"))
-    implementation(lib("spring-boot-starter-actuator"))
-    implementation(lib("springdoc-openapi-starter-webmvc-ui"))
-    runtimeOnly(lib("micrometer-registry-prometheus"))
-    runtimeOnly(lib("axon-tracing-opentelemetry"))
     testImplementation(lib("spring-boot-starter-webmvc-test"))
     testImplementation(lib("opentelemetry-sdk-testing"))
 }
@@ -29,7 +34,7 @@ tasks.bootJar {
 tasks.register<Exec>("dockerBuild") {
     group = "build"
     description = "Builds the jaypay/${project.name} container image from backend/Dockerfile."
-    dependsOn(tasks.bootJar)
+    dependsOn(tasks.bootJar, tasks.matching { it.name.endsWith("DockerLayer") })
     val context = tasks.bootJar.flatMap { it.destinationDirectory }
     val dockerfile = rootProject.file("Dockerfile")
     val image = "jaypay/${project.name}"

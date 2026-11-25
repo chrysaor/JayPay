@@ -13,11 +13,13 @@ OUTSIDE_LABEL = "frontend-admin"
 REACH = r'''
 if command -v nc >/dev/null 2>&1; then tool=nc
 elif command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then tool=bash
+elif [ -x /busybox ]; then tool=busybox
 else echo untestable; exit 0; fi
 for target in "$@"; do
   (
     host=${target%:*} port=${target#*:}
     if [ "$tool" = nc ]; then nc -w 2 "$host" "$port" </dev/null >/dev/null 2>&1
+    elif [ "$tool" = busybox ]; then /busybox nc -w 2 "$host" "$port" </dev/null >/dev/null 2>&1
     else timeout 2 bash -c "exec 3<>/dev/tcp/$host/$port" 2>/dev/null; fi && echo "$target open" || echo "$target closed"
   ) &
 done
@@ -76,7 +78,10 @@ def running_pods(context, namespace, selector=None):
 
 
 def reach(context, namespace, pod, targets):
-    result = kubectl(context, "--namespace", namespace, "exec", pod, "--", "sh", "-c", REACH, "reach", *targets, check=False)
+    for shell in (["sh"], ["/busybox", "sh"]):
+        result = kubectl(context, "--namespace", namespace, "exec", pod, "--", *shell, "-c", REACH, "reach", *targets, check=False)
+        if result.returncode not in (126, 127):
+            break
     if result.returncode != 0 or result.stdout.strip() == "untestable":
         return None
     return dict(line.rsplit(" ", 1) for line in result.stdout.splitlines() if line.strip())
