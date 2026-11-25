@@ -24,7 +24,7 @@ calls:
   money-query-service:
     http: [frontend-admin, prometheus]
   money-service:
-    http: [frontend-web, money-aggregation-service, prometheus, remittance-service]
+    http: [frontend-web, money-aggregation-service, payment-service, prometheus, remittance-service]
   otel-collector:
     otlp-http: [auth-service, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
   payment-service:

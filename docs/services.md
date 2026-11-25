@@ -100,7 +100,7 @@ Wallet balances and the three ways to top a wallet up.
 | Memory limit | `512m` |
 | Database | PostgreSQL `money`, tables `wallet` and `wallet_change` |
 | Calls | `membership-service`, `banking-service` |
-| Called by | `remittance-service`, `money-aggregation-service`, `frontend-web` |
+| Called by | `remittance-service`, `payment-service`, `money-aggregation-service`, `frontend-web` |
 | Kafka | Produces `jaypay.task.topic`. Consumes `jaypay.task.result.topic` in the group `my-group`. Produces `jaypay.logging.out.stdout`, one record for each controller call and one for each task result. |
 | Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, and sends `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. |
 | Other stores | none |
@@ -189,40 +189,55 @@ remittance-service calls membership-service for the member check of the sender. 
 
 ## payment-service
 
-Records payments to merchants and tracks which ones are settled.
+Takes payments from member wallets to merchants and tracks which ones are settled.
 
 | | |
 | --- | --- |
 | Host port | `8085` |
 | Memory limit | `512m` |
-| Database | PostgreSQL `payment`, table `payment_request` |
-| Calls | `membership-service` |
+| Database | PostgreSQL `payment`, table `payment` |
+| Calls | `membership-service`, `money-service` |
 | Called by | `settlement-service`, `frontend-web`, `frontend-admin` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | none |
 | Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_MONEY_URL`, `PAYMENT_FEE_RATE_BASIS_POINTS`, `PAYMENT_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
-payment-service calls membership-service for the member check of the paying member.
+payment-service calls `GET /memberships/{membershipId}` on membership-service to check the paying member and the merchant. It calls `POST /money/decrease` on money-service to take the price from the paying member's wallet.
 
 ### What it does
 
-- A payment names the paying member, the price, the franchise id and the franchise fee rate. payment-service checks the member and stores the payment with the status `0`.
-- The list of unsettled payments returns every payment with the status `0`.
-- Finishing the settlement of a payment sets its status to `2`. settlement-service calls it for every payment it settles, and the admin console calls it from **Mark settled**.
+`POST /payment/request` takes a JSON body with `requestId`, `requestMembershipId`, `franchiseId` and `requestPrice`.
+
+- `requestPrice` is a whole number of won from 1 to `payment.amount.max`, 10000000 unless `PAYMENT_AMOUNT_MAX` sets another limit, the same limit as money-service. Any other price answers 400 with `{"error":"INVALID_AMOUNT"}` and writes nothing.
+- The paying member must be a valid member, or the request answers 400 with `{"error":"INVALID_PAYER"}`. The merchant, `franchiseId`, must be a valid corporate member, or the request answers 400 with `{"error":"INVALID_MERCHANT"}`.
+- The server sets the fee. `payment.fee-rate-basis-points`, 300 or 3% unless `PAYMENT_FEE_RATE_BASIS_POINTS` sets another rate, is stored on the payment. A fee rate in the body is ignored.
+- The fee is `floor(requestPrice * basis points / 10000)` won, so any fraction of a won goes to the merchant. The payout is `requestPrice - fee`. Both are stored on the payment when it is taken, and a check constraint keeps `fee + payout = request_price`. `FeeRateTest` pins the rounding at the edges: 33 won at 3% has the fee 0, 34 won has the fee 1, and 10000000 won has the fee 300000.
+- `requestId` is 1 to 64 letters, digits, `-` or `_`, chosen by the caller. The first request with an id stores a `payment` row with the status `REQUESTED` through `INSERT ... ON CONFLICT (request_id) DO NOTHING`, and commits it before anything else. Then payment-service calls `POST /money/decrease` with the request id `payment-<paymentId>-decrease`, so money-service takes the price once however often the call is repeated.
+- A debit that succeeds moves the payment to `PAID`, and a balance lower than the price moves it to `FAILED`. Both answer 200 with the payment. Each move is one `UPDATE ... WHERE payment_status = 'REQUESTED'`.
+- A repeated request with the same id and the same payer, merchant and price answers with the stored payment. A payment that is still `REQUESTED` calls money-service again with the same debit id. A request that reuses an id for another payment answers 409 with `{"error":"REQUEST_ID_REUSED"}`.
+- When money-service gives no answer, the request answers 503 with `{"error":"PAYMENT_NOT_CONFIRMED"}` and the payment stays `REQUESTED` until the same request is sent again.
+
+The statuses move only this way: `REQUESTED` to `PAID` or `FAILED`, and `PAID` to `SETTLED`.
+
+- `GET /payment/normal-status` returns the `PAID` payments, the ones that wait for settlement.
+- `POST /payment/finish-settlement` takes `{"paymentId":"<id>"}` and runs one `UPDATE ... SET payment_status = 'SETTLED' WHERE payment_id = ? AND payment_status = 'PAID'`. The call that changes the row answers `{"paymentId":<id>,"paymentStatus":"SETTLED","alreadySettled":false}`. A payment that is already settled answers the same with `"alreadySettled":true` and changes nothing. A `REQUESTED` or `FAILED` payment answers 409 with `{"error":"PAYMENT_NOT_PAID"}`, and an unknown id answers 404 with `{"error":"PAYMENT_NOT_FOUND"}`. settlement-service calls it before it pays a payment out, and the admin console calls it from **Mark settled**.
+
+Every answer with a payment carries `paymentId`, `requestId`, `requestMembershipId`, `franchiseId`, `requestPrice`, `feeRateBasisPoints`, `fee`, `payout`, `paymentStatus` and `approvedAt`. `make smoke` pays a merchant, repeats the payment, pays above the balance, and checks that a settled payment is not settled again.
 
 ### Endpoints
 
-- `POST /payment/request` records a payment. It reads form fields or query parameters, not a JSON body.
-- `GET /payment/normal-status` returns the unsettled payments.
-- `POST /payment/finish-settlement` marks one payment as settled.
+- `POST /payment/request` takes a payment from the paying member's wallet. It reads a JSON body and answers 415 to a form.
+- `GET /payment/normal-status` returns the paid payments that wait for settlement.
+- `POST /payment/finish-settlement` marks one paid payment as settled.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
 ### Known limitations
 
-- A payment does not lower the wallet of the paying member.
-- A payment for a member that is not valid returns an empty body.
+- The paying member comes from the request body, not from a token, so a caller can pay from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)).
+- Payments from before the `payment` table stay in the old `payment_request` table, which payment-service no longer reads, so settlement-service does not pay them out.
+- Nothing returns the money of a `PAID` payment to the wallet. There is no refund or cancellation.
 
 ## money-aggregation-service
 
@@ -290,7 +305,7 @@ money-query-service calls membership-service to read the address of the member i
 
 ## settlement-service
 
-Spring Batch job that pays merchants for their unsettled payments every 30 seconds.
+Spring Batch job that pays merchants out for their paid payments every 30 seconds.
 
 | | |
 | --- | --- |
@@ -304,23 +319,25 @@ Spring Batch job that pays merchants for their unsettled payments every 30 secon
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SPRING_BATCH_JOB_ENABLED`, `SPRING_BATCH_JDBC_INITIALIZE_SCHEMA`, `SERVICE_BANKING_URL`, `SERVICE_PAYMENT_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
-settlement-service calls payment-service for the unsettled payments and to finish each settlement. It calls banking-service for the merchant account and the firm banking transfer.
+settlement-service calls payment-service for the paid payments and to finish each settlement. It calls banking-service for the merchant account and the firm banking transfer.
 
 ### What it does
 
 `SettlementBatchScheduler` starts the job `settlement` every 30 seconds. Spring Boot does not start it on its own, because `SPRING_BATCH_JOB_ENABLED` defaults to `false`. The one step runs `SettlementTasklet`:
 
-1. It reads the unsettled payments from `GET /payment/normal-status`.
-2. It groups them by franchise id and reads each franchise's account from `GET /banking/account/{franchiseId}`. The franchise id must be the id of a member with a registered bank account.
-3. It sends one firm banking request per franchise, from the account `jaypay` `111-222-333`.
-4. It calls `POST /payment/finish-settlement` for every payment.
+1. It reads the paid payments from `GET /payment/normal-status`.
+2. It reads each merchant's account from `GET /banking/account/{franchiseId}`, once per merchant. A payment whose merchant has no registered bank account stays `PAID` for a later run.
+3. It calls `POST /payment/finish-settlement` for the payment. Only when the answer says `"alreadySettled":false` does this run own the payment.
+4. It sends one firm banking request for that payment's `payout`, from the account `jaypay` `111-222-333`.
+
+The amounts are whole won. payment-service computes the fee and the payout when it takes the payment, so settlement-service does no arithmetic and pays out exactly the stored `payout`. Because a payment moves from `PAID` to `SETTLED` only once, a second run, a run on another replica or an operator's **Mark settled** never pays the same payment twice. `SettlementJobTest` runs the settlement four times at once and the job twice more, and checks that each payment is paid out once.
 
 The service has no HTTP endpoints of its own. The host port serves Actuator.
 
 ### Known limitations
 
-- The amount for a payment is `(100 - fee rate) * price * 100`. A payment of 1000 at a fee rate of 10 settles 9000000, and `SettlementServiceTest` expects that number.
-- The job marks every payment settled without reading the answer of the firm banking request.
+- A payment is marked settled before its transfer. A transfer that fails or gets no answer is logged and not retried, so the payout of that payment is paid at most once and may need a manual transfer. A safe retry needs a firm banking request that banking-service deduplicates by a request id, which it does not have yet.
+- **Mark settled** in the admin console settles a payment without a transfer.
 
 ## auth-service
 
@@ -470,6 +487,6 @@ The console has these pages:
 - `/members` finds members by id or by address.
 - `/members/:membershipId` shows a member and lets an operator or admin edit it.
 - `/money` shows the sum of balances at an address from money-aggregation-service and the total from money-query-service.
-- `/settlement` lists the unsettled payments and lets an operator or admin mark one settled.
+- `/settlement` lists the paid payments with their fee and payout, and lets an operator or admin mark one settled. Marking a payment that is settled already says so and changes nothing.
 - `/staff` manages staff accounts. Admins only.
 - `/account` changes the password of the signed-in account.

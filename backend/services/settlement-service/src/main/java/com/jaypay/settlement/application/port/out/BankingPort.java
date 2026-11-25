@@ -1,7 +1,10 @@
 package com.jaypay.settlement.application.port.out;
 
-public interface BankingPort {
-    BankAccount getRegisteredBankAccount(String membershipId);
+import java.util.Optional;
 
-    void requestFirmBanking(BankAccount to, int moneyAmount);
+public interface BankingPort {
+
+    Optional<BankAccount> getRegisteredBankAccount(String membershipId);
+
+    boolean requestFirmBanking(BankAccount to, long amount);
 }

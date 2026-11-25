@@ -19,11 +19,12 @@ CALL_PURPOSES = {
     ("remittance-service", "membership-service"): "member check",
     ("remittance-service", "banking-service"): "account check, firm banking",
     ("remittance-service", "money-service"): "balance, money change",
-    ("payment-service", "membership-service"): "member check",
+    ("payment-service", "membership-service"): "payer and merchant check",
+    ("payment-service", "money-service"): "wallet debit",
     ("money-aggregation-service", "membership-service"): "members by address",
     ("money-aggregation-service", "money-service"): "balances",
     ("money-query-service", "membership-service"): "member address",
-    ("settlement-service", "payment-service"): "unsettled payments, finish settlement",
+    ("settlement-service", "payment-service"): "paid payments, finish settlement",
     ("settlement-service", "banking-service"): "merchant account, firm banking",
 }
 SITE_ROLES = {"frontend-web": "customer site", "frontend-admin": "admin console"}

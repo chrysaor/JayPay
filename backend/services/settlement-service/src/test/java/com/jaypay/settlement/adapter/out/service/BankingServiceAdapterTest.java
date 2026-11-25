@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BankingServiceAdapterTest {
 
     private static final String BANKING_SERVICE_RESPONSE =
-            "{\"registeredBankAccountId\":\"3\",\"membershipId\":\"franchise-9\",\"bankName\":\"jaybank\","
+            "{\"registeredBankAccountId\":\"3\",\"membershipId\":\"9\",\"bankName\":\"jaybank\","
                     + "\"bankAccountNumber\":\"123-456-789\",\"linkedStatusIsValid\":true,\"aggregateIdentifier\":\"agg-1\"}";
 
     private final List<String> firmBankingRequests = new ArrayList<>();
@@ -34,12 +34,13 @@ class BankingServiceAdapterTest {
             String path = exchange.getRequestURI().getPath();
             String response = "{\"status\":404}";
             int status = 404;
-            if (path.equals("/banking/account/franchise-9")) {
+            if (path.equals("/banking/account/9")) {
                 response = BANKING_SERVICE_RESPONSE;
                 status = 200;
             } else if (path.equals("/banking/firmbanking/request") && exchange.getRequestMethod().equals("POST")) {
-                firmBankingRequests.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                response = "{}";
+                String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                firmBankingRequests.add(request);
+                response = "{\"firmBankingRequestId\":\"1\",\"firmBankingStatus\":" + (request.contains("404-404") ? 2 : 1) + "}";
                 status = 200;
             }
             byte[] body = response.getBytes(StandardCharsets.UTF_8);
@@ -61,17 +62,25 @@ class BankingServiceAdapterTest {
 
     @Test
     void readsTheRegisteredAccountFromTheBankingService() {
-        BankAccount account = adapter.getRegisteredBankAccount("franchise-9");
+        assertThat(adapter.getRegisteredBankAccount("9")).contains(new BankAccount("jaybank", "123-456-789"));
+    }
 
-        assertThat(account).isEqualTo(new BankAccount("jaybank", "123-456-789"));
+    @Test
+    void findsNoAccountForAMemberWithoutOne() {
+        assertThat(adapter.getRegisteredBankAccount("10")).isEmpty();
     }
 
     @Test
     void sendsFirmBankingFromTheSettlementAccountToTheFranchiseAccount() {
-        adapter.requestFirmBanking(new BankAccount("jaybank", "123-456-789"), 9000);
+        assertThat(adapter.requestFirmBanking(new BankAccount("jaybank", "123-456-789"), 9000)).isTrue();
 
         assertThat(firmBankingRequests).containsExactly(
                 "{\"fromBankName\":\"jaypay\",\"fromBankAccountNumber\":\"111-222-333\","
                         + "\"toBankName\":\"jaybank\",\"toBankAccountNumber\":\"123-456-789\",\"moneyAmount\":9000}");
+    }
+
+    @Test
+    void reportsATransferTheBankRefused() {
+        assertThat(adapter.requestFirmBanking(new BankAccount("jaybank", "404-404"), 9000)).isFalse();
     }
 }

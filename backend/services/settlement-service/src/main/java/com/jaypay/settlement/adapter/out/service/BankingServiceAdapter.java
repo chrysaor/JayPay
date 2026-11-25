@@ -6,11 +6,14 @@ import com.jaypay.settlement.application.port.out.BankingPort;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 @Component
 public class BankingServiceAdapter implements BankingPort {
 
     private static final String SETTLEMENT_BANK_NAME = "jaypay";
     private static final String SETTLEMENT_BANK_ACCOUNT_NUMBER = "111-222-333";
+    private static final int TRANSFERRED = 1;
 
     private final CommonHttpClient commonHttpClient;
     private final String bankingServiceUrl;
@@ -22,20 +25,22 @@ public class BankingServiceAdapter implements BankingPort {
     }
 
     @Override
-    public BankAccount getRegisteredBankAccount(String membershipId) {
+    public Optional<BankAccount> getRegisteredBankAccount(String membershipId) {
         String url = String.join("/", bankingServiceUrl, "banking/account", membershipId);
-        return commonHttpClient.get(url, BankAccount.class);
+        return Optional.ofNullable(commonHttpClient.get(url, BankAccount.class))
+                .filter(account -> account.bankAccountNumber() != null && !account.bankAccountNumber().isBlank());
     }
 
     @Override
-    public void requestFirmBanking(BankAccount to, int moneyAmount) {
+    public boolean requestFirmBanking(BankAccount to, long amount) {
         String url = String.join("/", bankingServiceUrl, "banking/firmbanking/request");
-        commonHttpClient.post(url, new RequestFirmBankingRequest(
+        FirmBankingResult result = commonHttpClient.post(url, new RequestFirmBankingRequest(
                 SETTLEMENT_BANK_NAME,
                 SETTLEMENT_BANK_ACCOUNT_NUMBER,
                 to.bankName(),
                 to.bankAccountNumber(),
-                moneyAmount));
+                amount), FirmBankingResult.class);
+        return result != null && result.firmBankingStatus() == TRANSFERRED;
     }
 
     record RequestFirmBankingRequest(
@@ -43,6 +48,9 @@ public class BankingServiceAdapter implements BankingPort {
             String fromBankAccountNumber,
             String toBankName,
             String toBankAccountNumber,
-            int moneyAmount) {
+            long moneyAmount) {
+    }
+
+    record FirmBankingResult(int firmBankingStatus) {
     }
 }
