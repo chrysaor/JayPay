@@ -1,9 +1,8 @@
-map $request_uri $jaypay_upstream {
-    ~^/api/membership/         ${JAYPAY_MEMBERSHIP_URL};
-    ~^/api/payment/            ${JAYPAY_PAYMENT_URL};
-    ~^/api/money-aggregation/  ${JAYPAY_MONEY_AGGREGATION_URL};
-    ~^/api/money-query/        ${JAYPAY_MONEY_QUERY_URL};
-    ~^/api/auth/staff/         ${JAYPAY_AUTH_URL};
+map $jaypay_service $jaypay_upstream {
+    membership         ${JAYPAY_MEMBERSHIP_URL};
+    payment            ${JAYPAY_PAYMENT_URL};
+    money-aggregation  ${JAYPAY_MONEY_AGGREGATION_URL};
+    money-query        ${JAYPAY_MONEY_QUERY_URL};
 }
 
 server {
@@ -12,7 +11,7 @@ server {
 
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
-    location ~ ^/api/(membership|payment|money-aggregation|money-query)/ {
+    location ~ ^/api/(?<jaypay_service>membership|payment|money-aggregation|money-query)/ {
         auth_request /_authorize;
         error_page 401 @unauthenticated;
         error_page 403 @forbidden;
@@ -22,8 +21,9 @@ server {
     }
 
     location /api/auth/staff/ {
+        set $jaypay_auth ${JAYPAY_AUTH_URL};
         rewrite ^/api/auth(/.*)$ $1 break;
-        proxy_pass $jaypay_upstream;
+        proxy_pass $jaypay_auth;
         proxy_connect_timeout 5s;
     }
 
