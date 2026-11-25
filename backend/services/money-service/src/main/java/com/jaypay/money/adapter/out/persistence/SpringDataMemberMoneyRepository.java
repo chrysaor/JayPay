@@ -32,7 +32,8 @@ public interface SpringDataMemberMoneyRepository extends JpaRepository<MemberMon
     @Modifying
     @Query(nativeQuery = true, value = """
             INSERT INTO wallet (membership_id, balance, aggregate_identifier) VALUES (:membershipId, 0, :aggregateIdentifier)
-            ON CONFLICT (membership_id) DO UPDATE SET aggregate_identifier = EXCLUDED.aggregate_identifier""")
+            ON CONFLICT (membership_id) DO UPDATE SET aggregate_identifier = EXCLUDED.aggregate_identifier
+            WHERE wallet.aggregate_identifier = ''""")
     void openWallet(@Param("membershipId") long membershipId, @Param("aggregateIdentifier") String aggregateIdentifier);
 
 }

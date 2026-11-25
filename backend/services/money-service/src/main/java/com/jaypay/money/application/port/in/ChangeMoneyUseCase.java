@@ -11,8 +11,10 @@ public interface ChangeMoneyUseCase {
 
     MoneyChangingRequest increaseMoneyRequestAsync(ChangeMoneyCommand command);
 
-    void increaseMoneyRequestByEvent(ChangeMoneyCommand command);
+    MoneyChangingRequest increaseMoneyRequestByEvent(ChangeMoneyCommand command);
 
     boolean finishRecharging(RequestId requestId);
+
+    boolean failRecharging(RequestId requestId);
 
 }

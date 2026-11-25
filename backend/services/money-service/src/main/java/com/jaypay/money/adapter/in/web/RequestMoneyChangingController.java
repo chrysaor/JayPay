@@ -42,8 +42,8 @@ public class RequestMoneyChangingController {
     }
 
     @PostMapping(path = "/money/increase-eda")
-    void increaseMoneyChangingRequestByEvent(@RequestBody MoneyChangingRequestBody request) {
-        changeMoneyUseCase.increaseMoneyRequestByEvent(moneyChangingCommands.parse(request));
+    MoneyChangingResultDetail increaseMoneyChangingRequestByEvent(@RequestBody MoneyChangingRequestBody request) {
+        return MoneyChangingResultDetail.of(changeMoneyUseCase.increaseMoneyRequestByEvent(moneyChangingCommands.parse(request)));
     }
 
     @PostMapping(path = "/money/member-money")

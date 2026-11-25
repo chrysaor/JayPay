@@ -15,6 +15,7 @@ import com.jaypay.money.application.port.out.CreateMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
+import com.jaypay.money.application.port.out.RegisteredBankAccount;
 import com.jaypay.money.application.port.out.RequestMoneyRechargingPort;
 import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
@@ -105,31 +106,44 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
 
     @Override
     public void createMemberMoney(CreateMemberMoneyCommand command) {
-        MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.membershipId());
-        createMemberMoneyAggregatePort.createMemberMoneyAggregate(membershipId).whenComplete((aggregateIdentifier, throwable) -> {
-            if (throwable != null) {
-                log.warn("throwable: {}", throwable);
-                return;
-            }
-            log.info("result: {}", aggregateIdentifier.getAggregateIdentifier());
-            createMemberMoneyPort.createMemberMoney(membershipId, aggregateIdentifier);
-        });
+        walletOf(new MemberMoney.MembershipId(command.membershipId()));
     }
 
     @Override
-    public void increaseMoneyRequestByEvent(ChangeMoneyCommand command) {
+    public MoneyChangingRequest increaseMoneyRequestByEvent(ChangeMoneyCommand command) {
         MoneyChangingRequest pending = pending(command, MoneyChangingType.INCREASE);
-        if (findEarlier(pending).isPresent()) {
-            return;
+        Optional<MoneyChangingRequest> earlier = findEarlier(pending);
+        if (earlier.isPresent()) {
+            return earlier.get();
+        }
+        RegisteredBankAccount account = getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId());
+        if (account == null || account.bankAccountNumber() == null || account.bankAccountNumber().isBlank()) {
+            log.warn("Member {} has no registered bank account, so recharge {} fails", command.targetMembershipId(), command.requestId().value());
+            return changeMoneyPort.settle(pending.settled(false));
         }
         MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.targetMembershipId());
-        requestMoneyRechargingPort.requestMoneyRecharging(
-                command.requestId(),
-                getMemberMoneyPort.getMoneyAggregateIdentifier(membershipId),
-                membershipId,
-                command.amount(),
-                getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId())
-        );
+        requestMoneyRechargingPort.requestMoneyRecharging(command.requestId(), walletOf(membershipId), membershipId, command.amount(), account);
+        return pending;
+    }
+
+    @Override
+    public boolean failRecharging(RequestId requestId) {
+        return changeMoneyPort.findForUpdate(requestId).map(request -> {
+            if (request.status() != MoneyChangingStatus.PENDING) {
+                return request.status() == MoneyChangingStatus.FAILED;
+            }
+            changeMoneyPort.settle(request.settled(false));
+            return true;
+        }).orElse(true);
+    }
+
+    private MemberMoney.MoneyAggregateIdentifier walletOf(MemberMoney.MembershipId membershipId) {
+        MemberMoney.MoneyAggregateIdentifier existing = getMemberMoneyPort.getMoneyAggregateIdentifier(membershipId);
+        if (!existing.getAggregateIdentifier().isBlank()) {
+            return existing;
+        }
+        createMemberMoneyPort.createMemberMoney(membershipId, createMemberMoneyAggregatePort.createMemberMoneyAggregate(membershipId));
+        return getMemberMoneyPort.getMoneyAggregateIdentifier(membershipId);
     }
 
     @Override

@@ -1,133 +1,148 @@
 package com.jaypay.money.adapter.in.axon;
 
-import lombok.extern.slf4j.Slf4j;
-import com.jaypay.common.event.*;
+import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
+import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
+import com.jaypay.common.event.RequestFirmBankingCommand;
+import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
 import com.jaypay.money.domain.RequestId;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.gateway.CommandGateway;
+import org.axonframework.deadline.DeadlineManager;
+import org.axonframework.deadline.annotation.DeadlineHandler;
 import org.axonframework.modelling.saga.EndSaga;
 import org.axonframework.modelling.saga.SagaEventHandler;
 import org.axonframework.modelling.saga.SagaLifecycle;
 import org.axonframework.modelling.saga.StartSaga;
 import org.axonframework.spring.stereotype.Saga;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
+import java.time.Duration;
 import java.util.UUID;
-
 
 @Saga
 @NoArgsConstructor
 @Slf4j
 public class MoneyRechargeSaga {
 
+    private static final String DEADLINE = "recharge-deadline";
+    private static final String COMPANY_BANK_NAME = "jaypay-company";
+    private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123456789";
+
     private transient CommandGateway commandGateway;
+    private transient DeadlineManager deadlineManager;
+    private transient Duration deadline;
+    private transient ChangeMoneyUseCase changeMoneyUseCase;
+
+    private String rechargingRequestId;
+    private String membershipId;
+    private String bankName;
+    private String bankAccountNumber;
+    private long amount;
+    private String deadlineId;
 
     @Autowired
     public void setCommandGateway(CommandGateway commandGateway) {
         this.commandGateway = commandGateway;
     }
 
+    @Autowired
+    public void setDeadlineManager(DeadlineManager deadlineManager) {
+        this.deadlineManager = deadlineManager;
+    }
+
+    @Autowired
+    public void setDeadline(@Value("${money.recharge.deadline}") Duration deadline) {
+        this.deadline = deadline;
+    }
+
+    @Autowired
+    public void setChangeMoneyUseCase(ChangeMoneyUseCase changeMoneyUseCase) {
+        this.changeMoneyUseCase = changeMoneyUseCase;
+    }
+
     @StartSaga
     @SagaEventHandler(associationProperty = "rechargingRequestId")
     public void handle(RechargingRequestCreatedEvent event) {
-        log.info("RechargingRequestCreatedEvent Start saga");
+        rechargingRequestId = event.rechargingRequestId();
+        membershipId = event.membershipId();
+        bankName = event.bankName();
+        bankAccountNumber = event.bankAccountNumber();
+        amount = event.amount();
+        deadlineId = deadlineManager.schedule(deadline, DEADLINE);
 
         String checkRegisteredBankAccountId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("checkRegisteredBankAccountId", checkRegisteredBankAccountId);
-
         commandGateway.send(new CheckRegisteredBankAccountCommand(
                 event.registeredBankAccountAggregateIdentifier(),
-                event.rechargingRequestId(),
-                event.membershipId(),
+                rechargingRequestId,
+                membershipId,
                 checkRegisteredBankAccountId,
-                event.bankName(),
-                event.bankAccountNumber(),
-                event.amount())
-        ).whenComplete(
-                (result, throwable) -> {
-                    if (throwable != null) {
-                        log.warn("CheckRegisteredBankAccountCommand Command failed");
-                        log.warn("{}", throwable.getMessage());
-                    } else {
-                        log.info("CheckRegisteredBankAccountCommand Command success");
-                    }
-                }
-        );
-
+                bankName,
+                bankAccountNumber,
+                amount)
+        ).exceptionally(failure -> {
+            log.warn("The account check of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());
+            return null;
+        });
     }
 
     @SagaEventHandler(associationProperty = "checkRegisteredBankAccountId")
     public void handle(CheckedRegisteredBankAccountEvent event) {
-        log.info("CheckedRegisteredBankAccountEvent saga: {}", event);
-        boolean status = event.isChecked();
-        if (status) {
-            log.info("CheckedRegisteredBankAccountEvent event success");
-        } else {
-            log.warn("CheckedRegisteredBankAccountEvent event Failed");
+        if (!event.isChecked()) {
+            log.warn("The bank account of recharge {} did not pass the check, so the recharge fails", rechargingRequestId);
+            changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId));
+            end();
+            return;
         }
-
         String requestFirmBankingId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("requestFirmBankingId", requestFirmBankingId);
-
         commandGateway.send(new RequestFirmBankingCommand(
                 requestFirmBankingId,
                 event.getFirmbankingRequestAggregateIdentifier(),
-                event.getRechargingRequestId(),
-                event.getMembershipId(),
-                event.getFromBankName(),
-                event.getFromBankAccountNumber(),
-                "jaypay-company",
-                "123456789",
-                event.getAmount()
-        )).whenComplete(
-                (result, throwable) -> {
-                    if (throwable != null) {
-                        log.warn("{}", throwable.getMessage());
-                        log.warn("RequestFirmBankingCommand Command failed");
-                    } else {
-                        log.info("RequestFirmBankingCommand Command success");
-                    }
-                }
-        );
+                rechargingRequestId,
+                membershipId,
+                bankName,
+                bankAccountNumber,
+                COMPANY_BANK_NAME,
+                COMPANY_BANK_ACCOUNT_NUMBER,
+                amount)
+        ).exceptionally(failure -> {
+            log.warn("The charge of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());
+            return null;
+        });
     }
 
     @SagaEventHandler(associationProperty = "requestFirmBankingId")
-    public void handle(RequestFirmBankingFinishedEvent event, ChangeMoneyUseCase changeMoneyUseCase) {
-        log.info("RequestFirmBankingFinishedEvent saga: {}", event);
-
-        boolean status = event.getStatus() == 0;
-        if (status) {
-            log.info("RequestFirmBankingFinishedEvent event success");
-        } else {
-            log.warn("RequestFirmBankingFinishedEvent event Failed");
+    public void handle(RequestFirmBankingFinishedEvent event) {
+        switch (event.getStatus()) {
+            case RequestFirmBankingFinishedEvent.SUCCEEDED -> {
+                if (changeMoneyUseCase.finishRecharging(new RequestId(rechargingRequestId))) {
+                    end();
+                } else {
+                    rollBack();
+                }
+            }
+            case RequestFirmBankingFinishedEvent.REFUSED -> {
+                log.warn("The bank refused the charge of recharge {}, so the recharge fails", rechargingRequestId);
+                changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId));
+                end();
+            }
+            default -> log.warn("The bank did not confirm the charge of recharge {}, so the deadline settles it", rechargingRequestId);
         }
+    }
 
-        boolean recharged = changeMoneyUseCase.finishRecharging(new RequestId(event.getRechargingRequestId()));
-
-        if (!recharged) {
-            String rollbackFirmBankingId = UUID.randomUUID().toString();
-            SagaLifecycle.associateWith("rollbackFirmBankingId", rollbackFirmBankingId);
-            commandGateway.send(new RollbackFirmBankingRequestCommand(
-                    rollbackFirmBankingId,
-                    event.getRequestFirmbankingAggregateIdentifier(),
-                    event.getRechargingRequestId(),
-                    event.getMembershipId(),
-                    event.getToBankName(),
-                    event.getToBankAccountNumber(),
-                    event.getMoneyAmount()
-            )).whenComplete(
-                    (result, throwable) -> {
-                        if (throwable != null) {
-                            log.warn("RollbackFirmbankingRequestCommand Command failed");
-                            log.warn("{}", throwable.getMessage());
-                        } else {
-                            log.info("Saga success : {}", result);
-                            SagaLifecycle.end();
-                        }
-                    }
-            );
+    @DeadlineHandler(deadlineName = DEADLINE)
+    public void onDeadline() {
+        deadlineId = null;
+        if (changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId))) {
+            log.warn("Recharge {} did not finish before its deadline, so it fails and its charge is rolled back", rechargingRequestId);
+            rollBack();
         } else {
             SagaLifecycle.end();
         }
@@ -136,7 +151,36 @@ public class MoneyRechargeSaga {
     @EndSaga
     @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
     public void handle(RollbackFirmBankingFinishedEvent event) {
-        log.info("RollbackFirmBankingFinishedEvent saga {}", event);
+        log.info("The charge of recharge {} is rolled back", rechargingRequestId);
     }
 
+    private void rollBack() {
+        cancelDeadline();
+        String rollbackFirmBankingId = UUID.randomUUID().toString();
+        SagaLifecycle.associateWith("rollbackFirmBankingId", rollbackFirmBankingId);
+        commandGateway.send(new RollbackFirmBankingRequestCommand(
+                rollbackFirmBankingId,
+                UUID.randomUUID().toString(),
+                rechargingRequestId,
+                membershipId,
+                bankName,
+                bankAccountNumber,
+                amount)
+        ).exceptionally(failure -> {
+            log.error("The rollback of recharge {} failed: {}", rechargingRequestId, failure.getMessage());
+            return null;
+        });
+    }
+
+    private void end() {
+        cancelDeadline();
+        SagaLifecycle.end();
+    }
+
+    private void cancelDeadline() {
+        if (deadlineId != null) {
+            deadlineManager.cancelSchedule(DEADLINE, deadlineId);
+            deadlineId = null;
+        }
+    }
 }
