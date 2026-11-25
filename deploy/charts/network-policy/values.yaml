@@ -1,0 +1,5 @@
+ingressController:
+  namespace: ""
+  podLabels: {}
+ingress: {}
+calls: {}

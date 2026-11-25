@@ -110,6 +110,22 @@ dir=$(copy_repo charts-upstream)
 perl -pi -e 's/(JAYPAY_AUTH_URL:).*/$1 auth-svc/' "$dir/deploy/envs/local/frontend/frontend-admin.yaml"
 expect charts fail "$dir" "auth-svc.jaypay.svc.cluster.local:8080, which is no Service"
 
+dir=$(copy_repo charts-policy-extra)
+perl -0pi -e 's/(\n  auth-service:\n    http: \[)/$1frontend-web, /' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets frontend-web reach auth-service on port http, but nothing"
+
+dir=$(copy_repo charts-policy-missing)
+perl -0pi -e 's/(\n  auth-service:\n    http: \[)frontend-admin, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "frontend-admin calls auth-service on port http, but no NetworkPolicy allows it"
+
+dir=$(copy_repo charts-policy-default)
+perl -pi -e 's/^  podSelector: \{\}$/  podSelector: {matchLabels: {app.kubernetes.io\/name: nothing}}/' "$dir/deploy/charts/network-policy/templates/network-policy.yaml"
+expect charts fail "$dir" "no NetworkPolicy denies ingress to every pod by default"
+
+dir=$(copy_repo charts-policy-port)
+perl -pi -e 's/(SERVICE_MEMBERSHIP_URL: http:\/\/membership-service):8080/$1:9999/' "$dir/deploy/envs/local/spring-service/banking-service.yaml"
+expect charts fail "$dir" "points at membership-service:9999, a port that the Service membership-service does not expose"
+
 dir=$(copy_repo charts-secret)
 printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: {{ .Release.Name }}\nstringData:\n  planted: "1"\n' >"$dir/deploy/charts/frontend/templates/secret.yaml"
 expect charts fail "$dir" "renders the Secret frontend-web"

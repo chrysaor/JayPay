@@ -1,0 +1,43 @@
+ingress:
+  frontend-admin: [http]
+  frontend-web: [http]
+calls:
+  auth-service:
+    http: [frontend-admin, prometheus]
+  axon-server:
+    grpc: [auth-service, axon-server, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    http: [axon-server]
+  banking-service:
+    http: [frontend-web, money-service, prometheus, remittance-service, settlement-service]
+  clickhouse:
+    native: [grafana, otel-collector]
+  dynamodb:
+    http: [money-query-service]
+  kafka:
+    kafka: [auth-service, banking-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+  logging-consumer:
+    http: [prometheus]
+  membership-service:
+    http: [banking-service, frontend-admin, frontend-web, money-aggregation-service, money-query-service, money-service, payment-service, prometheus, remittance-service]
+  money-aggregation-service:
+    http: [frontend-admin, prometheus]
+  money-query-service:
+    http: [frontend-admin, prometheus]
+  money-service:
+    http: [frontend-web, money-aggregation-service, prometheus, remittance-service]
+  otel-collector:
+    otlp-http: [auth-service, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+  payment-service:
+    http: [frontend-admin, frontend-web, prometheus, settlement-service]
+  postgres:
+    postgres: [auth-service, banking-service, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+  prometheus:
+    http: [grafana]
+  remittance-service:
+    http: [frontend-web, prometheus]
+  settlement-service:
+    http: [prometheus]
+  task-consumer:
+    http: [prometheus]
+  vault:
+    http: [membership-service]

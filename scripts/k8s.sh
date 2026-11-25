@@ -106,11 +106,13 @@ start_cluster() {
     mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' "$profile")
     grep -qF "$host_git:$(dirname "$repo_path") " <<<"$mounts " ||
       fail "the running profile $profile does not mount $host_git, run make k8s-down first"
+    cluster --namespace kube-system get daemonset kindnet >/dev/null 2>&1 ||
+      fail "the running profile $profile has no kindnet, which enforces NetworkPolicy, run make k8s-down first"
     log "the minikube profile $profile is already running"
     minikube update-context --profile "$profile" >/dev/null
   else
     minikube start --profile "$profile" --driver docker --container-runtime docker \
-      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-10g}" --addons ingress \
+      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-10g}" --cni kindnet --addons ingress \
       --mount --mount-string "$host_git:$(dirname "$repo_path")"
   fi
 }
@@ -284,6 +286,11 @@ replicas: $scaled")
   log "PASSED: Argo CD reverted the manual scale in $((SECONDS - started))s"
 }
 
+policy_check() {
+  [ -f "$rendered.json" ] || fail "$rendered.json is missing, run make k8s-up first"
+  python3 scripts/policy-check.py "$root" "$rendered.json" "$namespace" "$profile"
+}
+
 down() {
   minikube delete --profile "$profile"
   rm -rf "$KUBECONFIG" "$host_git"
@@ -293,6 +300,7 @@ case "${1:-}" in
   up) up ;;
   smoke) smoke ;;
   gitops-check) gitops_check ;;
+  policy-check) policy_check ;;
   down) down ;;
-  *) echo "usage: $0 up|smoke|gitops-check|down" >&2; exit 2 ;;
+  *) echo "usage: $0 up|smoke|gitops-check|policy-check|down" >&2; exit 2 ;;
 esac

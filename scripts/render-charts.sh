@@ -51,10 +51,31 @@ cat >"$converter/templates/manifests.yaml" <<'EOF'
 {{- end }}
 {{- end }}
 EOF
+cat >"$converter/templates/config-files.yaml" <<'EOF'
+{{- range $path, $_ := .Files.Glob "rendered/*.yaml" }}
+{{- range splitList "\n---\n" ($.Files.Get $path) }}
+{{- with fromYaml . }}
+{{- if eq (get . "kind") "ConfigMap" }}
+{{- $configMap := .metadata.name }}
+{{- range $key, $text := .data }}
+{{- $content := fromYaml $text }}
+{{- if not (hasKey $content "Error") }}
+---
+{{ toJson (dict "configMap" $configMap "key" $key "content" $content) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+EOF
+mkdir -p "$out/config"
 for env_dir in "$out"/*/; do
   env=$(basename "$env_dir")
-  [ "$env" = ci ] && continue
+  [ "$env" = ci ] || [ "$env" = config ] && continue
   rm -rf "$converter/rendered"
   cp -R "$env_dir" "$converter/rendered"
-  helm template to-json "$converter" | grep '^{' >"$out/$env.json"
+  helm template to-json "$converter" | grep '^{' >"$converter.json"
+  grep -v '^{"configMap":' "$converter.json" >"$out/$env.json"
+  grep '^{"configMap":' "$converter.json" >"$out/config/$env.json" || true
 done
