@@ -46,11 +46,9 @@ describe('wallet', () => {
 
     expect(await charge.findByRole('status')).toHaveTextContent('Added ₩10,000 to your wallet.')
     expect(await balance.findByText('₩10,000')).toBeInTheDocument()
-    expect(jsonBody(requests.find((r) => r.url.endsWith('/increase')))).toEqual({
-      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      targetMembershipId: '1',
-      amount: 10000,
-    })
+    const { requestId, ...charged } = jsonBody(requests.find((r) => r.url.endsWith('/increase'))) as Record<string, unknown>
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(charged).toEqual({ targetMembershipId: '1', amount: 10000 })
     await waitFor(() => {
       expect(requests.filter((r) => r.url.endsWith('/member-money'))).toHaveLength(2)
     })
