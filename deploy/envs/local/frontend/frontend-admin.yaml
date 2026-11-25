@@ -1,0 +1,6 @@
+upstreams:
+  JAYPAY_AUTH_URL: auth-service
+  JAYPAY_MEMBERSHIP_URL: membership-service
+  JAYPAY_MONEY_AGGREGATION_URL: money-aggregation-service
+  JAYPAY_MONEY_QUERY_URL: money-query-service
+  JAYPAY_PAYMENT_URL: payment-service

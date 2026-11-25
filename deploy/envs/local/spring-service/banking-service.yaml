@@ -1,0 +1,6 @@
+env:
+  SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/banking
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+secretEnv:
+  SPRING_DATASOURCE_PASSWORD: POSTGRES_PASSWORD
