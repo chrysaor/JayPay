@@ -90,7 +90,7 @@ flowchart LR
     membership -- "AES key" --> vault
 ```
 
-[docs/architecture.md](docs/architecture.md) walks through the saga top-up step by step and shows the layers inside a service.
+[docs/architecture.md](docs/architecture.md) walks through the saga top-up step by step and shows the layers inside a service. [docs/components.md](docs/components.md) lists every component, what it is for and where its version is pinned.
 
 ## Repository layout
 
