@@ -10,7 +10,7 @@ failures=0
 copy_repo() {
   local dest="$work/$1"
   mkdir -p "$dest"
-  git -C "$root" ls-files -co --exclude-standard -- scripts docs/api-contract.md backend infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
+  git -C "$root" ls-files -co --exclude-standard -- scripts docs/api-contract.md backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
     while IFS= read -r path; do
       [ -e "$root/$path" ] || continue
       mkdir -p "$dest/$(dirname "$path")"
@@ -39,6 +39,7 @@ expect contract pass "$clean"
 expect actionlint pass "$clean"
 expect english pass "$clean"
 expect env pass "$clean"
+expect charts pass "$clean"
 
 dir=$(copy_repo contract)
 echo '| banking-service | GET | /banking/not-in-code |' >>"$dir/docs/api-contract.md"
@@ -71,6 +72,26 @@ expect terraform fail "$dir" "differs from table.json"
 dir=$(copy_repo actionlint)
 printf 'on: push\njobs:\n  broken:\n    steps:\n      - run: "true"\n' >"$dir/.github/workflows/broken.yml"
 expect actionlint fail "$dir" broken.yml
+
+dir=$(copy_repo charts-schema)
+perl -pi -e 's/containerPort:/containerPorts:/' "$dir/deploy/charts/spring-service/templates/deployment.yaml"
+expect charts fail "$dir" containerPorts
+
+dir=$(copy_repo charts-tag)
+perl -pi -e 's/^(\s*tag:).*/$1 latest/' "$dir/deploy/envs/local/frontend.yaml"
+expect charts fail "$dir" "'latest' does not match pattern"
+
+dir=$(copy_repo charts-workload)
+rm "$dir/deploy/envs/local/spring-service/task-consumer.yaml"
+expect charts fail "$dir" "no workload task-consumer"
+
+dir=$(copy_repo charts-env)
+perl -ni -e 'print unless /SERVICE_PAYMENT_URL/' "$dir/deploy/envs/local/spring-service/settlement-service.yaml"
+expect charts fail "$dir" "passes SERVICE_PAYMENT_URL but deploy/envs/local does not"
+
+dir=$(copy_repo charts-upstream)
+perl -pi -e 's/(JAYPAY_AUTH_URL:).*/$1 auth-svc/' "$dir/deploy/envs/local/frontend/frontend-admin.yaml"
+expect charts fail "$dir" "auth-svc.jaypay.svc.cluster.local:8080, which is no Service"
 
 [ "$failures" -eq 0 ] || { echo "$failures self-test case(s) failed"; exit 1; }
 echo "verify.sh catches every planted failure"
