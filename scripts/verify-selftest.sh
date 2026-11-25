@@ -90,6 +90,10 @@ dir=$(copy_repo charts-dependency)
 perl -pi -e 's/^image: postgres:19\.0/image: postgres:18.0/' "$dir/deploy/envs/local/dependency/postgres.yaml"
 expect charts fail "$dir" "postgres: image postgres:18.0"
 
+dir=$(copy_repo charts-built-dependency)
+perl -pi -e 's/^FROM otel\/opentelemetry-collector-contrib:0\.165\.0/FROM otel\/opentelemetry-collector-contrib:0.164.0/' "$dir/infra/docker/otel-collector/Dockerfile"
+expect charts fail "$dir" "differs from otel/opentelemetry-collector-contrib:0.164.0"
+
 dir=$(copy_repo charts-dependency-file)
 rm "$dir/infra/docker/vault/encryption-key.sh"
 expect charts fail "$dir" "files/vault/encryption-key.sh is empty or missing"

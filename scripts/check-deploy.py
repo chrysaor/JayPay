@@ -50,12 +50,21 @@ def rendered_containers(manifests_path, kind):
     return containers
 
 
+def compose_image(service):
+    build = service.get("build")
+    if not build:
+        return service.get("image")
+    stages = re.findall(r"^FROM\s+(\S+)", read(os.path.join(build["context"], build.get("dockerfile", "Dockerfile"))), re.MULTILINE)
+    return stages[-1] if stages else None
+
+
 def compare_dependency(name, service, container):
     problems = []
     if service is None:
         return [f"{name}: deploy/envs/local runs the dependency {name} but compose.yaml does not"]
-    if container.get("image") != service.get("image"):
-        problems.append(f"{name}: image {container.get('image')} differs from {service.get('image')} in compose.yaml")
+    image = compose_image(service)
+    if container.get("image") != image:
+        problems.append(f"{name}: image {container.get('image')} differs from {image} in compose.yaml")
     limit = container.get("resources", {}).get("limits", {}).get("memory")
     if to_bytes(limit) != to_bytes(service.get("mem_limit")):
         problems.append(f"{name}: memory limit {limit} differs from mem_limit {service.get('mem_limit')} in compose.yaml")

@@ -1,6 +1,6 @@
 # Kubernetes packaging
 
-This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. It also packages the six dependencies that the local cluster runs. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` starts a local minikube cluster in which Argo CD syncs `deploy/envs/local`. The cloud comes in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
+This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. It also packages the nine dependencies that the local cluster runs, the OpenTelemetry Collector, Prometheus and Grafana among them. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` starts a local minikube cluster in which Argo CD syncs `deploy/envs/local`. The cloud comes in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
 
 ## Layout
 
@@ -26,7 +26,8 @@ deploy/
       frontend/
         <workload>.yaml      frontend-web.yaml and frontend-admin.yaml
       dependency/
-        <dependency>.yaml    postgres, kafka, axon-server, vault, dynamodb and clickhouse
+        <dependency>.yaml    postgres, kafka, axon-server, vault, dynamodb, clickhouse,
+                             otel-collector, prometheus and grafana
 ```
 
 The path of a workload file says everything needed to render it. In `deploy/envs/<env>/<chart>/<workload>.yaml`, the directory names the chart and the file name is the release name. The release name is also the name of the Deployment, the Service and the ServiceAccount, and it picks the image.
@@ -59,15 +60,15 @@ The `values.yaml` of each chart lists every key with its default, and `values.sc
 
 `deploy/envs/local` runs `localhost/jaypay-<release>:working-tree` with `pullPolicy: Never`, the images that `make images` builds from the working tree and `make k8s-up` loads into the node. The release images on ghcr.io are `linux/amd64` only, and a tag that a rebuild moves is fine only where no registry is involved.
 
-`deploy/envs/local` gives every workload the environment that `infra/docker/compose.yaml` gives it. The addresses of the dependencies are Service names that the local cluster phase still has to create: `kafka:9092`, `axon-server:8124`, `http://otel-collector:4318`, `postgres:5432`, `vault` and `http://dynamodb:8000`.
+`deploy/envs/local` gives every workload the environment that `infra/docker/compose.yaml` gives it. The addresses of the dependencies are the names of the Services that the dependency chart creates: `kafka:9092`, `axon-server:8124`, `http://otel-collector:4318`, `postgres:5432`, `vault` and `http://dynamodb:8000`.
 
 ### The dependency chart
 
-Each file in `deploy/envs/local/dependency/` is one release, and the release name picks the template: `postgres`, `kafka`, `axon-server`, `vault`, `dynamodb` or `clickhouse`. Any other name fails to render. Each release is a StatefulSet and a Service with the name that the workloads already use, such as `postgres:5432` or `kafka:9092`. Every one except `vault` keeps its data on a `data` volume claim.
+Each file in `deploy/envs/local/dependency/` is one release, and the release name picks the template: `postgres`, `kafka`, `axon-server`, `vault`, `dynamodb`, `clickhouse`, `otel-collector`, `prometheus` or `grafana`. Any other name fails to render. Each release is a StatefulSet and a Service with the name that the workloads already use, such as `postgres:5432` or `kafka:9092`. Every one except `vault` and `otel-collector` keeps its data on a `data` volume claim.
 
 | Key | Meaning |
 | --- | --- |
-| `image` | The image with its digest, the same reference as in `compose.yaml`. |
+| `image` | The image with its digest, the same reference as in `compose.yaml`. For a service that Compose builds, such as `otel-collector`, the image of the last `FROM` in its Dockerfile. |
 | `env`, `secretEnv`, `secretName` | As in the spring-service chart. |
 | `storage` | The size of the `data` volume claim, `1Gi` by default. |
 | `resources` | The memory limit equals `mem_limit` in `compose.yaml`. |
@@ -80,8 +81,20 @@ The dependencies start from the same files as in Compose. `files/` holds symboli
 | vault | `infra/docker/vault/encryption-key.sh` | writes the encryption key in a `postStart` hook and is the readiness probe |
 | dynamodb | `infra/docker/dynamodb/table.sh` and `infra/terraform/modules/dynamodb-money-sum/table.json` | creates the table in a `postStart` hook from the definition that Terraform also reads |
 | clickhouse | `infra/docker/clickhouse/config.d/jaypay.xml` and `users.d/jaypay.xml` | the same server and user settings |
+| otel-collector | `infra/docker/otel-collector/config.yaml` | the receivers, the `/actuator` span filter and the ClickHouse exporter |
+| prometheus | `infra/docker/prometheus/prometheus.yml` | the scrape of `/actuator/prometheus` on every service |
+| grafana | `infra/docker/grafana/provisioning/` and every `infra/docker/grafana/dashboards/*.json` | the Prometheus and ClickHouse data sources and the dashboards |
 
-The OpenTelemetry Collector, Prometheus, Grafana and Kafka UI are not in the cluster yet. The services still send OTLP to `http://otel-collector:4318`, which does not resolve, so the exporters log failures and drop the data.
+None of these files has a cluster copy. They name their peers by short names such as `membership-service:8080`, `tcp://clickhouse:9000` and `http://prometheus:9090`, and in a pod the resolver completes a short name with the namespace from the `search` line of `/etc/resolv.conf`, so the same names reach the Services in the namespace. Prometheus scrapes each service through its Service, so with more than one replica each scrape reaches one of the pods. Service discovery through the Kubernetes API would scrape every pod, but Prometheus would then need a ServiceAccount token and a Role, and the local cluster runs one replica of each service.
+
+The Collector runs the upstream `otel/opentelemetry-collector-contrib` image that `infra/docker/otel-collector/Dockerfile` builds on, with the same `config.yaml` mounted where the Dockerfile copies it. The kubelet's readiness probe replaces the Dockerfile's `HEALTHCHECK`, which is the only reason the Compose image adds busybox. The Collector exits when ClickHouse does not accept connections yet, and the kubelet restarts it, as it restarts a service that starts before PostgreSQL.
+
+Grafana installs the ClickHouse plugin from grafana.com when it starts, as in Compose, so the node needs Internet access. Kafka UI stays in Compose only. To open Grafana or Prometheus, forward a port:
+
+```sh
+KUBECONFIG=build/k8s/kubeconfig kubectl --namespace jaypay port-forward service/grafana 3030:3000
+KUBECONFIG=build/k8s/kubeconfig kubectl --namespace jaypay port-forward service/prometheus 9090
+```
 
 ## Secrets
 
@@ -147,13 +160,13 @@ make k8s-down
 ```
 
 - `make k8s-up` builds the images with `make images`, runs `make verify STEPS=charts`, and starts the minikube profile `jaypay` with the ingress addon. It writes the cluster's credentials to `build/k8s/kubeconfig`, so the current context of `~/.kube/config` stays as it is. It creates the namespace and the Secret `jaypay` from `infra/docker/.env`, installs Argo CD, publishes the working tree to the Git repository that Argo CD reads, loads the working tree images into the node and applies the `gitops` render. From then on Argo CD deploys everything in `deploy/envs/local`. The script only waits until every Application is synced to the published commit and healthy, and reports when the dependencies got there. Run it again at any time. It publishes a commit only when the working tree changed, loads only the images that changed and restarts only the workloads that run them.
-- `make k8s-smoke` forwards `127.0.0.1:8480` to the ingress controller and runs `scripts/smoke.sh` against `http://web.jaypay.localhost:8480` and `http://admin.jaypay.localhost:8480`. curl resolves every `*.localhost` name to the loopback address. Set `K8S_INGRESS_PORT` to use another port. With `SMOKE_STACK=kubernetes` the smoke test recreates the `dynamodb` pod instead of the container, and it skips the log, trace and scrape checks until the cluster runs a collector and Prometheus.
+- `make k8s-smoke` forwards `127.0.0.1:8480` to the ingress controller and runs `scripts/smoke.sh` against `http://web.jaypay.localhost:8480` and `http://admin.jaypay.localhost:8480`. curl resolves every `*.localhost` name to the loopback address. Set `K8S_INGRESS_PORT` to use another port. It also forwards a free local port to the `clickhouse` and `prometheus` Services, so the log, trace and scrape checks run as in Compose. With `SMOKE_STACK=kubernetes` the smoke test recreates the `dynamodb` pod instead of the container, and it counts the log lines of a service since its container in the pod started.
 - `make k8s-gitops-check` proves the GitOps loop on the running cluster. It commits `replicas: 2` for `frontend-web` to the repository that Argo CD reads and waits until the Deployment runs two pods, without applying anything. It commits the original file back and waits for one pod again. Then it scales `frontend-web` by hand and waits until Argo CD scales it back.
 - `make k8s-down` deletes the profile, everything in it and the published repository.
 
 The profile asks for every CPU of the Docker VM and 10 GiB of memory. Set `K8S_CPUS` and `K8S_MEMORY` to change that. The memory requests of the workloads and the dependencies add up to about 8.5 GiB, because each request equals the Compose `mem_limit`. Argo CD sets no requests and uses about 175 MiB. Do not run the Compose stack at the same time.
 
-A new node pulls the six dependency images, about 3.5 GB, from their registries. The node cannot reuse the images of the host's Docker, because `docker load` drops the digest that the dependency images are pinned by. `make k8s-up` starts all six pulls at once and logs how long each took. The waits time out after `K8S_TIMEOUT` seconds, 1200 by default.
+A new node pulls the nine dependency images, about 5.5 GB, from their registries. The node cannot reuse the images of the host's Docker, because `docker load` drops the digest that the dependency images are pinned by. `make k8s-up` starts all nine pulls at once and logs how long each took. The waits time out after `K8S_TIMEOUT` seconds, 1200 by default.
 
 To look around, point kubectl at the profile's own kubeconfig:
 
@@ -190,7 +203,7 @@ Argo CD's repo server follows the links in `deploy/charts/dependency/files`, bec
 
 ### Order of the dependencies
 
-All nineteen Applications sync at once. Every Service exists from the first sync, so the workloads resolve the names of their dependencies, and a Spring Boot service that starts before PostgreSQL or Kafka accepts connections exits and is restarted by the kubelet. In the measured runs no service restarted more than once, and every Application was healthy in the same poll in which the last dependency was. An ApplicationSet with the `RollingSync` strategy could sync the dependencies first, but it turns off automatic sync and self-heal for every Application it generates, which is the loop this phase exists to prove.
+All Applications sync at once. Every Service exists from the first sync, so the workloads resolve the names of their dependencies, and a Spring Boot service that starts before PostgreSQL or Kafka accepts connections exits and is restarted by the kubelet. In the measured runs no service restarted more than once, and every Application was healthy in the same poll in which the last dependency was. An ApplicationSet with the `RollingSync` strategy could sync the dependencies first, but it turns off automatic sync and self-heal for every Application it generates, which is the loop this phase exists to prove.
 
 ### Working tree images
 
