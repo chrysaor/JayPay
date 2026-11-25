@@ -87,8 +87,8 @@ public class TestRequestRemittanceService {
         when(moneyPort.getMoneyInfo(testCommand.fromMembershipId()))
                 .thenReturn(dummyMoneyInfo);
 
-        int rechargeAmount = (int) Math.ceil((testCommand.amount() - dummyMoneyInfo.getBalance()) / 10000.0) * 10000;
-        when(moneyPort.requestMoneyRecharging(testCommand.fromMembershipId(), rechargeAmount))
+        long rechargeAmount = (long) Math.ceil((testCommand.amount() - dummyMoneyInfo.getBalance()) / 10000.0) * 10000;
+        when(moneyPort.requestMoneyRecharging("remittance-1-recharge", testCommand.fromMembershipId(), rechargeAmount))
                 .thenReturn(false);
 
         RemittanceRequest got = requestRemittanceService.requestRemittance(testCommand);
@@ -96,7 +96,7 @@ public class TestRequestRemittanceService {
         verify(requestRemittancePort, times(1)).createRemittanceRequestHistory(any());
         verify(membershipPort, times(1)).getMembershipStatus(testCommand.fromMembershipId());
         verify(moneyPort, times(1)).getMoneyInfo(testCommand.fromMembershipId());
-        verify(moneyPort, times(1)).requestMoneyRecharging(testCommand.fromMembershipId(), rechargeAmount);
+        verify(moneyPort, times(1)).requestMoneyRecharging("remittance-1-recharge", testCommand.fromMembershipId(), rechargeAmount);
 
         Assertions.assertNull(got);
     }

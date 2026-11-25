@@ -18,7 +18,7 @@ const screenCalls: Record<string, () => Promise<unknown>> = {
   findBankAccount: () => banking.findBankAccount('12'),
   registerBankAccount: () => banking.registerBankAccount({ membershipId: '1', bankName: 'Jay Bank', bankAccountNumber: '1', valid: true }),
   findBalance: () => money.findBalance('1'),
-  increaseMoney: () => money.increaseMoney({ targetMembershipId: '1', amount: 1 }),
+  increaseMoney: () => money.increaseMoney({ requestId: 'r', targetMembershipId: '1', amount: 1 }),
   requestRemittance: () =>
     remittance.requestRemittance({ fromMembershipId: '1', toMembershipId: '2', remittanceType: remittance.toMembership, amount: 1 }),
   requestPayment: () => payment.requestPayment({ requestMembershipId: '1', requestPrice: '1', franchiseId: '1', franchiseFeeRate: '1' }),

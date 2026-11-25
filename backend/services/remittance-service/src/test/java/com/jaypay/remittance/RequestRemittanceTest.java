@@ -129,14 +129,8 @@ class RequestRemittanceTest {
                         [{"memberMoneyId": "1", "membershipId": "%s", "balance": %d}]
                         """.formatted(membershipId, balances.getOrDefault(membershipId, 0));
             });
-            route(server, "POST", "/money/increase", (path, body) -> {
-                DocumentContext request = JsonPath.parse(body);
-                int amount = request.read("$.amount");
-                balances.merge(request.read("$.targetMembershipId"), amount, Integer::sum);
-                return """
-                        {"moneyChangingRequestId": "1", "moneyChangingType": 1, "moneyChangingResultStatus": 1, "amount": %d}
-                        """.formatted(amount);
-            });
+            route(server, "POST", "/money/increase", (path, body) -> changeMoney(body, 1));
+            route(server, "POST", "/money/decrease", (path, body) -> changeMoney(body, -1));
             route(server, "POST", "/banking/info", (path, body) -> {
                 DocumentContext request = JsonPath.parse(body);
                 return """
@@ -154,6 +148,21 @@ class RequestRemittanceTest {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private static String changeMoney(String body, int sign) {
+        DocumentContext request = JsonPath.parse(body);
+        String requestId = request.read("$.requestId");
+        assertThat(requestId).matches("remittance-[0-9]+-(recharge|increase|decrease)");
+        int amount = request.read("$.amount");
+        String membershipId = request.read("$.targetMembershipId");
+        boolean applied = sign > 0 || balances.getOrDefault(membershipId, 0) >= amount;
+        if (applied) {
+            balances.merge(membershipId, sign * amount, Integer::sum);
+        }
+        return """
+                {"moneyChangingRequestId": "%s", "moneyChangingType": %d, "moneyChangingResultStatus": %d, "amount": %d}
+                """.formatted(requestId, sign > 0 ? 1 : 2, applied ? 1 : 2, amount);
     }
 
     private static void route(HttpServer server, String method, String path, BiFunction<String, String, String> response) {

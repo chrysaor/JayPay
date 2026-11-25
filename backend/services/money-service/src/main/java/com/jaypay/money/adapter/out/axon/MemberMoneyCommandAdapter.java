@@ -6,12 +6,13 @@ import com.jaypay.money.application.port.out.CreateMemberMoneyAggregatePort;
 import com.jaypay.money.application.port.out.RegisteredBankAccount;
 import com.jaypay.money.application.port.out.RequestMoneyRechargingPort;
 import com.jaypay.money.domain.MemberMoney;
+import com.jaypay.money.domain.MoneyAmount;
+import com.jaypay.money.domain.RequestId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.springframework.stereotype.Component;
 
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Component
@@ -28,15 +29,16 @@ public class MemberMoneyCommandAdapter implements CreateMemberMoneyAggregatePort
     }
 
     @Override
-    public void requestMoneyRecharging(MemberMoney.MoneyAggregateIdentifier moneyAggregateIdentifier,
+    public void requestMoneyRecharging(RequestId requestId,
+                                       MemberMoney.MoneyAggregateIdentifier moneyAggregateIdentifier,
                                        MemberMoney.MembershipId membershipId,
-                                       int amount,
+                                       MoneyAmount amount,
                                        RegisteredBankAccount registeredBankAccount) {
         commandGateway.send(new RechargingMoneyRequestCreateCommand(
                 moneyAggregateIdentifier.getAggregateIdentifier(),
-                UUID.randomUUID().toString(),
+                requestId.value(),
                 membershipId.getMembershipId(),
-                amount,
+                Math.toIntExact(amount.value()),
                 registeredBankAccount.aggregateIdentifier(),
                 registeredBankAccount.bankName(),
                 registeredBankAccount.bankAccountNumber()

@@ -47,9 +47,10 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
 
         MoneyInfo moneyInfo = moneyPort.getMoneyInfo(command.fromMembershipId());
 
+        String moneyRequestId = "remittance-" + remittanceRequestHistoryId;
         if (moneyInfo.getBalance() < command.amount()) {
-            int rechargeAmount = (int) Math.ceil((command.amount() - moneyInfo.getBalance()) / 10000.0) * 10000;
-            boolean moneyResult = moneyPort.requestMoneyRecharging(command.fromMembershipId(), rechargeAmount);
+            long rechargeAmount = (long) Math.ceil((command.amount() - moneyInfo.getBalance()) / 10000.0) * 10000;
+            boolean moneyResult = moneyPort.requestMoneyRecharging(moneyRequestId + "-recharge", command.fromMembershipId(), rechargeAmount);
             log.info("{}", moneyResult);
             if (!moneyResult) {
                 return null;
@@ -59,8 +60,8 @@ public class RequestRemittanceService implements RequestRemittanceUseCase {
         if (command.remittanceType() == 0) {
             boolean decResult;
             boolean incResult;
-            decResult = moneyPort.requestMoneyDecrease(command.fromMembershipId(), command.amount());
-            incResult = moneyPort.requestMoneyIncrease(command.toMembershipId(), command.amount());
+            decResult = moneyPort.requestMoneyDecrease(moneyRequestId + "-decrease", command.fromMembershipId(), command.amount());
+            incResult = moneyPort.requestMoneyIncrease(moneyRequestId + "-increase", command.toMembershipId(), command.amount());
 
             if (!decResult || !incResult) {
                 return null;

@@ -46,10 +46,37 @@ describe('wallet', () => {
 
     expect(await charge.findByRole('status')).toHaveTextContent('Added ₩10,000 to your wallet.')
     expect(await balance.findByText('₩10,000')).toBeInTheDocument()
-    expect(jsonBody(requests.find((r) => r.url.endsWith('/increase')))).toEqual({ targetMembershipId: '1', amount: 10000 })
+    expect(jsonBody(requests.find((r) => r.url.endsWith('/increase')))).toEqual({
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      targetMembershipId: '1',
+      amount: 10000,
+    })
     await waitFor(() => {
       expect(requests.filter((r) => r.url.endsWith('/member-money'))).toHaveLength(2)
     })
+  })
+
+  test('retrying a failed charge reuses its request id so the wallet is charged once', async () => {
+    const requests = fakeRoutes({ ...signedInRoutes, [balanceRoute]: { body: [] }, [increaseRoute]: { status: 502 } })
+    const user = renderApp('/', { signedIn: true })
+
+    const charge = await region('Add money')
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await user.clear(charge.getByLabelText('Amount'))
+      await user.type(charge.getByLabelText('Amount'), '10000')
+      await user.click(charge.getByRole('button', { name: 'Add money' }))
+      await charge.findByRole('alert')
+    }
+    await user.clear(charge.getByLabelText('Amount'))
+    await user.type(charge.getByLabelText('Amount'), '20000')
+    await user.click(charge.getByRole('button', { name: 'Add money' }))
+
+    await waitFor(() => {
+      expect(requests.filter((r) => r.url.endsWith('/increase'))).toHaveLength(3)
+    })
+    const ids = requests.filter((r) => r.url.endsWith('/increase')).map((r) => (jsonBody(r) as { requestId: string }).requestId)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
   })
 
   test('a charge the backend drops is reported', async () => {
