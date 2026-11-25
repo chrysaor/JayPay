@@ -19,4 +19,5 @@ Services, images, infrastructure or contracts this can break.
 ## Verification
 
 - [ ] `make verify` passes
+- [ ] Unreleased in `CHANGELOG.md` has a line for this change, or a commit carries `Changelog: none`
 - [ ] Tests were written before the change

@@ -10,7 +10,8 @@ TRIVY_IMAGE := aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a
 GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 TRIVY_CACHE := -v jaypay-trivy-cache:/root/.cache/trivy
 FRONTEND_DEPS := frontend/node_modules/.package-lock.json
-GIT_COMMON_DIR := $(shell git rev-parse --path-format=absolute --git-common-dir)
+BACKEND_VERSION_FILE := backend/build-logic/src/main/kotlin/jaypay.java.gradle.kts
+GIT_COMMON_DIR :=$(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
 .PHONY: help build test verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock contract release-branch
@@ -34,7 +35,7 @@ help:
 	@echo "make diagrams                  redraw docs/diagrams/*.svg from the calls, compose.yaml and the code"
 	@echo "make lock                      refresh gradle.lockfile and package-lock.json"
 	@echo "make contract                  regenerate docs/api-contract.md"
-	@echo "make release-branch VERSION=X.Y.Z  create release/X.Y.Z from origin/develop"
+	@echo "make release-branch VERSION=X.Y.Z  cut release/X.Y.Z from origin/develop, Unreleased becomes X.Y.Z"
 
 $(FRONTEND_DEPS): frontend/package-lock.json
 	cd frontend && npm ci --no-audit --no-fund
@@ -121,5 +122,11 @@ contract:
 release-branch:
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "usage: make release-branch VERSION=X.Y.Z"; exit 2; }
 	git fetch origin develop
+	mkdir -p build && git show origin/develop:CHANGELOG.md >build/release-CHANGELOG.md
+	python3 scripts/changelog.py release build/release-CHANGELOG.md $(VERSION) $$(date +%F)
 	git switch --no-track --create release/$(VERSION) origin/develop
-	@echo "Created release/$(VERSION). Push it with: git push -u origin release/$(VERSION)"
+	python3 scripts/changelog.py release CHANGELOG.md $(VERSION) $$(date +%F)
+	perl -pi -e 's/^version = ".*"$$/version = "$(VERSION)"/' $(BACKEND_VERSION_FILE)
+	grep -qx 'version = "$(VERSION)"' $(BACKEND_VERSION_FILE)
+	git commit --quiet --message "chore: release $(VERSION)" -- CHANGELOG.md $(BACKEND_VERSION_FILE)
+	@echo "Created release/$(VERSION) with its release commit. Push it with: git push -u origin release/$(VERSION)"
