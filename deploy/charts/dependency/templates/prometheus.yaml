@@ -1,0 +1,34 @@
+{{- if eq .Release.Name "prometheus" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "prometheus.yml" "files/prometheus/prometheus.yml")) }}
+---
+{{ include "dependency.service" . }}
+    - name: http
+      port: 9090
+      targetPort: http
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          args: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=3d]
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /prometheus
+            - name: files
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: prometheus-files
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

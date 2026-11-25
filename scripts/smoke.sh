@@ -130,11 +130,21 @@ recreate_dynamodb() {
   fi || fail "could not recreate the dynamodb container: $(tail -5 "$work/recreate")"
 }
 
+started_at() {
+  local container
+  if [ "$stack" = kubernetes ]; then
+    cluster get pods --selector "app.kubernetes.io/name=$1" \
+      --output jsonpath='{.items[0].status.containerStatuses[0].state.running.startedAt}' 2>/dev/null
+  else
+    container=$(docker compose -f "$compose_file" ps -q "$1")
+    [ -z "$container" ] || docker inspect -f '{{.State.StartedAt}}' "$container"
+  fi
+}
+
 service_logged_since_start() {
-  local service=$1 container started count
-  container=$(docker compose -f "$compose_file" ps -q "$service")
-  [ -n "$container" ] || { observed "$service is not running"; return 1; }
-  started=$(docker inspect -f '{{.State.StartedAt}}' "$container")
+  local service=$1 started count
+  started=$(started_at "$service")
+  [ -n "$started" ] || { observed "$service is not running"; return 1; }
   count=$(clickhouse_query "SELECT count() FROM otel_logs WHERE ServiceName = '$service' AND Timestamp >= parseDateTime64BestEffort('$started', 9)")
   observed "$service has ${count:-no} log lines since it started at $started"
   [ "${count:-0}" -gt 0 ] 2>/dev/null
@@ -345,11 +355,6 @@ expect "the actuator of the auth service through the console" 404 GET "$admin/ap
 log "a staff token means nothing to the customer site"
 call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$admin_token'"}'
 [ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
-
-if [ "$stack" = kubernetes ]; then
-  log "PASSED, without the log, trace and scrape checks, because the cluster runs no collector and no Prometheus yet"
-  exit 0
-fi
 
 log "every service shipped its logs to ClickHouse"
 for service in "${services[@]}"; do

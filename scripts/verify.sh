@@ -65,12 +65,17 @@ argocd_install() {
   done
 }
 
-step_charts() {
-  local out=build/charts schemas=build/argocd/schemas
-  rm -rf "$out" "$schemas" && mkdir -p "$out" &&
+step_render() {
+  local out=build/charts
+  rm -rf "$out" && mkdir -p "$out" &&
     argocd_install "$out/argocd" &&
     docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$root:/repo" -w /repo \
-      --entrypoint sh "$HELM_IMAGE" scripts/render-charts.sh "$out" &&
+      --entrypoint sh "$HELM_IMAGE" scripts/render-charts.sh "$out"
+}
+
+step_charts() {
+  local out=build/charts schemas=build/argocd/schemas
+  rm -rf "$schemas" && step_render &&
     python3 scripts/crd-schemas.py "$out/argocd.json" "$schemas" &&
     docker run --rm -v "$root/$out:/rendered:ro" -v "$root/$schemas:/schemas:ro" "$KUBECONFORM_IMAGE" \
       -strict -summary -kubernetes-version "$KUBERNETES_VERSION" -ignore-filename-pattern '\.json$' -skip CustomResourceDefinition \

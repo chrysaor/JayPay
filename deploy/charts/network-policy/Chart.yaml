@@ -1,0 +1,5 @@
+apiVersion: v2
+name: network-policy
+description: The NetworkPolicies of one environment, which let each workload accept only the calls that deploy/envs/<env> makes to it
+type: application
+version: 0.1.0

@@ -1,0 +1,55 @@
+{{- if eq .Release.Name "grafana" }}
+{{- $provisioning := dict "datasources.yaml" "files/grafana/provisioning/datasources/datasources.yaml" "dashboards.yaml" "files/grafana/provisioning/dashboards/dashboards.yaml" }}
+{{- $files := deepCopy $provisioning }}
+{{- range $path, $_ := .Files.Glob "files/grafana/dashboards/*.json" }}
+{{- $_ := set $files (base $path) $path }}
+{{- end }}
+{{ include "dependency.files" (dict "root" . "files" $files) }}
+---
+{{ include "dependency.service" . }}
+    - name: http
+      port: 3000
+      targetPort: http
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: files
+              mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+              subPath: datasources.yaml
+              readOnly: true
+            - name: files
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+              readOnly: true
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: grafana-files
+        - name: dashboards
+          configMap:
+            name: grafana-files
+            items:
+              {{- range $key, $_ := $files }}
+              {{- if not (hasKey $provisioning $key) }}
+              - key: {{ $key }}
+                path: {{ $key }}
+              {{- end }}
+              {{- end }}
+  {{- include "dependency.dataClaim" . | nindent 2 }}
+{{- end }}

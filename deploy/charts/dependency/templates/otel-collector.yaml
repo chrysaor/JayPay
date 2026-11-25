@@ -1,0 +1,37 @@
+{{- if eq .Release.Name "otel-collector" }}
+{{ include "dependency.files" (dict "root" . "files" (dict "config.yaml" "files/otel-collector/config.yaml")) }}
+---
+{{ include "dependency.service" . }}
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+---
+{{ include "dependency.statefulSet" . }}
+      containers:
+        - {{- include "dependency.container" . | nindent 10 }}
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+            - name: health
+              containerPort: 13133
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: files
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: otel-collector-files
+{{- end }}

@@ -40,11 +40,13 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 
 ## Observability
 
+The local cluster mounts the same configuration files as compose, and `make verify` fails when a cluster image differs from compose.
+
 | Component | Role | Runs in | Version pinned in |
 | --- | --- | --- | --- |
-| OpenTelemetry Collector | Receives logs and traces over OTLP and writes them to ClickHouse | compose | `infra/docker/otel-collector/Dockerfile` |
-| Prometheus | Scrapes `/actuator/prometheus` | compose | `infra/docker/compose.yaml` |
-| Grafana | Dashboards over ClickHouse and Prometheus | compose | `infra/docker/compose.yaml` |
+| OpenTelemetry Collector | Receives logs and traces over OTLP and writes them to ClickHouse | compose, local cluster | `infra/docker/otel-collector/Dockerfile`, `deploy/envs/local/dependency/otel-collector.yaml` |
+| Prometheus | Scrapes `/actuator/prometheus` | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/prometheus.yaml` |
+| Grafana | Dashboards over ClickHouse and Prometheus | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/grafana.yaml` |
 
 ## Kubernetes and GitOps
 
@@ -52,10 +54,12 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 | --- | --- | --- | --- |
 | minikube | Local cluster, profile `jaypay` | developer machine | installed by the developer, Kubernetes version in `scripts/k8s.sh` |
 | ingress-nginx | Ingress of the two sites | local cluster, minikube addon | minikube |
+| kindnet | Pod network that enforces NetworkPolicy, started with `--cni kindnet` | local cluster | minikube |
 | Helm | Renders the charts in `deploy/charts` | gate, Argo CD | `scripts/verify.sh` |
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
 | kubectl | Applies the bootstrap manifests and builds the Argo CD overlay | developer machine, gate | installed by the developer, `scripts/verify.sh` |
 | kubeconform | Validates rendered manifests against the Kubernetes and Argo CD schemas | gate | `scripts/verify.sh` |
+| BusyBox | Probe pods of `make k8s-policy-check` | local cluster | `infra/docker/otel-collector/Dockerfile` |
 
 Approved for the cloud phases and not in the repository yet: External Secrets with AWS Secrets Manager, CloudNativePG, Strimzi, Amazon EKS.
 

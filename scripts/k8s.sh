@@ -106,11 +106,13 @@ start_cluster() {
     mounts=$(docker inspect --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' "$profile")
     grep -qF "$host_git:$(dirname "$repo_path") " <<<"$mounts " ||
       fail "the running profile $profile does not mount $host_git, run make k8s-down first"
+    cluster --namespace kube-system get daemonset kindnet >/dev/null 2>&1 ||
+      fail "the running profile $profile has no kindnet, which enforces NetworkPolicy, run make k8s-down first"
     log "the minikube profile $profile is already running"
     minikube update-context --profile "$profile" >/dev/null
   else
     minikube start --profile "$profile" --driver docker --container-runtime docker \
-      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-10g}" --addons ingress \
+      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-10g}" --cni kindnet --addons ingress \
       --mount --mount-string "$host_git:$(dirname "$repo_path")"
   fi
 }
@@ -191,19 +193,38 @@ up() {
   log "KUBECONFIG=$KUBECONFIG kubectl --namespace $namespace get pods"
 }
 
-smoke() {
-  local web admin forward
-  web=$(kube get ingress frontend-web --output jsonpath='{.spec.rules[0].host}')
-  admin=$(kube get ingress frontend-admin --output jsonpath='{.spec.rules[0].host}')
-  kubectl --context "$profile" --namespace ingress-nginx port-forward service/ingress-nginx-controller "$ingress_port:80" >build/k8s/port-forward.log 2>&1 &
-  forward=$!
-  trap "kill $forward 2>/dev/null || true" EXIT
+forwards=()
+forwarded_port=""
+
+stop_forwards() {
+  [ ${#forwards[@]} -eq 0 ] || kill "${forwards[@]}" 2>/dev/null || true
+}
+
+forward() {
+  local name=$1 target_namespace=$2 target=$3 ports=$4 output=build/k8s/port-forward-$1.log
+  cluster --namespace "$target_namespace" port-forward "$target" "$ports" >"$output" 2>&1 &
+  forwards+=($!)
   for _ in $(seq 1 30); do
-    curl -s -o /dev/null "http://$web:$ingress_port/" && break
-    kill -0 "$forward" 2>/dev/null || fail "port-forward to the ingress stopped: $(cat build/k8s/port-forward.log)"
+    forwarded_port=$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9]*\) .*/\1/p' "$output" | head -1)
+    [ -z "$forwarded_port" ] || return 0
+    kill -0 "${forwards[${#forwards[@]} - 1]}" 2>/dev/null || fail "port-forward to $name stopped: $(cat "$output")"
     sleep 1
   done
-  SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" scripts/smoke.sh
+  fail "port-forward to $name did not start: $(cat "$output")"
+}
+
+smoke() {
+  local web admin clickhouse
+  web=$(kube get ingress frontend-web --output jsonpath='{.spec.rules[0].host}')
+  admin=$(kube get ingress frontend-admin --output jsonpath='{.spec.rules[0].host}')
+  trap stop_forwards EXIT
+  forward ingress ingress-nginx service/ingress-nginx-controller "$ingress_port:80"
+  forward clickhouse "$namespace" service/clickhouse :8123
+  clickhouse=$forwarded_port
+  forward prometheus "$namespace" service/prometheus :9090
+  until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
+  SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" \
+    SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$forwarded_port" scripts/smoke.sh
 }
 
 commit_to_mirror() {
@@ -265,6 +286,11 @@ replicas: $scaled")
   log "PASSED: Argo CD reverted the manual scale in $((SECONDS - started))s"
 }
 
+policy_check() {
+  [ -f "$rendered.json" ] || fail "$rendered.json is missing, run make k8s-up first"
+  python3 scripts/policy-check.py "$root" "$rendered.json" "$namespace" "$profile"
+}
+
 down() {
   minikube delete --profile "$profile"
   rm -rf "$KUBECONFIG" "$host_git"
@@ -274,6 +300,7 @@ case "${1:-}" in
   up) up ;;
   smoke) smoke ;;
   gitops-check) gitops_check ;;
+  policy-check) policy_check ;;
   down) down ;;
-  *) echo "usage: $0 up|smoke|gitops-check|down" >&2; exit 2 ;;
+  *) echo "usage: $0 up|smoke|gitops-check|policy-check|down" >&2; exit 2 ;;
 esac
