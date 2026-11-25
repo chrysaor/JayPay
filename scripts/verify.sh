@@ -30,7 +30,8 @@ terraform_run() {
 step_terraform() {
   terraform_run . fmt -check -recursive -diff &&
     terraform_run envs/dev init -backend=false -input=false -no-color >/dev/null &&
-    terraform_run envs/dev validate -no-color
+    terraform_run envs/dev validate -no-color &&
+    terraform_run envs/dev test -no-color
 }
 
 step_actionlint() {

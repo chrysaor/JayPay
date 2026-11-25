@@ -2,7 +2,8 @@
 set -euo pipefail
 
 endpoint=http://127.0.0.1:8000
-table=MoneyIncreaseEventByRegion
+table=${DYNAMODB_TABLE_NAME:?}
+schema=/schema/table.json
 
 call() {
   curl -fsS --max-time 5 "$endpoint" \
@@ -22,18 +23,9 @@ create() {
     sleep 1
   done
   describe && return
-  call CreateTable "{
-    \"TableName\": \"$table\",
-    \"AttributeDefinitions\": [
-      {\"AttributeName\": \"PK\", \"AttributeType\": \"S\"},
-      {\"AttributeName\": \"SK\", \"AttributeType\": \"S\"}
-    ],
-    \"KeySchema\": [
-      {\"AttributeName\": \"PK\", \"KeyType\": \"HASH\"},
-      {\"AttributeName\": \"SK\", \"KeyType\": \"RANGE\"}
-    ],
-    \"BillingMode\": \"PAY_PER_REQUEST\"
-  }" >/dev/null
+  local definition
+  definition=$(<"$schema")
+  call CreateTable "{\"TableName\": \"$table\",${definition#*\{}" >/dev/null
 }
 
 case "${1:-}" in

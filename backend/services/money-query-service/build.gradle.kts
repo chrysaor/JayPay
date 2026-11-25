@@ -6,4 +6,5 @@ plugins {
 dependencies {
     implementation(platform(libs.awssdk.bom))
     implementation(libs.awssdk.dynamodb)
+    testImplementation(libs.testcontainers)
 }

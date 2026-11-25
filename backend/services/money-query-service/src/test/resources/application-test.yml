@@ -6,3 +6,5 @@ spring:
 axon:
   axonserver:
     enabled: false
+dynamodb:
+  table-name: MoneyIncreaseEventByRegion
