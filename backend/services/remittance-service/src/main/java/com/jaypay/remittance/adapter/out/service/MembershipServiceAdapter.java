@@ -20,7 +20,7 @@ public class MembershipServiceAdapter implements MembershipPort {
     @Override
     public boolean isValid(String membershipId) {
         MembershipResponse membership = commonHttpClient.get(
-                String.join("/", membershipServiceUrl, "memberships", membershipId), MembershipResponse.class);
+                String.join("/", membershipServiceUrl, "memberships", membershipId), MembershipResponse.class).body();
         return membership != null && membershipId.equals(membership.membershipId()) && membership.valid();
     }
 }

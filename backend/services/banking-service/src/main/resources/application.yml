@@ -10,6 +10,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+banking:
+  amount:
+    max: 10000000
 service:
   membership:
     url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}

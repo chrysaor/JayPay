@@ -24,14 +24,14 @@ public class PaymentServiceAdapter implements PaymentPort {
     @Override
     public List<Payment> getPaidPayments() {
         String url = String.join("/", paymentServiceUrl, "payment/normal-status");
-        List<Payment> payments = commonHttpClient.get(url, new TypeReference<>() {});
+        List<Payment> payments = commonHttpClient.get(url, new TypeReference<List<Payment>>() {}).body();
         return payments == null ? List.of() : payments;
     }
 
     @Override
     public boolean finishSettlement(long paymentId) {
         String url = String.join("/", paymentServiceUrl, "payment/finish-settlement");
-        SettlementResult result = commonHttpClient.post(url, new FinishSettlementRequest(String.valueOf(paymentId)), SettlementResult.class);
+        SettlementResult result = commonHttpClient.post(url, new FinishSettlementRequest(String.valueOf(paymentId)), SettlementResult.class).body();
         return result != null
                 && result.paymentId() == paymentId
                 && "SETTLED".equals(result.paymentStatus())

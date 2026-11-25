@@ -29,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,7 +41,9 @@ class SettlementJobTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<Long, Long> PAID = new ConcurrentHashMap<>(Map.of(1L, 9700L, 2L, 4825L, 3L, 194L));
     private static final Set<Long> SETTLED = ConcurrentHashMap.newKeySet();
-    private static final List<String> TRANSFERS = new CopyOnWriteArrayList<>();
+    private static final Map<String, String> LANDED = new ConcurrentHashMap<>();
+    private static final List<String> ASKED = new CopyOnWriteArrayList<>();
+    private static final AtomicBoolean BANK_SILENT = new AtomicBoolean(true);
     private static final HttpServer JAYPAY = startFakeJayPay();
 
     @Autowired
@@ -65,7 +68,12 @@ class SettlementJobTest {
     }
 
     @Test
-    void concurrentAndRepeatedRunsPayEachPaymentOnce() throws Exception {
+    void concurrentAndRepeatedRunsPayEachPaymentOnceAfterTheBankAnswersAgain() throws Exception {
+        assertThat(run()).isEqualTo(BatchStatus.COMPLETED);
+        assertThat(SETTLED).isEmpty();
+        assertThat(ASKED).isNotEmpty();
+        BANK_SILENT.set(false);
+
         try (ExecutorService pool = Executors.newFixedThreadPool(CONCURRENT_RUNS)) {
             List<Future<?>> runs = new CopyOnWriteArrayList<>();
             for (int i = 0; i < CONCURRENT_RUNS; i++) {
@@ -79,7 +87,8 @@ class SettlementJobTest {
         assertThat(run()).isEqualTo(BatchStatus.COMPLETED);
 
         assertThat(SETTLED).containsExactlyInAnyOrder(1L, 2L, 3L);
-        assertThat(TRANSFERS).containsExactlyInAnyOrder("100-1:9700", "100-2:4825", "100-1:194");
+        assertThat(LANDED).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "settlement-1", "100-1:9700", "settlement-2", "100-2:4825", "settlement-3", "100-1:194"));
     }
 
     private BatchStatus run() throws Exception {
@@ -111,8 +120,14 @@ class SettlementJobTest {
             });
             server.createContext("/banking/firmbanking/request", exchange -> {
                 var transfer = JSON.readTree(exchange.getRequestBody().readAllBytes());
-                TRANSFERS.add(transfer.get("toBankAccountNumber").asText() + ":" + transfer.get("moneyAmount").asLong());
-                respond(exchange, 200, "{\"firmBankingRequestId\":\"1\",\"firmBankingStatus\":1}");
+                String requestId = transfer.get("requestId").asText();
+                ASKED.add(requestId);
+                LANDED.putIfAbsent(requestId, transfer.get("toBankAccountNumber").asText() + ":" + transfer.get("moneyAmount").asLong());
+                if (BANK_SILENT.get()) {
+                    respond(exchange, 503, "{\"error\":\"TRANSFER_NOT_CONFIRMED\",\"message\":\"no answer\"}");
+                    return;
+                }
+                respond(exchange, 200, "{\"requestId\":\"" + requestId + "\",\"transferStatus\":\"SUCCEEDED\"}");
             });
             server.start();
             return server;

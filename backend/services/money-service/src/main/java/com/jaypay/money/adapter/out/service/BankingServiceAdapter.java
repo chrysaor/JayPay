@@ -23,7 +23,7 @@ public class BankingServiceAdapter implements GetRegisteredBankAccountPort {
     @Override
     public RegisteredBankAccount getRegisteredBankAccount(String membershipId) {
         String url = String.join("/", bankingServiceUrl, "banking/account", membershipId);
-        return commonHttpClient.get(url, RegisteredBankAccount.class);
+        return commonHttpClient.get(url, RegisteredBankAccount.class).body();
     }
 
 }

@@ -1,0 +1,351 @@
+package com.jaypay.banking;
+
+import com.jaypay.banking.application.port.out.BankAnswer;
+import com.jaypay.banking.application.port.out.ExternalBankPort;
+import com.jaypay.banking.domain.BankTransfer;
+import com.jaypay.common.event.RequestFirmBankingCommand;
+import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import org.axonframework.commandhandling.gateway.CommandGateway;
+import org.axonframework.eventsourcing.eventstore.EventStore;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class BankTransferTest {
+
+    private static final int CONCURRENT_REQUESTS = 16;
+    private static final String COMPANY_BANK_NAME = "jaypay-company";
+    private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123-333-9999";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private CommandGateway commandGateway;
+
+    @Autowired
+    private EventStore eventStore;
+
+    @Autowired
+    private RecordingBank bank;
+
+    @BeforeEach
+    void openTheBank() {
+        bank.reset();
+        bank.clear();
+    }
+
+    @Test
+    void aRepeatedTransferIsSentOnceAndAnswersTheFirstResult() throws Exception {
+        String requestId = newRequestId();
+
+        for (int i = 0; i < 3; i++) {
+            transfer(requestId, "222", 5000)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.requestId").value(requestId))
+                    .andExpect(jsonPath("$.toBankAccountNumber").value("222"))
+                    .andExpect(jsonPath("$.moneyAmount").value(5000))
+                    .andExpect(jsonPath("$.transferStatus").value("SUCCEEDED"));
+        }
+
+        assertThat(bank.sent(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentCopiesOfOneTransferSendItOnce() throws Exception {
+        String requestId = newRequestId();
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Integer>> answers = new ArrayList<>();
+        try (ExecutorService pool = Executors.newFixedThreadPool(CONCURRENT_REQUESTS)) {
+            for (int i = 0; i < CONCURRENT_REQUESTS; i++) {
+                answers.add(pool.submit(() -> {
+                    start.await();
+                    return transfer(requestId, "333", 7000).andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            for (Future<Integer> answer : answers) {
+                assertThat(answer.get()).isEqualTo(200);
+            }
+        }
+
+        assertThat(bank.sent(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRequestIdReusedForADifferentTransferIsRefusedAndNotSent() throws Exception {
+        String requestId = newRequestId();
+        transfer(requestId, "444", 1000).andExpect(status().isOk());
+
+        transfer(requestId, "444", 1001)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("REQUEST_ID_REUSED"));
+        transfer(requestId, "445", 1000).andExpect(status().isConflict());
+
+        assertThat(bank.sent(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aTransferTheBankDidNotAnswerIsAskedAgainUnderTheSameIdAndLandsOnce() throws Exception {
+        String requestId = newRequestId();
+        bank.silence("555");
+
+        transfer(requestId, "555", 3000)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("TRANSFER_NOT_CONFIRMED"));
+        transfer(requestId, "555", 3000).andExpect(status().isServiceUnavailable());
+
+        bank.reset();
+        transfer(requestId, "555", 3000)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transferStatus").value("SUCCEEDED"));
+        transfer(requestId, "555", 3000).andExpect(status().isOk());
+
+        assertThat(bank.asked(requestId)).isEqualTo(3);
+        assertThat(bank.sent(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRefusedTransferStaysRefusedWithoutAskingTheBankAgain() throws Exception {
+        String requestId = newRequestId();
+        bank.refuse("666");
+
+        transfer(requestId, "666", 3000)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transferStatus").value("FAILED"));
+        bank.reset();
+        transfer(requestId, "666", 3000)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transferStatus").value("FAILED"));
+
+        assertThat(bank.asked(requestId)).isEqualTo(1);
+        assertThat(bank.sent(requestId)).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "10000001", "1.5", "null"})
+    void refusesAnAmountOutsideOneWonToTheLimit(String amount) throws Exception {
+        String requestId = newRequestId();
+
+        mockMvc.perform(post("/banking/firmbanking/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(requestId, "777", amount)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_AMOUNT"));
+
+        assertThat(bank.asked(requestId)).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "has space", "an-id-that-is-far-too-long-to-be-a-request-id-because-it-runs-past-64"})
+    void refusesAMalformedRequestId(String requestId) throws Exception {
+        mockMvc.perform(post("/banking/firmbanking/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(requestId, "777", "1000")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST_ID"));
+    }
+
+    @Test
+    void theRechargeChargeMovesTheMemberMoneyIntoTheCompanyAccountOnce() {
+        String rechargeId = UUID.randomUUID().toString();
+        String aggregateId = UUID.randomUUID().toString();
+
+        commandGateway.sendAndWait(charge(rechargeId, aggregateId, "888", 3000));
+
+        assertThat(bank.delivered).containsExactly(new BankTransfer(
+                "recharge-" + rechargeId, "Shinhan bank", "888", COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, 3000));
+        assertThat(finished(aggregateId).getStatus()).isEqualTo(RequestFirmBankingFinishedEvent.SUCCEEDED);
+        assertThat(finished(aggregateId).getMoneyAmount()).isEqualTo(3000L);
+    }
+
+    @Test
+    void aChargeTheBankRefusesFinishesAsRefused() {
+        String rechargeId = UUID.randomUUID().toString();
+        String aggregateId = UUID.randomUUID().toString();
+        bank.refuse("889");
+
+        commandGateway.sendAndWait(charge(rechargeId, aggregateId, "889", 3000));
+
+        assertThat(finished(aggregateId).getStatus()).isEqualTo(RequestFirmBankingFinishedEvent.REFUSED);
+    }
+
+    @Test
+    void aChargeTheBankDoesNotAnswerFinishesAsUnconfirmed() {
+        String rechargeId = UUID.randomUUID().toString();
+        String aggregateId = UUID.randomUUID().toString();
+        bank.silence("890");
+
+        commandGateway.sendAndWait(charge(rechargeId, aggregateId, "890", 3000));
+
+        assertThat(finished(aggregateId).getStatus()).isEqualTo(RequestFirmBankingFinishedEvent.UNCONFIRMED);
+    }
+
+    @Test
+    void aRollbackReturnsALandedChargeToTheMemberOnce() {
+        String rechargeId = UUID.randomUUID().toString();
+        commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "901", 4000));
+
+        commandGateway.sendAndWait(rollback(rechargeId));
+        commandGateway.sendAndWait(rollback(rechargeId));
+
+        assertThat(bank.delivered).containsExactly(
+                new BankTransfer("recharge-" + rechargeId, "Woori bank", "901", COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, 4000),
+                new BankTransfer("recharge-" + rechargeId + "-refund", COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, "Woori bank", "901", 4000));
+    }
+
+    @Test
+    void aRollbackSettlesAnUnconfirmedChargeBeforeItRefunds() {
+        String rechargeId = UUID.randomUUID().toString();
+        bank.silence("902");
+        commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "902", 4000));
+        bank.reset();
+
+        commandGateway.sendAndWait(rollback(rechargeId));
+
+        assertThat(bank.delivered).extracting(BankTransfer::requestId)
+                .containsExactly("recharge-" + rechargeId, "recharge-" + rechargeId + "-refund");
+        assertThat(bank.sent("recharge-" + rechargeId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRollbackBeforeTheChargeStopsTheChargeFromBeingSent() {
+        String rechargeId = UUID.randomUUID().toString();
+        String aggregateId = UUID.randomUUID().toString();
+
+        commandGateway.sendAndWait(rollback(rechargeId));
+        commandGateway.sendAndWait(charge(rechargeId, aggregateId, "903", 4000));
+
+        assertThat(bank.delivered).isEmpty();
+        assertThat(finished(aggregateId).getStatus()).isEqualTo(RequestFirmBankingFinishedEvent.REFUSED);
+    }
+
+    private ResultActions transfer(String requestId, String toAccount, long amount) throws Exception {
+        return mockMvc.perform(post("/banking/firmbanking/request")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body(requestId, toAccount, String.valueOf(amount))));
+    }
+
+    private static String body(String requestId, String toAccount, String amount) {
+        return """
+                {"requestId": "%s", "fromBankName": "jaypay", "fromBankAccountNumber": "111", "toBankName": "KB bank", "toBankAccountNumber": "%s", "moneyAmount": %s}
+                """.formatted(requestId, toAccount, amount);
+    }
+
+    private static RequestFirmBankingCommand charge(String rechargeId, String aggregateId, String memberAccount, long amount) {
+        String bankName = memberAccount.startsWith("9") ? "Woori bank" : "Shinhan bank";
+        return new RequestFirmBankingCommand("firmbanking-" + rechargeId, aggregateId, rechargeId, "1",
+                bankName, memberAccount, COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, amount);
+    }
+
+    private static RollbackFirmBankingRequestCommand rollback(String rechargeId) {
+        return new RollbackFirmBankingRequestCommand("rollback-" + UUID.randomUUID(), UUID.randomUUID().toString(), rechargeId, "1",
+                "Woori bank", "901", 4000);
+    }
+
+    private RequestFirmBankingFinishedEvent finished(String aggregateId) {
+        return eventStore.readEvents(aggregateId).asStream()
+                .map(message -> message.getPayload())
+                .filter(RequestFirmBankingFinishedEvent.class::isInstance)
+                .map(RequestFirmBankingFinishedEvent.class::cast)
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static String newRequestId() {
+        return "transfer-" + UUID.randomUUID();
+    }
+
+    @TestConfiguration
+    static class Bank {
+        @Bean
+        @Primary
+        RecordingBank recordingBank() {
+            return new RecordingBank();
+        }
+    }
+
+    static final class RecordingBank implements ExternalBankPort {
+        private final Map<String, Integer> asked = new ConcurrentHashMap<>();
+        private final Map<String, Integer> sent = new ConcurrentHashMap<>();
+        private final Set<String> silent = ConcurrentHashMap.newKeySet();
+        private final Set<String> refused = ConcurrentHashMap.newKeySet();
+        private final List<BankTransfer> delivered = new CopyOnWriteArrayList<>();
+
+        void reset() {
+            silent.clear();
+            refused.clear();
+        }
+
+        void clear() {
+            asked.clear();
+            sent.clear();
+            delivered.clear();
+        }
+
+        void silence(String account) {
+            silent.add(account);
+        }
+
+        void refuse(String account) {
+            refused.add(account);
+        }
+
+        int asked(String requestId) {
+            return asked.getOrDefault(requestId, 0);
+        }
+
+        int sent(String requestId) {
+            return sent.getOrDefault(requestId, 0);
+        }
+
+        @Override
+        public synchronized BankAnswer send(BankTransfer transfer) {
+            asked.merge(transfer.requestId(), 1, Integer::sum);
+            if (silent.contains(transfer.toBankAccountNumber()) || silent.contains(transfer.fromBankAccountNumber())) {
+                return BankAnswer.NO_ANSWER;
+            }
+            if (sent.containsKey(transfer.requestId())) {
+                return BankAnswer.ACCEPTED;
+            }
+            if (refused.contains(transfer.toBankAccountNumber()) || refused.contains(transfer.fromBankAccountNumber())) {
+                return BankAnswer.REFUSED;
+            }
+            sent.put(transfer.requestId(), 1);
+            delivered.add(transfer);
+            return BankAnswer.ACCEPTED;
+        }
+    }
+}

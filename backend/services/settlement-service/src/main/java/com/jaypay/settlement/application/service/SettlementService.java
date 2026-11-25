@@ -4,6 +4,7 @@ import com.jaypay.common.UseCase;
 import com.jaypay.settlement.application.port.in.SettlementUseCase;
 import com.jaypay.settlement.application.port.out.BankAccount;
 import com.jaypay.settlement.application.port.out.BankingPort;
+import com.jaypay.settlement.application.port.out.Payout;
 import com.jaypay.settlement.application.port.out.Payment;
 import com.jaypay.settlement.application.port.out.PaymentPort;
 import lombok.RequiredArgsConstructor;
@@ -28,19 +29,20 @@ public class SettlementService implements SettlementUseCase {
             Optional<BankAccount> account = accounts.computeIfAbsent(payment.franchiseId(), bankingPort::getRegisteredBankAccount);
             if (account.isEmpty()) {
                 log.warn("Merchant {} has no bank account, so payment {} stays paid", payment.franchiseId(), payment.paymentId());
-            } else if (paymentPort.finishSettlement(payment.paymentId())) {
-                pay(payment, account.get());
+            } else {
+                settle(payment, account.get());
             }
         }
     }
 
-    private void pay(Payment payment, BankAccount account) {
-        try {
-            if (!bankingPort.requestFirmBanking(account, payment.payout())) {
-                log.error("The bank refused the payout of payment {} to merchant {}", payment.paymentId(), payment.franchiseId());
-            }
-        } catch (RuntimeException e) {
-            log.error("The payout of payment {} to merchant {} got no answer", payment.paymentId(), payment.franchiseId(), e);
+    private void settle(Payment payment, BankAccount account) {
+        Payout payout = bankingPort.pay("settlement-" + payment.paymentId(), account, payment.payout());
+        switch (payout) {
+            case PAID -> paymentPort.finishSettlement(payment.paymentId());
+            case REFUSED -> log.error("The bank refused the payout of payment {} to merchant {}, so it stays paid",
+                    payment.paymentId(), payment.franchiseId());
+            case UNCONFIRMED -> log.warn("The bank did not confirm the payout of payment {}, so the next run asks again",
+                    payment.paymentId());
         }
     }
 }

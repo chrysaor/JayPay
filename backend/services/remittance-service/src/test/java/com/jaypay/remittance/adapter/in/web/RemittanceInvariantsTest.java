@@ -57,7 +57,8 @@ class RemittanceInvariantsTest {
     private static final Set<String> INVALID_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> REFUSED_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> SILENT_ACCOUNTS = ConcurrentHashMap.newKeySet();
-    private static final List<JsonNode> TRANSFERS = new CopyOnWriteArrayList<>();
+    private static final List<JsonNode> ASKED = new CopyOnWriteArrayList<>();
+    private static final Map<String, JsonNode> LANDED = new ConcurrentHashMap<>();
     private static final HttpServer JAYPAY = startFakeJayPay();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -380,23 +381,31 @@ class RemittanceInvariantsTest {
         assertThat(remittance.get("remittanceStatus").asText()).isEqualTo("REFUNDED");
         assertThat(BALANCES.get(sender)).isEqualTo(20000);
         assertThat(remit(body)).isEqualTo(remittance);
-        assertThat(transfersTo(account)).hasSize(1);
+        assertThat(transfersTo(account)).isEmpty();
+        assertThat(ASKED.stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account))).hasSize(1);
     }
 
     @Test
-    void aTransferTheBankDoesNotAnswerIsNeverSentAgain() throws Exception {
+    void aTransferTheBankDoesNotAnswerIsAskedAgainUnderTheSameIdAndLandsOnce() throws Exception {
         String sender = memberWithBalance(20000);
         String account = "1002-" + sender;
         SILENT_ACCOUNTS.add(account);
         String body = toBank(UUID.randomUUID().toString(), sender, "Jay Bank", account, "7000");
 
-        JsonNode remittance = remit(body);
+        HttpResponse<String> unanswered = post(body);
+        assertThat(unanswered.statusCode()).isEqualTo(503);
+        assertThat(error(unanswered)).isEqualTo("REMITTANCE_NOT_CONFIRMED");
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        SILENT_ACCOUNTS.remove(account);
         JsonNode retried = remit(body);
 
-        assertThat(remittance.get("remittanceStatus").asText()).isEqualTo("TRANSFERRING");
-        assertThat(retried).isEqualTo(remittance);
+        assertThat(retried.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(retried);
         assertThat(BALANCES.get(sender)).isEqualTo(13000);
-        assertThat(transfersTo(account)).hasSize(1);
+        assertThat(transfersTo(account)).singleElement()
+                .satisfies(transfer -> assertThat(transfer.get("requestId").asText()).isEqualTo("remittance-" + retried.get("remittanceId").asText() + "-transfer"));
+        assertThat(ASKED.stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account)).map(transfer -> transfer.get("requestId").asText()).distinct())
+                .hasSize(1);
     }
 
     @RepeatedTest(3)
@@ -462,7 +471,7 @@ class RemittanceInvariantsTest {
     }
 
     private static List<JsonNode> transfersTo(String account) {
-        return TRANSFERS.stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account)).toList();
+        return LANDED.values().stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account)).toList();
     }
 
     private static String toMember(String requestId, String sender, String receiver, String amount) {
@@ -538,14 +547,18 @@ class RemittanceInvariantsTest {
             });
             server.createContext("/banking/firmbanking/request", exchange -> {
                 JsonNode transfer = JSON.readTree(exchange.getRequestBody().readAllBytes());
-                TRANSFERS.add(transfer);
+                ASKED.add(transfer);
                 String account = transfer.get("toBankAccountNumber").asText();
+                boolean refused = REFUSED_ACCOUNTS.contains(account);
+                if (!refused) {
+                    LANDED.putIfAbsent(transfer.get("requestId").asText(), transfer);
+                }
                 if (SILENT_ACCOUNTS.contains(account)) {
-                    respond(exchange, 504, "");
+                    respond(exchange, 503, "{\"error\":\"TRANSFER_NOT_CONFIRMED\",\"message\":\"no answer\"}");
                     return;
                 }
-                respond(exchange, 200, "{\"firmBankingRequestId\":\"1\",\"moneyAmount\":" + transfer.get("moneyAmount").asLong()
-                        + ",\"firmBankingStatus\":" + (REFUSED_ACCOUNTS.contains(account) ? 2 : 1) + "}");
+                respond(exchange, 200, "{\"requestId\":\"" + transfer.get("requestId").asText() + "\",\"moneyAmount\":"
+                        + transfer.get("moneyAmount").asLong() + ",\"transferStatus\":\"" + (refused ? "FAILED" : "SUCCEEDED") + "\"}");
             });
             server.start();
             return server;

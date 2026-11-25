@@ -13,6 +13,8 @@ spring:
 money:
   amount:
     max: 10000000
+  recharge:
+    deadline: 60s
 task:
   topic: ${TASK_TOPIC:jaypay.task.topic}
   result:

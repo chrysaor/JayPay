@@ -339,7 +339,26 @@ log "the receiver sends 1000 to a bank account, and it leaves the receiver's wal
 request "bank remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
   '{"requestId":"smoke-bank-remit-'$run'","fromMembershipId":"'$receiver'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","remittanceType":1,"amount":1000}'
 [ "$(json_field remittanceStatus)" = COMPLETED ] || fail "the bank remittance returned $(response)"
+first_bank_remittance=$(cat "$work/body")
 wallet_balance_is "$receiver" 4000 || fail "the bank remittance did not leave the receiver's wallet: $(cat "$work/last")"
+request "repeated bank remittance" POST "$web/api/remittance/remittance/request" "$(hex 16)" \
+  '{"requestId":"smoke-bank-remit-'$run'","fromMembershipId":"'$receiver'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","remittanceType":1,"amount":1000}'
+[ "$(cat "$work/body")" = "$first_bank_remittance" ] || fail "the repeated bank remittance answered $(response) instead of $first_bank_remittance"
+wallet_balance_is "$receiver" 4000 || fail "a repeated bank remittance moved the receiver's wallet: $(cat "$work/last")"
+
+log "banking-service sends a transfer once per request id and answers a repeat with the first result"
+bank_transfer='{"requestId":"smoke-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":700}'
+request "bank transfer" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$bank_transfer"
+[ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank transfer answered $(response)"
+first_transfer=$(cat "$work/body")
+request "repeated bank transfer" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$bank_transfer"
+[ "$(cat "$work/body")" = "$first_transfer" ] || fail "the repeated bank transfer answered $(response) instead of $first_transfer"
+expect "a reused transfer request id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
+  '{"requestId":"smoke-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":701}'
+[ "$(json_field error)" = REQUEST_ID_REUSED ] || fail "a reused transfer request id answered $(response)"
+request "transfer to an account the bank refuses" POST "$banking/banking/firmbanking/request" "$(hex 16)" \
+  '{"requestId":"smoke-refused-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'-refused","moneyAmount":700}'
+[ "$(json_field transferStatus)" = FAILED ] || fail "a refused transfer answered $(response)"
 
 log "register a second member's bank account synchronously, the way the web site does, and top it up through the saga"
 sign_up "Smoke Sync" "smoke-sync-$run@example.com"
@@ -351,6 +370,23 @@ open_wallet "$sync_member"
 request "saga top-up of the synchronously registered account" POST "$money/money/increase-eda" "$(hex 16)" \
   '{"requestId":"smoke-sync-'$run'","targetMembershipId":"'$sync_member'","amount":4000}'
 eventually 90 "the saga top-up of the synchronously registered account never reached the wallet" wallet_balance_is "$sync_member" 4000
+
+recharge_failed() {
+  call POST "$money/money/increase-eda" "$(hex 16)" "$1"
+  observed "HTTP $http_status: $(response)"
+  [ "$http_status" = 200 ] && [ "$(json_field moneyChangingResultStatus)" = 2 ]
+}
+
+log "a saga top-up the bank refuses ends as FAILED and leaves the wallet and the region total alone"
+sign_up "Smoke Refused" "smoke-refused-$run@example.com"
+refused_member=$signed_up
+request "bank account registration the bank will refuse" POST "$web/api/banking/banking/account/register" "$(hex 16)" \
+  '{"membershipId":"'$refused_member'","bankName":"Jay Bank","bankAccountNumber":"5002-'$run'-refused","valid":true}'
+open_wallet "$refused_member"
+refused_top_up='{"requestId":"smoke-refused-'$run'","targetMembershipId":"'$refused_member'","amount":3000}'
+request "saga top-up the bank refuses" POST "$money/money/increase-eda" "$(hex 16)" "$refused_top_up"
+eventually 90 "the refused saga top-up never ended as FAILED" recharge_failed "$refused_top_up"
+wallet_balance_is "$refused_member" 0 || fail "a refused saga top-up moved the wallet: $(cat "$work/last")"
 
 log "pay a corporate merchant 3000 from the wallet of 12000, at the server's fee of 3%"
 sign_up "Smoke Merchant" "smoke-merchant-$run@example.com" true
@@ -378,7 +414,6 @@ log "a payment above the balance fails and keeps the balance, and bad payments a
 request "payment above the balance" POST "$web/api/payment/payment/request" "$(hex 16)" \
   '{"requestId":"smoke-overpay-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":9001}'
 [ "$(json_field paymentStatus)" = FAILED ] || fail "a payment above the balance answered $(response)"
-failed_payment_id=$(json_field paymentId)
 wallet_balance_is "$membership_id" 9000 || fail "a failed payment moved the wallet: $(cat "$work/last")"
 for amount in -1000 0 10000001 1.5; do
   expect "a payment of $amount" 400 POST "$web/api/payment/payment/request" "$(hex 16)" \
@@ -462,7 +497,7 @@ create_staff() {
 log "the customer site forwards only the requests its screens make"
 for refused in \
   "POST $web/api/payment/payment/finish-settlement" \
-  "PUT $web/api/banking/banking/firmbanking/update-eda" \
+  "POST $web/api/banking/banking/firmbanking/request" \
   "POST $web/api/money/money/increase-eda" \
   "GET $web/api/money/actuator/prometheus" \
   "GET $web/api/membership/actuator/health" \
@@ -505,16 +540,18 @@ member=$(cat "$work/body")
 as_staff VIEWER request "settlement list for a viewer" GET "$admin/api/payment/payment/normal-status" "$(hex 16)"
 as_staff VIEWER expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
 [ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
-as_staff VIEWER expect "Mark settled by a viewer" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" '{"paymentId":"'$payment_id'"}'
+for role in VIEWER OPERATOR; do
+  as_staff "$role" expect "settling a payment by hand as $role" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+    '{"paymentId":"'$payment_id'"}'
+done
 
-log "the settlement job settles the payment once, and settling it again changes nothing"
+log "the settlement job settles the payment once the bank confirms its payout"
 as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
-as_staff OPERATOR request "Mark settled of a settled payment" POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
-  '{"paymentId":"'$payment_id'"}'
-[ "$(json_field alreadySettled)" = True ] || fail "settling a settled payment answered $(response)"
-as_staff OPERATOR expect "Mark settled of a failed payment" 409 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
-  '{"paymentId":"'$failed_payment_id'"}'
-[ "$(json_field error)" = PAYMENT_NOT_PAID ] || fail "settling a failed payment answered $(response)"
+payout='{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2910}'
+request "the payout the settlement job sent, sent again" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$payout"
+[ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank holds no settled payout for payment $payment_id: $(response)"
+expect "the payout id of payment $payment_id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
+  '{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
 as_staff VIEWER eventually 60 "the region total never reached 14000" region_total_is 14000

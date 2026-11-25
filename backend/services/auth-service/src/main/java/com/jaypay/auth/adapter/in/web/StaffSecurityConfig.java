@@ -66,7 +66,6 @@ class StaffSecurityConfig {
                         .requestMatchers(POST, CONSOLE + "/money-aggregation/money/aggregation/get-money-sum-by-address").hasRole(VIEWER.name())
                         .requestMatchers(GET, CONSOLE + "/money-query/money/query/get-money-sum-by-address/{address}").hasRole(VIEWER.name())
                         .requestMatchers(GET, CONSOLE + "/payment/payment/normal-status").hasRole(VIEWER.name())
-                        .requestMatchers(POST, CONSOLE + "/payment/payment/finish-settlement").hasRole(OPERATOR.name())
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(StaffSecurityConfig::staffAuthentication))

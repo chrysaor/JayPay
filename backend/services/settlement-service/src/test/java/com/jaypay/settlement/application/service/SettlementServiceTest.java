@@ -2,11 +2,13 @@ package com.jaypay.settlement.application.service;
 
 import com.jaypay.settlement.application.port.out.BankAccount;
 import com.jaypay.settlement.application.port.out.BankingPort;
+import com.jaypay.settlement.application.port.out.Payout;
 import com.jaypay.settlement.application.port.out.Payment;
 import com.jaypay.settlement.application.port.out.PaymentPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,13 +55,14 @@ class SettlementServiceTest {
     }
 
     @Test
-    void doesNotPayAPaymentThatAnotherRunSettledFirst() {
+    void paysAPaymentThatAnotherRunAlreadyPaidUnderTheSameIdOnlyOnce() {
         PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
-        payments.settledElsewhere(1);
+        banking.alreadyPaid("settlement-1", FIRST_MERCHANT_ACCOUNT, 9700);
 
         new SettlementService(banking, payments).settleNormalStatusPayments();
 
-        assertThat(banking.transfers).containsExactly(new Transfer(SECOND_MERCHANT_ACCOUNT, 4825));
+        assertThat(banking.transfers).containsExactly(new Transfer(FIRST_MERCHANT_ACCOUNT, 9700), new Transfer(SECOND_MERCHANT_ACCOUNT, 4825));
+        assertThat(payments.settled).containsExactly(1L, 2L);
     }
 
     @Test
@@ -73,16 +76,35 @@ class SettlementServiceTest {
     }
 
     @Test
-    void aFailedTransferNeitherStopsTheOthersNorIsPaidAgain() {
+    void aPayoutWithoutAnAnswerStaysPaidAndTheNextRunFinishesItOnce() {
         PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
-        banking.failTransfersTo(FIRST_MERCHANT_ACCOUNT);
+        banking.silence(FIRST_MERCHANT_ACCOUNT);
+        SettlementService settlement = new SettlementService(banking, payments);
+
+        settlement.settleNormalStatusPayments();
+        assertThat(payments.paid()).extracting(Payment::paymentId).containsExactly(1L);
+        assertThat(payments.settled).containsExactly(2L);
+
+        banking.answerAgain();
+        settlement.settleNormalStatusPayments();
+
+        assertThat(banking.transfers).containsExactlyInAnyOrder(new Transfer(FIRST_MERCHANT_ACCOUNT, 9700), new Transfer(SECOND_MERCHANT_ACCOUNT, 4825));
+        assertThat(banking.askedIds).containsExactly("settlement-1", "settlement-2", "settlement-1");
+        assertThat(payments.settled).containsExactly(2L, 1L);
+    }
+
+    @Test
+    void aRefusedPayoutIsNeitherSettledNorPaidAgain() {
+        PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
+        banking.refuse(FIRST_MERCHANT_ACCOUNT);
         SettlementService settlement = new SettlementService(banking, payments);
 
         settlement.settleNormalStatusPayments();
         settlement.settleNormalStatusPayments();
 
         assertThat(banking.transfers).containsExactly(new Transfer(SECOND_MERCHANT_ACCOUNT, 4825));
-        assertThat(banking.attempts).isEqualTo(2);
+        assertThat(payments.paid()).extracting(Payment::paymentId).containsExactly(1L);
+        assertThat(payments.settled).containsExactly(2L);
     }
 
     @Test
@@ -100,16 +122,31 @@ class SettlementServiceTest {
 
     private static final class RecordingBanking implements BankingPort {
         private final Map<String, BankAccount> accounts;
-        private final Set<BankAccount> failing = new HashSet<>();
+        private final Set<BankAccount> silent = new HashSet<>();
+        private final Set<BankAccount> refused = new HashSet<>();
+        private final Map<String, Payout> answered = new HashMap<>();
         private final List<Transfer> transfers = new ArrayList<>();
-        private int attempts;
+        private final List<String> askedIds = new ArrayList<>();
 
         RecordingBanking(Map<String, BankAccount> accounts) {
             this.accounts = accounts;
         }
 
-        void failTransfersTo(BankAccount account) {
-            failing.add(account);
+        void silence(BankAccount account) {
+            silent.add(account);
+        }
+
+        void refuse(BankAccount account) {
+            refused.add(account);
+        }
+
+        void answerAgain() {
+            silent.clear();
+        }
+
+        void alreadyPaid(String requestId, BankAccount to, long amount) {
+            answered.put(requestId, Payout.PAID);
+            transfers.add(new Transfer(to, amount));
         }
 
         @Override
@@ -118,13 +155,18 @@ class SettlementServiceTest {
         }
 
         @Override
-        public boolean requestFirmBanking(BankAccount to, long amount) {
-            attempts++;
-            if (failing.contains(to)) {
-                throw new IllegalStateException("the bank did not answer");
+        public Payout pay(String requestId, BankAccount to, long amount) {
+            askedIds.add(requestId);
+            if (silent.contains(to)) {
+                return Payout.UNCONFIRMED;
             }
-            transfers.add(new Transfer(to, amount));
-            return true;
+            return answered.computeIfAbsent(requestId, id -> {
+                if (refused.contains(to)) {
+                    return Payout.REFUSED;
+                }
+                transfers.add(new Transfer(to, amount));
+                return Payout.PAID;
+            });
         }
     }
 

@@ -14,13 +14,11 @@ import com.jaypay.remittance.domain.RemittanceRejectedException;
 import com.jaypay.remittance.domain.RemittanceRejectedException.Reason;
 import com.jaypay.remittance.domain.RemittanceStatus;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 
 @UseCase
 @RequiredArgsConstructor
-@Slf4j
 public class RemittanceService implements RequestRemittanceUseCase, FindRemittanceUseCase {
 
     private final RemittancePort remittancePort;
@@ -63,11 +61,12 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
         Remittance current = remittance;
         while (true) {
             switch (current.status()) {
-                case TRANSFERRING, COMPLETED, FAILED, REFUNDED -> {
+                case COMPLETED, FAILED, REFUNDED -> {
                     return current;
                 }
                 case REQUESTED -> current = debit(current);
                 case DEBITED -> current = deliver(current);
+                case TRANSFERRING -> current = transfer(current);
                 case REFUNDING -> current = refund(current);
             }
         }
@@ -85,7 +84,7 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
     private Remittance deliver(Remittance remittance) {
         return switch (remittance.request().receiver()) {
             case Receiver.Member member -> credit(remittance, member);
-            case Receiver.BankAccount account -> transfer(remittance, account);
+            case Receiver.BankAccount account -> startTransfer(remittance);
         };
     }
 
@@ -97,18 +96,17 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
         };
     }
 
-    private Remittance transfer(Remittance remittance, Receiver.BankAccount account) {
-        if (!remittancePort.advance(remittance.remittanceId(), RemittanceStatus.DEBITED, RemittanceStatus.TRANSFERRING)) {
-            return remittancePort.find(remittance.remittanceId());
-        }
-        Remittance transferring = remittance.in(RemittanceStatus.TRANSFERRING);
-        return switch (bankingPort.transfer(account, remittance.request().amount())) {
-            case SUCCEEDED -> move(transferring, RemittanceStatus.COMPLETED);
-            case FAILED -> move(transferring, RemittanceStatus.REFUNDING);
-            case UNCONFIRMED -> {
-                log.warn("The bank did not confirm remittance {}. It stays TRANSFERRING and is not sent again.", remittance.remittanceId());
-                yield transferring;
-            }
+    private Remittance startTransfer(Remittance remittance) {
+        remittancePort.advance(remittance.remittanceId(), RemittanceStatus.DEBITED, RemittanceStatus.TRANSFERRING);
+        return remittancePort.find(remittance.remittanceId());
+    }
+
+    private Remittance transfer(Remittance remittance) {
+        Receiver.BankAccount account = (Receiver.BankAccount) remittance.request().receiver();
+        return switch (bankingPort.transfer(remittance.transferRequestId(), account, remittance.request().amount())) {
+            case SUCCEEDED -> move(remittance, RemittanceStatus.COMPLETED);
+            case FAILED -> move(remittance, RemittanceStatus.REFUNDING);
+            case UNCONFIRMED -> throw new RemittanceRejectedException(Reason.REMITTANCE_NOT_CONFIRMED);
         };
     }
 
