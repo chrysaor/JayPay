@@ -30,7 +30,7 @@ The first three accounts come from `STAFF_*` keys in `infra/docker/.env`, which 
 What the gate does not cover:
 
 - The service ports `127.0.0.1:8081` to `8089` reach the services without a staff token.
-- The customer site on 8090 forwards member edits and Mark settled without a login.
+- The customer site on 8090 forwards only the requests its screens make, listed in `frontend/apps/web/nginx.conf.template`, and answers 404 to every other `/api/` path. It forwards those without a login, and a member id is all that sign-in asks for.
 - Staff sign-in has no rate limit or lockout, and the MFA flag does not change sign-in yet.
 - A staff token stays valid for 8 hours. Signing out only drops it in the browser, but a deactivation stops it on the next request.
 

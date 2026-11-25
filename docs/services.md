@@ -420,7 +420,7 @@ The customer site, served by nginx, with a proxy to five services.
 
 ### What it does
 
-`frontend/apps/web/nginx.conf.template` proxies `/api/membership/`, `/api/banking/`, `/api/money/`, `/api/remittance/` and `/api/payment/` to the matching `JAYPAY_*_URL`, with `/api/<service>` stripped from the path. Any other `/api/` path answers 404, and every other path serves the single-page app. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-web.yaml` sets them for the local cluster.
+`frontend/apps/web/nginx.conf.template` forwards only the method and path pairs that the screens send, each to a fixed path on the matching `JAYPAY_*_URL` with `/api/<service>` stripped. nginx matches the path after it decodes and normalizes it, a member id must be digits, and the forwarded path is built from the table, not copied from the request. Any other `/api/` request answers 404, internal endpoints, Actuator and the OpenAPI pages included, and every other path serves the single-page app. `src/api/nginx.test.ts` runs every API call of the screens and fails when one has no entry in the table, when an entry forwards to another path, or when an entry is not used. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-web.yaml` sets them for the local cluster.
 
 The site has these pages:
 
@@ -435,7 +435,7 @@ The site checks the stored access token on load with `POST /memberships/token-va
 
 ### Known limitations
 
-- nginx forwards every method on the five paths without checking a token, so the site also forwards member edits and `POST /payment/finish-settlement`.
+- nginx forwards the screens' requests without checking a token. A member id is enough to sign in, and the top-up, remittance and payment requests name the member in the body.
 
 ## frontend-admin
 
@@ -455,7 +455,7 @@ The admin console, served by nginx, with a proxy to five services behind the aut
 
 ### What it does
 
-`frontend/apps/admin/nginx.conf.template` proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/` and `/api/money-query/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. `/api/auth/staff/` goes to auth-service without the gate, because auth-service checks those requests itself. Any other `/api/` path answers 404. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
+`frontend/apps/admin/nginx.conf.template` proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/` and `/api/money-query/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. `/api/auth/staff/` goes to auth-service without the gate, because auth-service checks those requests itself. nginx picks the upstream from the location that matched the normalized path, so a path such as `/api/membership/..%2Fauth/staff/me` reaches auth-service, not membership-service. Any other `/api/` path answers 404. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
 
 The console has these pages:
 
