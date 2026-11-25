@@ -71,9 +71,9 @@ Keycloak runs `start` with `KC_HTTP_ENABLED`, because the local stack has no TLS
 | --- | --- | --- |
 | Logs | Logback, OpenTelemetry appender, OTLP HTTP, Collector | ClickHouse `otel.otel_logs`, 72 hours |
 | Traces | Micrometer Tracing across HTTP, Kafka and Axon, OTLP HTTP, Collector | ClickHouse `otel.otel_traces`, 72 hours |
-| Metrics | Micrometer, `/actuator/prometheus` | Prometheus, 3 days |
+| Metrics | Micrometer, `/actuator/prometheus` on the management port 9080 | Prometheus, 3 days |
 
-Each log record carries the trace and span id of the request that wrote it. The Collector drops the spans of `/actuator` requests. Container output is ECS JSON because `LOG_FORMAT=ecs`; leave the variable unset to get plain text.
+Actuator listens on the management port 9080 of each service container and exposes only health, with the liveness and readiness groups, and the Prometheus metrics. Compose publishes no host port for it: the image's `HEALTHCHECK` calls it from inside the container and Prometheus scrapes it over the Compose network. The service ports answer `/actuator/**`, `/v3/api-docs` and `/swagger-ui/**` like any unknown path. To read the OpenAPI document or Swagger UI, run a service from the checkout with `SPRING_PROFILES_ACTIVE=local`. Each log record carries the trace and span id of the request that wrote it. The Collector drops the spans of `/actuator` requests. Container output is ECS JSON because `LOG_FORMAT=ecs`; leave the variable unset to get plain text.
 
 Grafana provisions both data sources and three dashboards in the JayPay folder: the service overview (availability, HTTP, Kafka, JVM and connection pools), logs (filter by service, text or trace id) and traces (recent traces, the waterfall of one trace and its logs).
 

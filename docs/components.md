@@ -18,7 +18,7 @@ A new component is added to this page in the PR that introduces it.
 | Axon Framework | Event sourcing and the money top-up saga | `backend/gradle/libs.versions.toml` |
 | AWS SDK for Java | DynamoDB access of money-query-service | `backend/gradle/libs.versions.toml` |
 | JJWT | Customer tokens | `backend/gradle/libs.versions.toml` |
-| springdoc | OpenAPI documents of the services | `backend/gradle/libs.versions.toml` |
+| springdoc | OpenAPI documents of the services, under the Spring profile `local` only | `backend/gradle/libs.versions.toml` |
 | Micrometer and the OpenTelemetry Logback appender | Metrics, traces and logs out of every service | Spring Boot BOM, `backend/gradle/libs.versions.toml` |
 | ArchUnit, Testcontainers | Hexagonal layer rules and tests against real PostgreSQL and Kafka | `backend/gradle/libs.versions.toml`, Spring Boot BOM |
 | React, TypeScript, Vite, Vitest | The customer site and the admin console | `frontend/package.json` and the `package.json` of each app |
@@ -48,7 +48,7 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | Component | Role | Runs in | Version pinned in |
 | --- | --- | --- | --- |
 | OpenTelemetry Collector | Receives logs and traces over OTLP and writes them to ClickHouse | compose, local cluster | `infra/docker/otel-collector/Dockerfile`, `deploy/envs/local/dependency/otel-collector.yaml` |
-| Prometheus | Scrapes `/actuator/prometheus` | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/prometheus.yaml` |
+| Prometheus | Scrapes `/actuator/prometheus` on the management port 9080 | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/prometheus.yaml` |
 | Grafana | Dashboards over ClickHouse and Prometheus | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/grafana.yaml` |
 
 ## Kubernetes and GitOps

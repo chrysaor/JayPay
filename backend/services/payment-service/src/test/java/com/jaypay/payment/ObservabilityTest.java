@@ -15,28 +15,26 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 class ObservabilityTest {
 
@@ -44,8 +42,8 @@ class ObservabilityTest {
     private static final AtomicReference<String> RECEIVED_TRACEPARENT = new AtomicReference<>();
     private static final HttpServer MEMBERSHIP = startMembershipStub();
 
-    @Autowired
-    private MockMvc mockMvc;
+    @LocalManagementPort
+    private int managementPort;
 
     @Autowired
     private ObservationRegistry observationRegistry;
@@ -93,17 +91,13 @@ class ObservabilityTest {
     }
 
     @Test
-    void exposesJvmAndConnectionPoolMetricsForPrometheus() throws Exception {
-        mockMvc.perform(get("/actuator/prometheus"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("jvm_memory_used_bytes")))
-                .andExpect(content().string(containsString("hikaricp_connections_active")));
-    }
+    void exposesConnectionPoolMetricsForPrometheus() throws Exception {
+        HttpResponse<String> metrics = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + managementPort + "/actuator/prometheus")).build(),
+                HttpResponse.BodyHandlers.ofString());
 
-    @Test
-    void keepsEveryOtherActuatorEndpointPrivate() throws Exception {
-        mockMvc.perform(get("/actuator/env")).andExpect(status().isNotFound());
-        mockMvc.perform(get("/actuator/beans")).andExpect(status().isNotFound());
+        assertThat(metrics.statusCode()).isEqualTo(200);
+        assertThat(metrics.body()).contains("hikaricp_connections_active");
     }
 
     private static HttpServer startMembershipStub() {

@@ -36,6 +36,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 - A payment takes its price from the payer's wallet once, records `FAILED` when the balance is too low, refuses a price that is not a whole number from 1 to `PAYMENT_AMOUNT_MAX` (10,000,000 by default) and a merchant that is not a valid corporate member, and ignores a fee rate in the request ([#97](https://github.com/chrysaor/JayPay/issues/97))
 - The customer site forwards only the 11 requests its screens make and answers 404 to every other `/api/` path, so the services' internal endpoints, Actuator and the OpenAPI pages no longer answer through it ([#110](https://github.com/chrysaor/JayPay/pull/110))
 - The admin site picks the upstream from the normalized path, so a path with an encoded `..` such as `/api/membership/..%2Fauth/staff/me` no longer reaches membership-service without the staff check ([#110](https://github.com/chrysaor/JayPay/pull/110))
+- Actuator moved to the management port 9080 of every service and exposes only health, the liveness and readiness probes and the Prometheus metrics. The service ports answer `/actuator/**` like any unknown path, no host port publishes the management port, the probes and the Prometheus scrape use it, and in the cluster a NetworkPolicy admits only Prometheus on it. springdoc is off unless a service runs with the Spring profile `local`, so `/v3/api-docs` and Swagger UI are gone from the service ports ([#111](https://github.com/chrysaor/JayPay/issues/111))
 
 ## [0.3.0] - 2026-11-26
 

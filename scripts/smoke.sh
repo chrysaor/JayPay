@@ -11,6 +11,8 @@ banking=${SMOKE_BANKING_URL:-http://localhost:8082}
 money=${SMOKE_MONEY_URL:-http://localhost:8083}
 clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
+read -r -a service_urls <<<"${SMOKE_SERVICE_URLS:-$(printf 'http://localhost:%s ' 8081 8082 8083 8084 8085 8086 8087 8088 8089)}"
+management_port=9080
 stack=${SMOKE_STACK:-compose}
 services=(
   membership-service banking-service money-service remittance-service payment-service
@@ -203,12 +205,15 @@ trace_has_logs() {
 targets_up() {
   curl -sS --max-time 10 "$prometheus/api/v1/targets?state=active" >"$work/targets" 2>"$work/curl-error" || { observed "Prometheus: $(cat "$work/curl-error")"; return 1; }
   local report
-  if report=$(python3 - "$work/targets" "${#services[@]}" <<'PY'
+  if report=$(python3 - "$work/targets" "${#services[@]}" "$management_port" <<'PY'
 import json, sys
+from urllib.parse import urlsplit
 targets = json.load(open(sys.argv[1]))["data"]["activeTargets"]
 down = sorted(f"{t['labels'].get('service', t['scrapeUrl'])} ({t['lastError'] or t['health']})" for t in targets if t["health"] != "up")
-print(f"{len(targets) - len(down)} of {len(targets)} targets up, expected {sys.argv[2]}" + (f", down: {', '.join(down)}" if down else ""))
-sys.exit(0 if not down and len(targets) == int(sys.argv[2]) else 1)
+elsewhere = sorted(t["scrapeUrl"] for t in targets if urlsplit(t["scrapeUrl"]).port != int(sys.argv[3]))
+print(f"{len(targets) - len(down)} of {len(targets)} targets up on port {sys.argv[3]}, expected {sys.argv[2]}"
+      + (f", down: {', '.join(down)}" if down else "") + (f", scraped elsewhere: {', '.join(elsewhere)}" if elsewhere else ""))
+sys.exit(0 if not down and not elsewhere and len(targets) == int(sys.argv[2]) else 1)
 PY
   ); then
     observed "$report"
@@ -566,6 +571,25 @@ call GET "$admin/realms/staff/protocol/openid-connect/logout?client_id=jaypay-ad
 [ "$http_status" = 302 ] || fail "sign out returned HTTP $http_status: $(response)"
 [ "$(refresh_status "$viewer_refresh")" = 400 ] || fail "the refresh token still worked after sign out: $(response)"
 
+log "no service port, and neither site, serves Actuator or the OpenAPI pages, and Prometheus scrapes the management port"
+for service_url in "${service_urls[@]}"; do
+  call GET "$service_url/no-such-path" "$(hex 16)"
+  unmapped=$http_status
+  case "$unmapped" in
+    401 | 404) ;;
+    *) fail "an unknown path on $service_url returned HTTP $unmapped: $(response)" ;;
+  esac
+  for path in /actuator/health /actuator/prometheus /v3/api-docs /swagger-ui/index.html; do
+    expect "$path on $service_url" "$unmapped" GET "$service_url$path" "$(hex 16)"
+  done
+done
+expect "the actuator of a service behind the console without a token" 401 GET "$admin/api/membership/actuator/health" "$(hex 16)"
+as_staff ADMIN expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
+as_staff ADMIN expect "the API docs of a service behind the console" 403 GET "$admin/api/payment/v3/api-docs" "$(hex 16)"
+expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
+eventually 60 "Prometheus does not scrape every service on port $management_port" targets_up
+log "$(cat "$work/last")"
+
 log "a staff account made in Keycloak signs in, and once disabled it can no longer sign in or refresh"
 new_staff="smoke-$run"
 new_password="Smoke-$(hex 8)-Pass-42!"
@@ -600,8 +624,6 @@ log "the gate refuses what the admin console never asks for"
 as_staff ADMIN expect "payment request through the admin console" 403 POST "$admin/api/payment/payment/request" "$(hex 16)" \
   '{"requestId":"smoke-admin-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":1}'
 as_staff ADMIN expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
-as_staff ADMIN expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
-expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
 
 log "a staff token means nothing to the customer site"
 sign_in_default_staff ADMIN
@@ -624,9 +646,5 @@ for check in \
   eventually 30 "no logs carry the $boundary trace id" trace_has_logs "$trace"
   log "$boundary trace $trace spans $required"
 done
-
-log "Prometheus scrapes every service"
-eventually 60 "Prometheus does not see every service up" targets_up
-log "$(cat "$work/last")"
 
 log "PASSED"

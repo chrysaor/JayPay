@@ -81,7 +81,7 @@ Every host port binds to `127.0.0.1`.
 | PostgreSQL, user `jaypay` | `localhost:5432` |
 | Kafka | `localhost:9092` |
 | OTLP gRPC and HTTP | `localhost:4317`, `localhost:4318` |
-| Services | `localhost:8081` to `localhost:8089`, listed in the next table, with Swagger UI at `/swagger-ui.html` |
+| Services | `localhost:8081` to `localhost:8089`, listed in the next table. Actuator listens on port 9080 inside the container, which no host port publishes |
 
 The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/README.md) describes every key in it. The admin console asks for a staff account: the first `make up` imports the Keycloak realm `staff` with an admin, an operator and a viewer from `STAFF_<ROLE>_USERNAME` and `STAFF_<ROLE>_PASSWORD` in that file. Staff accounts are managed in the Keycloak admin console.
 
@@ -123,7 +123,7 @@ flowchart LR
 
     services -- "logs and traces, OTLP HTTP :4318" --> collector
     collector --> clickhouse
-    prometheus -- "scrapes /actuator/prometheus every 10 s" --> services
+    prometheus -- "scrapes /actuator/prometheus on :9080 every 10 s" --> services
     grafana --> clickhouse & prometheus
 ```
 
@@ -131,7 +131,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Logs | Logback through the OpenTelemetry appender | ClickHouse `otel.otel_logs` | Grafana dashboard **JayPay logs**, filtered by service, text or trace id |
 | Traces | Micrometer Tracing across HTTP, Kafka and Axon | ClickHouse `otel.otel_traces` | Grafana dashboard **JayPay traces**, with the waterfall of one trace and its logs |
-| Metrics | Micrometer, `/actuator/prometheus` | Prometheus | Grafana dashboard **JayPay service overview**, the Grafana home page |
+| Metrics | Micrometer, `/actuator/prometheus` on the management port 9080 | Prometheus | Grafana dashboard **JayPay service overview**, the Grafana home page |
 
 Each log record carries the trace id and span id of the request that wrote it, so a trace leads to its logs. Container output is ECS JSON because Compose sets `LOG_FORMAT=ecs`.
 
@@ -187,7 +187,7 @@ The local stack uses DynamoDB Local and keeps its data in a volume. One file, `i
 
 JayPay is a study project and is not safe to run with real money or real users.
 
-- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8089` and the customer site do not. Anyone on the machine can call a service directly, internal endpoints, Actuator and Swagger UI included. The customer site forwards only the eleven requests its screens make and answers 404 to every other `/api/` path, but it forwards those without a login, so anyone can sign in as any member id, read any member and top up or spend any wallet.
+- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8089` and the customer site do not. Anyone on the machine can call a service directly, internal endpoints included. Actuator answers only on the management port 9080, which no host port publishes, but any container in the Compose network reaches it. The customer site forwards only the eleven requests its screens make and answers 404 to every other `/api/` path, but it forwards those without a login, so anyone can sign in as any member id, read any member and top up or spend any wallet.
 - Keycloak offers an authenticator app to every staff account but does not require one.
 - Disabling a staff account in Keycloak stops its next sign-in at once, but an access token it already holds keeps working for up to 3 minutes.
 - The local stack runs Keycloak over plain HTTP.

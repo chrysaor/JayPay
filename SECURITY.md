@@ -29,7 +29,7 @@ The realm file `infra/docker/keycloak/import/staff.json` holds no password or se
 
 What the gate does not cover:
 
-- The service ports `127.0.0.1:8081` to `8089` reach the services without a staff token.
+- The service ports `127.0.0.1:8081` to `8089` reach the services without a staff token. They serve neither Actuator nor the OpenAPI pages. Actuator exposes only health and the Prometheus metrics, on the management port 9080. No host port publishes it, but in Compose every container on the network reaches it. In the cluster a NetworkPolicy admits only Prometheus, and the kubelet probes it. springdoc is off unless a service runs with the Spring profile `local`.
 - The customer site on 8090 forwards only the requests its screens make, listed in `frontend/apps/web/nginx.conf.template`, and answers 404 to every other `/api/` path. It forwards those without a login, and a member id is all that sign-in asks for.
 - An authenticator app is optional for staff accounts. Requiring it is one line in the realm, the `CONFIGURE_TOTP` required action, which `make smoke` would then have to answer.
 - An access token stays valid for 2 minutes and auth-service accepts 60 seconds of clock skew. Disabling an account stops its sign-in and refresh at once, but its access token keeps working for up to 3 minutes. Signing out ends the Keycloak session.

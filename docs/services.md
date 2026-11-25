@@ -1,6 +1,6 @@
 # Services
 
-This page describes each of the eleven Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files.
+This page describes each of the eleven Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
 
 ## membership-service
 
@@ -362,7 +362,7 @@ settlement-service calls payment-service for the paid payments and to finish eac
 
 The amounts are whole won. payment-service computes the fee and the payout when it takes the payment, so settlement-service does no arithmetic and pays out exactly the stored `payout`. Every run sends the same request id for a payment, and banking-service sends a transfer once per request id, so a second run, a run on another replica or a run after an unanswered transfer never pays the same payment twice. `SettlementJobTest` lets the bank stay silent for the first run, then runs the settlement four times at once and the job twice more, and checks that each payment lands at the bank once.
 
-The service has no HTTP endpoints of its own. The host port serves Actuator.
+The service has no HTTP endpoints of its own. Actuator answers on the management port.
 
 ### Known limitations
 

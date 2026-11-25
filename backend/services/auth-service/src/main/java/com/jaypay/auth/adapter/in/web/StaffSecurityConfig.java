@@ -5,6 +5,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.tomcat.util.buf.EncodedSolidusHandling;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.boot.tomcat.TomcatConnectorCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -58,8 +59,7 @@ class StaffSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers(GET, "/actuator/health/**", "/actuator/prometheus").permitAll()
-                        .requestMatchers(GET, "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                        .requestMatchers(EndpointRequest.toAnyEndpoint().excludingLinks()).permitAll()
                         .requestMatchers(GET, CONSOLE + "/membership/memberships/{membershipId}").hasRole(VIEWER.name())
                         .requestMatchers(GET, CONSOLE + "/membership/memberships/address/{address}").hasRole(VIEWER.name())
                         .requestMatchers(PUT, CONSOLE + "/membership/memberships/{membershipId}").hasRole(OPERATOR.name())
