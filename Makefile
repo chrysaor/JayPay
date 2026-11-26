@@ -14,11 +14,12 @@ BACKEND_VERSION_FILE := backend/build-logic/src/main/kotlin/jaypay.java.gradle.k
 GIT_COMMON_DIR :=$(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
+.PHONY: help build test coverage verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
 	@echo "make test                      run backend and frontend tests"
+	@echo "make coverage                  run the tests if needed and print the line coverage of backend and frontend"
 	@echo "make verify [STEPS=...]        the gate: $$(sed -n 's/^ALL_STEPS=(\(.*\))/\1/p' scripts/verify.sh)"
 	@echo "make verify-selftest           prove the gate fails on planted errors"
 	@echo "make images                    build jaypay/<service> and jaypay/frontend-<app>"
@@ -48,6 +49,11 @@ build: $(FRONTEND_DEPS)
 test: $(FRONTEND_DEPS)
 	cd backend && ./gradlew test
 	cd frontend && npm test
+
+coverage: $(FRONTEND_DEPS)
+	cd backend && ./gradlew testCodeCoverageReport
+	cd frontend && npm test
+	@python3 scripts/coverage.py
 
 verify:
 	scripts/verify.sh $(STEPS)

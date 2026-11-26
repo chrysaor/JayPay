@@ -1,6 +1,24 @@
 # JayPay
 
-JayPay is a study project for a small payment service: members sign up, register a bank account, top up a wallet, send money and pay merchants, and a batch job settles the payments. The repository shows how to build that as Spring Boot services in a hexagonal layout and connect them with HTTP, Kafka and Axon Framework commands, events and sagas. It also ships two React sites, a Docker Compose stack with logs, traces and metrics, and one `make` gate that CI runs. The project started in 2024 and was rebuilt on Java 25 and Spring Boot 4. The documents from before the rebuild are in [docs/legacy](docs/legacy/README.md).
+[![CI](https://github.com/chrysaor/JayPay/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/chrysaor/JayPay/actions/workflows/ci.yml?query=branch%3Adevelop)
+[![Security](https://github.com/chrysaor/JayPay/actions/workflows/security.yml/badge.svg?branch=develop)](https://github.com/chrysaor/JayPay/actions/workflows/security.yml?query=branch%3Adevelop)
+[![Release](https://img.shields.io/github/v/release/chrysaor/JayPay)](https://github.com/chrysaor/JayPay/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+JayPay is a study project for a wallet-based payment service: members sign up, register a bank account, top up a wallet, send money and pay merchants, and a batch job settles the payments. The repository shows how to build that as Spring Boot services in a hexagonal layout and connect them with HTTP, Kafka and Axon Framework commands, events and sagas. It also ships two React sites, a Docker Compose stack with logs, traces and metrics, and one `make` gate that CI runs. The project started in 2023 and was rebuilt on Java 25 and Spring Boot 4. The documents from before the rebuild are in [docs/legacy](docs/legacy/README.md).
+
+## Quick start
+
+You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 is needed only to build and test the frontend outside Docker. Run these from the repository root:
+
+```sh
+make images
+make up
+make smoke
+make down
+```
+
+`make images` builds every image, and `make up` starts the stack and waits until it is healthy. Then open the customer site at http://localhost:8090 and the admin console at http://localhost:8091, which asks for a staff account from `infra/docker/.env`. `make smoke` drives the stack end to end, and `make down` stops it. [Local stack](#local-stack) explains each step and lists every address.
 
 ## Architecture
 
@@ -45,17 +63,7 @@ Axon Server routes the commands and events of the money top-up saga and stores t
 | `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke` and `make k8s-smoke`, `k8s.sh` behind the `make k8s-*` targets, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, `check-docs.py` that draws `docs/diagrams/`, and the checks that `make verify` runs |
 | `docs/` | The HTTP API contract, the [service reference](docs/services.md), the diagrams, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
 
-## Quick start
-
-You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 is needed only to build and test the frontend outside Docker.
-
-Run these from the repository root:
-
-```sh
-make images
-make up
-make smoke
-```
+## Local stack
 
 1. `make images` builds `jaypay/<service>` for every backend service, and `jaypay/frontend-web` and `jaypay/frontend-admin`.
 2. `make up` writes `infra/docker/.env` with random secrets the first time, starts the Compose project `jaypay`, and waits until every container is healthy. The first start also builds the OpenTelemetry Collector image.
@@ -143,6 +151,7 @@ Every command runs from the repository root. Run `make` to list them.
 | --- | --- |
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
+| `make coverage` | Prints the line coverage of the backend and of each frontend app. CI writes the same table to the summary of its backend and frontend jobs |
 | `make verify` | Runs the gate that CI runs: `changelog contract docs english env terraform actionlint charts frontend backend` |
 | `make verify STEPS="contract backend"` | Runs only the named steps |
 | `make verify-selftest` | Proves that the gate fails on planted errors |
@@ -201,3 +210,7 @@ JayPay is a study project and is not safe to run with real money or real users.
 - A payout the bank refuses keeps its payment unsettled, and someone has to fix the merchant's account.
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.
+
+## License
+
+JayPay is released under the [MIT License](LICENSE).

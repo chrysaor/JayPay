@@ -33,6 +33,13 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./src/test/setup.ts'],
       restoreMocks: true,
       unstubGlobals: true,
+      coverage: {
+        enabled: true,
+        provider: 'v8',
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/test/**'],
+        reporter: ['json-summary'],
+      },
     },
   }
 })
