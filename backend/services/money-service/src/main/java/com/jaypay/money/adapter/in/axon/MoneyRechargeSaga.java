@@ -8,6 +8,7 @@ import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.WalletRechargedEvent;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
 import com.jaypay.money.domain.RechargeFailure;
@@ -17,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.deadline.DeadlineManager;
 import org.axonframework.deadline.annotation.DeadlineHandler;
+import org.axonframework.eventhandling.gateway.EventGateway;
 import org.axonframework.modelling.saga.EndSaga;
 import org.axonframework.modelling.saga.SagaEventHandler;
 import org.axonframework.modelling.saga.SagaLifecycle;
@@ -38,6 +40,7 @@ public class MoneyRechargeSaga {
     private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123456789";
 
     private transient CommandGateway commandGateway;
+    private transient EventGateway eventGateway;
     private transient DeadlineManager deadlineManager;
     private transient Duration deadline;
     private transient ChangeMoneyUseCase changeMoneyUseCase;
@@ -53,6 +56,11 @@ public class MoneyRechargeSaga {
     @Autowired
     public void setCommandGateway(CommandGateway commandGateway) {
         this.commandGateway = commandGateway;
+    }
+
+    @Autowired
+    public void setEventGateway(EventGateway eventGateway) {
+        this.eventGateway = eventGateway;
     }
 
     @Autowired
@@ -144,6 +152,7 @@ public class MoneyRechargeSaga {
         switch (event.getStatus()) {
             case RequestFirmBankingFinishedEvent.SUCCEEDED -> {
                 if (changeMoneyUseCase.finishRecharging(new RequestId(rechargingRequestId))) {
+                    eventGateway.publish(new WalletRechargedEvent(rechargingRequestId, membershipId, amount));
                     end();
                 } else {
                     rollBack();
