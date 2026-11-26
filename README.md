@@ -9,7 +9,7 @@ JayPay is a study project for a wallet-based payment service: members sign up, r
 
 ## Quick start
 
-You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 is needed only to build and test the frontend outside Docker. Run these from the repository root:
+You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 or newer is needed only to build and test the frontend outside Docker. Run these from the repository root:
 
 ```sh
 make images
