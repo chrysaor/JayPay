@@ -10,7 +10,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 class EnumValueChecks implements BeanPostProcessor {
 
@@ -29,14 +31,14 @@ class EnumValueChecks implements BeanPostProcessor {
     }
 
     private static void drop(SessionFactoryImplementor sessionFactory) {
-        List<EnumColumn> columns = new ArrayList<>();
+        Set<EnumColumn> columns = new LinkedHashSet<>();
         sessionFactory.getMappingMetamodel().forEachEntityDescriptor(entity -> entity.forEachSelectable((index, column) -> {
             if (!column.isFormula() && column.getJdbcMapping().getJavaTypeDescriptor().getJavaTypeClass().isEnum()) {
                 columns.add(new EnumColumn(column.getContainingTableExpression(), column.getSelectionExpression()));
             }
         }));
         sessionFactory.inTransaction(session -> session.doWork(connection -> {
-            for (EnumColumn column : columns.stream().distinct().toList()) {
+            for (EnumColumn column : columns) {
                 for (String check : checksOn(connection, column)) {
                     try (Statement statement = connection.createStatement()) {
                         statement.execute("alter table " + column.table() + " drop constraint \"" + check.replace("\"", "\"\"") + "\"");
