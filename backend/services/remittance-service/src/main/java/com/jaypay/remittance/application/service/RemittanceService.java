@@ -5,6 +5,7 @@ import com.jaypay.remittance.application.port.in.FindRemittanceUseCase;
 import com.jaypay.remittance.application.port.in.RequestRemittanceUseCase;
 import com.jaypay.remittance.application.port.out.BankingPort;
 import com.jaypay.remittance.application.port.out.MembershipPort;
+import com.jaypay.remittance.application.port.out.RemittanceFlowPort;
 import com.jaypay.remittance.application.port.out.RemittancePort;
 import com.jaypay.remittance.application.port.out.WalletPort;
 import com.jaypay.remittance.domain.NewRemittance;
@@ -16,6 +17,7 @@ import com.jaypay.remittance.domain.RemittanceStatus;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
+import java.util.Optional;
 
 @UseCase
 @RequiredArgsConstructor
@@ -25,13 +27,11 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
     private final MembershipPort membershipPort;
     private final WalletPort walletPort;
     private final BankingPort bankingPort;
+    private final RemittanceFlowPort remittanceFlowPort;
 
     @Override
     public Remittance requestRemittance(NewRemittance requested) {
-        Remittance remittance = remittancePort.findByRequestId(requested.requestId()).orElseGet(() -> {
-            checkParties(requested);
-            return remittancePort.claim(requested);
-        });
+        Remittance remittance = remittancePort.findByRequestId(requested.requestId()).orElseGet(() -> claim(requested));
         if (!remittance.sameRequestAs(requested)) {
             throw new RemittanceRejectedException(Reason.REQUEST_ID_REUSED);
         }
@@ -43,18 +43,28 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
         return remittancePort.findSentOrReceivedBy(membershipId);
     }
 
-    private void checkParties(NewRemittance requested) {
+    private Remittance claim(NewRemittance requested) {
+        Optional<Reason> refusal = refusal(requested);
+        if (refusal.isPresent()) {
+            remittanceFlowPort.refused(requested, refusal.get());
+            throw new RemittanceRejectedException(refusal.get());
+        }
+        Remittance claimed = remittancePort.claim(requested);
+        if (claimed.sameRequestAs(requested)) {
+            remittanceFlowPort.requested(claimed);
+        }
+        return claimed;
+    }
+
+    private Optional<Reason> refusal(NewRemittance requested) {
         if (!membershipPort.isValid(requested.fromMembershipId())) {
-            throw new RemittanceRejectedException(Reason.INVALID_SENDER);
+            return Optional.of(Reason.INVALID_SENDER);
         }
-        switch (requested.receiver()) {
-            case Receiver.Member(String membershipId) when !membershipPort.isValid(membershipId) ->
-                    throw new RemittanceRejectedException(Reason.INVALID_RECEIVER);
-            case Receiver.BankAccount account when !bankingPort.isValid(account) ->
-                    throw new RemittanceRejectedException(Reason.INVALID_BANK_ACCOUNT);
-            default -> {
-            }
-        }
+        return switch (requested.receiver()) {
+            case Receiver.Member(String membershipId) when !membershipPort.isValid(membershipId) -> Optional.of(Reason.INVALID_RECEIVER);
+            case Receiver.BankAccount account when !bankingPort.isValid(account) -> Optional.of(Reason.INVALID_BANK_ACCOUNT);
+            default -> Optional.empty();
+        };
     }
 
     private Remittance drive(Remittance remittance) {
@@ -84,7 +94,7 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
     private Remittance deliver(Remittance remittance) {
         return switch (remittance.request().receiver()) {
             case Receiver.Member member -> credit(remittance, member);
-            case Receiver.BankAccount account -> startTransfer(remittance);
+            case Receiver.BankAccount account -> move(remittance, RemittanceStatus.TRANSFERRING);
         };
     }
 
@@ -94,11 +104,6 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
             case FAILED -> move(remittance, RemittanceStatus.REFUNDING);
             case UNCONFIRMED -> throw new RemittanceRejectedException(Reason.REMITTANCE_NOT_CONFIRMED);
         };
-    }
-
-    private Remittance startTransfer(Remittance remittance) {
-        remittancePort.advance(remittance.remittanceId(), RemittanceStatus.DEBITED, RemittanceStatus.TRANSFERRING);
-        return remittancePort.find(remittance.remittanceId());
     }
 
     private Remittance transfer(Remittance remittance) {
@@ -119,7 +124,9 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
     }
 
     private Remittance move(Remittance remittance, RemittanceStatus next) {
-        remittancePort.advance(remittance.remittanceId(), remittance.status(), next);
+        if (remittancePort.advance(remittance.remittanceId(), remittance.status(), next)) {
+            remittanceFlowPort.advanced(remittance, next);
+        }
         return remittancePort.find(remittance.remittanceId());
     }
 }
