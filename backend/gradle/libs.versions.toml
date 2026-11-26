@@ -1,5 +1,6 @@
 [versions]
 java = "25"
+jacoco = "0.8.16"
 spring-boot = "4.2.0"
 axon = "4.13.3"
 awssdk = "2.59.8"
