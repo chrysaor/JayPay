@@ -10,6 +10,7 @@ import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.WalletRechargedEvent;
 import com.jaypay.common.kafka.KafkaTestBroker;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
 import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestJpaEntity;
@@ -18,6 +19,7 @@ import com.jaypay.money.adapter.out.persistence.SpringDataMoneyChangingRequestRe
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
 import com.sun.net.httpserver.HttpServer;
 import org.axonframework.commandhandling.CommandHandler;
+import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.eventhandling.gateway.EventGateway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,6 +81,9 @@ class RechargeSagaTest {
     @Autowired
     private FakeMembership membership;
 
+    @Autowired
+    private WalletRecharges walletRecharges;
+
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
         String url = "http://127.0.0.1:" + OTHER_SERVICES.getAddress().getPort();
@@ -103,6 +109,36 @@ class RechargeSagaTest {
         assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
         assertThat(banking.charges(requestId)).isEqualTo(1);
         assertThat(membership.checks(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRechargeTheBankConfirmsTellsOtherServicesOnceThatTheWalletWasIncreased() throws Exception {
+        String member = memberWithWallet();
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> Optional.of(walletRecharges.of(requestId)).filter(seen -> !seen.isEmpty())))
+                .containsExactly(new WalletRechargedEvent(requestId, member, 700));
+    }
+
+    @Test
+    void aRechargeWhoseChargeTheBankConfirmsAfterTheDeadlineIsRolledBackWithoutTellingThatTheWalletWasIncreased() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 0))).isEqualTo(1);
+        banking.confirmHeld(requestId);
+        String laterMember = memberWithWallet();
+        String laterRequestId = UUID.randomUUID().toString();
+        recharge(laterRequestId, laterMember, 300);
+        eventually(() -> Optional.of(walletRecharges.of(laterRequestId)).filter(seen -> !seen.isEmpty()));
+
+        assertThat(walletRecharges.of(requestId)).isEmpty();
+        assertThat(balanceOf(member)).isZero();
     }
 
     @Test
@@ -395,6 +431,24 @@ class RechargeSagaTest {
         FakeMembership fakeMembership(EventGateway eventGateway) {
             return new FakeMembership(eventGateway);
         }
+
+        @Bean
+        WalletRecharges walletRecharges() {
+            return new WalletRecharges();
+        }
+    }
+
+    static final class WalletRecharges {
+        private final List<WalletRechargedEvent> seen = new CopyOnWriteArrayList<>();
+
+        List<WalletRechargedEvent> of(String rechargeId) {
+            return seen.stream().filter(event -> event.rechargingRequestId().equals(rechargeId)).toList();
+        }
+
+        @EventHandler
+        public void on(WalletRechargedEvent event) {
+            seen.add(event);
+        }
     }
 
     static final class FakeMembership {
@@ -446,6 +500,8 @@ class RechargeSagaTest {
         private final Set<String> uncheckedAccounts = ConcurrentHashMap.newKeySet();
         private final Set<String> refusedAccounts = ConcurrentHashMap.newKeySet();
         private final Set<String> silentAccounts = ConcurrentHashMap.newKeySet();
+        private final Set<String> heldAccounts = ConcurrentHashMap.newKeySet();
+        private final Map<String, RequestFirmBankingFinishedEvent> heldConfirmations = new ConcurrentHashMap<>();
         private final List<String> checked = new CopyOnWriteArrayList<>();
         private final List<String> charged = new CopyOnWriteArrayList<>();
         private final List<String> rolledBack = new CopyOnWriteArrayList<>();
@@ -464,6 +520,14 @@ class RechargeSagaTest {
 
         void silence(String account) {
             silentAccounts.add(account);
+        }
+
+        void hold(String account) {
+            heldAccounts.add(account);
+        }
+
+        void confirmHeld(String rechargeId) {
+            eventGateway.publish(heldConfirmations.remove(rechargeId));
         }
 
         long checks(String rechargeId) {
@@ -498,7 +562,7 @@ class RechargeSagaTest {
             String account = command.getFromBankAccountNumber();
             int status = silentAccounts.contains(account) ? RequestFirmBankingFinishedEvent.UNCONFIRMED
                     : refusedAccounts.contains(account) ? RequestFirmBankingFinishedEvent.REFUSED : RequestFirmBankingFinishedEvent.SUCCEEDED;
-            eventGateway.publish(new RequestFirmBankingFinishedEvent(
+            RequestFirmBankingFinishedEvent finished = new RequestFirmBankingFinishedEvent(
                     command.getRequestFirmBankingId(),
                     command.getRechargeRequestId(),
                     command.getMembershipId(),
@@ -506,7 +570,12 @@ class RechargeSagaTest {
                     "000",
                     command.getMoneyAmount(),
                     status,
-                    command.getAggregateIdentifier()));
+                    command.getAggregateIdentifier());
+            if (heldAccounts.contains(account)) {
+                heldConfirmations.put(command.getRechargeRequestId(), finished);
+                return;
+            }
+            eventGateway.publish(finished);
         }
 
         @CommandHandler

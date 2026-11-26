@@ -107,7 +107,7 @@ Wallet balances and the two ways to top a wallet up.
 | Calls | `membership-service`, `banking-service` |
 | Called by | `remittance-service`, `payment-service`, `money-aggregation-service`, `frontend-web` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
-| Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedMembershipEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, and sends `CheckMembershipCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. |
+| Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedMembershipEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, sends `CheckMembershipCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`, and publishes `WalletRechargedEvent`. |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `MONEY_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
@@ -126,7 +126,7 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
 - When membership-service does not answer, or answers with neither a member nor 404, `POST /money/increase` and `POST /money/decrease` answer 503 with `{"error":"MEMBERSHIP_NOT_CONFIRMED"}` and record nothing under the request id. Sending the same request again checks the member again and applies the change once.
 - `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account fails at once with the status `2`.
-- The saga first sends `CheckMembershipCommand` to membership-service, then checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. A member that does not exist or is not valid, an account that fails the check, or a charge the bank refuses ends the wallet change as `2` and moves no money. When membership-service does not answer, or the command cannot reach it, the deadline ends the saga. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
+- The saga first sends `CheckMembershipCommand` to membership-service, then checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. After it added the amount, it publishes `WalletRechargedEvent` with the `rechargingRequestId`, the member and the amount, which money-query-service counts. A member that does not exist or is not valid, an account that fails the check, or a charge the bank refuses ends the wallet change as `2` and moves no money. When membership-service does not answer, or the command cannot reach it, the deadline ends the saga. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
 - `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created. It waits for the command, so a failure answers as an error. A wallet keeps the first aggregate it was linked to. A saga top-up for a member without an aggregate creates one first.
 - `POST /money/member-money` returns the wallets of a list of member ids. money-aggregation-service uses it to read balances.
 
@@ -309,7 +309,7 @@ Read model of the money that saga top-ups added per address, kept in DynamoDB.
 | Calls | `membership-service` |
 | Called by | `frontend-admin` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
-| Axon | Event handler `MoneyIncreaseEventHandler` for `RequestFirmBankingFinishedEvent`, in the processing group `com.jaypay.money.query.adapter.axon`. No query handler. |
+| Axon | Event handler `MoneyIncreaseEventHandler` for `WalletRechargedEvent`, in the processing group `com.jaypay.money.query.adapter.axon`. No query handler. |
 | Other stores | DynamoDB table named by `DYNAMODB_TABLE_NAME`, `MoneyIncreaseEventByRegion` in Compose, defined in `infra/terraform/modules/dynamodb-money-sum/table.json` |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `DYNAMODB_TABLE_NAME`, `AWS_REGION`, `AWS_ENDPOINT_URL_DYNAMODB`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. Secrets are `SPRING_DATASOURCE_PASSWORD` and, against AWS, `AWS_SECRET_ACCESS_KEY`. |
 
@@ -317,7 +317,9 @@ money-query-service calls membership-service to read the address of the member i
 
 ### What it does
 
-- For each `RequestFirmBankingFinishedEvent` with the status `0`, a charge the bank confirmed, the service reads the member's address from `GET /memberships/{membershipId}`. It writes one item for the top-up under the key `<address>#<yyyyMMdd>`, and adds the amount to two totals: the day total under `<address>#<yyyyMMdd>#summary` and the overall total under `<address>`. Both totals use the sort key `-1`.
+- For each `WalletRechargedEvent`, a saga top-up that increased the wallet, the service reads the member's address from `GET /memberships/{membershipId}`. In one DynamoDB transaction it writes an item for the top-up under the key `recharge#<rechargingRequestId>` with the sort key `recharge`, only if that item does not exist yet, and adds the amount to two totals: the day total under `<address>#<yyyyMMdd>#summary` and the overall total under `<address>`. Both totals use the sort key `-1`.
+- A charge the bank confirmed but the saga rolled back never increased the wallet, so it is not counted.
+- An event that arrives again, or every event handled again after the tracking token in `money_query` is lost, finds the item of its top-up and changes no total.
 - The HTTP endpoint reads the overall total of an address straight from DynamoDB and returns 0 when there is none.
 - `AWS_REGION` defaults to `ap-northeast-2`. Compose points the client at DynamoDB Local through `AWS_ENDPOINT_URL_DYNAMODB`. [infra/terraform/README.md](../infra/terraform/README.md) points it at the AWS table.
 
@@ -330,7 +332,7 @@ money-query-service calls membership-service to read the address of the member i
 ### Known limitations
 
 - Only top-ups through the Axon saga reach the read model. `POST /money/increase` publishes no event, so the total can differ from the sum that money-aggregation-service returns.
-- Two top-ups of the same amount on the same day at the same address write the same per-top-up item, so the second overwrites the first. The totals still count both.
+- Totals written before 0.5.0 counted every charge the bank confirmed, including charges the saga rolled back. They are not corrected. A top-up whose charge was confirmed just before the upgrade and whose wallet was increased just after it is counted twice.
 
 ## settlement-service
 

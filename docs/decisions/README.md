@@ -54,6 +54,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0018](0018-membership-outage-is-not-a-missing-member.md) | A membership-service outage is not a missing member | 0.5.0 (unreleased) | accepted | [#175](https://github.com/chrysaor/JayPay/pull/175), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0019](0019-payout-attempts-in-settlement-service.md) | settlement-service keeps a payout attempt for each payment | 0.5.0 (unreleased) | accepted | [#174](https://github.com/chrysaor/JayPay/pull/174), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0020](0020-company-account-owned-by-banking-service.md) | banking-service owns the company bank account | 0.5.0 (unreleased) | accepted | [#177](https://github.com/chrysaor/JayPay/pull/177), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0021](0021-region-total-counts-wallet-increases.md) | The region total counts wallet increases, once per recharge | 0.5.0 (unreleased) | accepted | [#178](https://github.com/chrysaor/JayPay/pull/178), [Unreleased](../../CHANGELOG.md#unreleased) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 

@@ -14,8 +14,8 @@ public class IncreaseMoneySumByAddressService implements IncreaseMoneySumByAddre
     private final InsertMoneyIncreaseEventByAddress insertMoneyIncreaseEventByAddress;
 
     @Override
-    public void increaseMoneySum(String membershipId, int moneyAmount) {
+    public void increaseMoneySum(String rechargingRequestId, String membershipId, long moneyAmount) {
         String address = getMemberAddressInfoPort.getMemberAddressInfo(membershipId).getAddress();
-        insertMoneyIncreaseEventByAddress.insertMoneyIncreaseEventByAddress(address, moneyAmount);
+        insertMoneyIncreaseEventByAddress.insertMoneyIncreaseEventByAddress(rechargingRequestId, address, moneyAmount);
     }
 }

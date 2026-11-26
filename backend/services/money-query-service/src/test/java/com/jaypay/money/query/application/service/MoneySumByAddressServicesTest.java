@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MoneySumByAddressServicesTest {
 
-    private record Increase(String address, int moneyAmount) {
+    private record Increase(String rechargingRequestId, String address, long moneyAmount) {
     }
 
     @Test
@@ -20,11 +20,11 @@ class MoneySumByAddressServicesTest {
         List<Increase> increases = new ArrayList<>();
         IncreaseMoneySumByAddressService service = new IncreaseMoneySumByAddressService(
                 membershipId -> new MemberAddressInfo(membershipId, membershipId.equals("7") ? "Seocho" : "unknown"),
-                (address, moneyAmount) -> increases.add(new Increase(address, moneyAmount)));
+                (rechargingRequestId, address, moneyAmount) -> increases.add(new Increase(rechargingRequestId, address, moneyAmount)));
 
-        service.increaseMoneySum("7", 3000);
+        service.increaseMoneySum("recharge-1", "7", 3000);
 
-        assertThat(increases).containsExactly(new Increase("Seocho", 3000));
+        assertThat(increases).containsExactly(new Increase("recharge-1", "Seocho", 3000));
     }
 
     @Test
