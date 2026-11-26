@@ -41,7 +41,7 @@ class EnumValueChecks implements BeanPostProcessor {
             for (EnumColumn column : columns) {
                 for (String check : checksOn(connection, column)) {
                     try (Statement statement = connection.createStatement()) {
-                        statement.execute("alter table " + column.table() + " drop constraint \"" + check.replace("\"", "\"\"") + "\"");
+                        statement.execute("alter table " + column.table() + " drop constraint if exists \"" + check.replace("\"", "\"\"") + "\"");
                     }
                 }
             }
