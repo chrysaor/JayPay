@@ -1,6 +1,6 @@
 # Architecture notes
 
-The [root README](../README.md) shows the services, the messaging and the observability stack. This page follows one request through the saga top-up and shows the layers inside each service.
+The [root README](../README.md) shows the services, the messaging and the observability stack. This page follows one request through the saga top-up, lists which failures between services the tests cover, and shows the layers inside each service.
 
 ## Money top-up through the saga
 
@@ -107,6 +107,67 @@ The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://lo
 - auth-service does not ask Keycloak on every request. Disabling an account or taking a role away refuses its next sign-in and its next refresh at once, but an access token issued before keeps working until it expires. With the 2-minute lifetime and Spring Security's clock skew of 60 seconds, `make smoke` and a manual measurement saw the first 401 181 seconds after the account was disabled.
 
 Spring Security stays in the adapters of auth-service, which keeps no database: `domain` holds `StaffRole`, and `adapter.in.web` holds the decision table and the token conversion. `SecurityStaysInAdaptersTest` fails when `domain` or `application` imports Spring Security.
+
+## Failure paths between services
+
+Each row is a call that a flow moving money makes to another service. Each column is one way the call fails:
+
+- Lost answer: the other service did the work, and its answer never arrived or arrived as an error.
+- 5xx: the other service answered 5xx and did nothing.
+- Repeat after a change: a party changed after the first request, for example a member became invalid or the bank started refusing an account, and the same request was sent again.
+
+A cell names the test that states the money and the status after that failure, and that the same request sent again moves no money twice. A cell without a test says why. Issue [#142](https://github.com/chrysaor/JayPay/issues/142) asked for this table.
+
+### Payment, payment-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /memberships/{id}` on membership-service, payer and merchant | No work to lose. The payment is not stored, see #176 | Read as an invalid payer or merchant, #176 | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
+| `POST /money/decrease` on money-service | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange`, `aPaymentWhoseRefusedDebitAnswerWasLostFailsOnTheRepeatAndKeepsTheBalance`. A payment nobody sends again stays `REQUESTED`, #171 | `PaymentInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatDebitsOnce` | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
+
+### Remittance, remittance-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /memberships/{id}` on membership-service, sender and receiver | No work to lose. The remittance is not stored, see #176 | Read as an invalid sender or receiver, #176 | Not covered. A debit whose answer was lost before the sender or the receiver became invalid needs a decision, see below |
+| `POST /banking/info` on banking-service | No work to lose. The remittance is not stored | Not covered. Read as `INVALID_BANK_ACCOUNT`, which needs a decision, see below | Not covered. The account is checked only on the first request |
+| `POST /money/decrease` on money-service, the sender's debit | `RemittanceInvariantsTest.aDebitWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce` | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderSpentTheRest` |
+| `POST /money/increase` on money-service, the receiver's credit | `RemittanceInvariantsTest.aCreditWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aCreditMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aCreditWhoseAnswerWasLostCompletesOnTheRepeatAfterTheReceiverBecomesInvalid` |
+| `POST /money/increase` on money-service, the sender's refund | `RemittanceInvariantsTest.aRefundWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid` |
+| `POST /banking/firmbanking/request` on banking-service | `RemittanceInvariantsTest.aTransferTheBankDoesNotAnswerIsAskedAgainUnderTheSameIdAndLandsOnce` | `RemittanceInvariantsTest.aTransferBankingServiceFailsWith5xxSendsNothingAndTheRepeatSendsItOnce` | `RemittanceInvariantsTest.aTransferWhoseAnswerWasLostCompletesOnTheRepeatAfterTheBankStartsRefusingTheAccount` |
+
+### Top-up, money-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /banking/account/{id}` on banking-service | `RechargeSagaTest.aRechargeWhoseAccountLookupAnswerIsLostStoresNothingAndTheRepeatCreditsOnce` | Not covered. Stored as a failed top-up for good, see below | `RechargeSagaTest.aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
+| `CheckMembershipCommand` to membership-service | `RechargeSagaTest.aRechargeMembershipNeverAnswersFailsAtTheDeadlineBeforeTheBank` | `RechargeSagaTest.aRechargeWhoseMembershipCheckCannotBeDeliveredFailsAtTheDeadlineBeforeTheBank` | `RechargeSagaTest.aRepeatOfARechargeTheMemberCheckRefusedStaysFailedAfterTheMemberIsConfirmedAgain`, `aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
+| `CheckRegisteredBankAccountCommand` to banking-service | `RechargeSagaTest.aRechargeWhoseAccountCheckIsNeverAnsweredFailsAtTheDeadlineWithoutACharge` | `RechargeSagaTest.aRechargeWhoseAccountCheckCannotBeDeliveredFailsAtTheDeadlineWithoutACharge` | `RechargeSagaTest.aRepeatOfARechargeTheAccountCheckRefusedStaysFailedAfterTheAccountPasses` |
+| `RequestFirmBankingCommand` to banking-service, the charge | `RechargeSagaTest.aRechargeWhoseChargeTheBankConfirmsAfterTheDeadlineIsRolledBackWithoutTellingThatTheWalletWasIncreased`, `aRechargeTheBankNeverConfirmsFailsAtTheDeadlineAndIsRolledBack` | `RechargeSagaTest.aRechargeWhoseChargeCannotBeDeliveredFailsAtTheDeadlineWithoutCreditingTheWallet` | `RechargeSagaTest.aRepeatWhileTheChargeIsUnansweredChargesNothingAgainAndTheDeadlineRollsTheChargeBackOnce`, `aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
+| `RollbackFirmBankingRequestCommand` to banking-service | `RechargeSagaTest.aRechargeWhoseRollbackAnswerIsLostStaysFailedAndIsNeitherChargedNorRolledBackAgain` | Not covered. Nothing sends the rollback again, see below | `RechargeSagaTest.aRechargeWhoseRollbackAnswerIsLostStaysFailedAndIsNeitherChargedNorRolledBackAgain` |
+
+The commands travel through Axon Server. A lost answer is a command the other service handled without publishing its event. A 5xx is a command its handler refused with an exception.
+
+### Settlement, settlement-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /payment/normal-status` on payment-service | No work to lose. The run pays nothing, as with 5xx | `SettlementWhenAServiceFailsTest.aRunWhosePaymentListFailsWith5xxPaysNothingAndTheNextRunPaysOnce` | Not applicable. The list is read again on every run |
+| `GET /banking/account/{id}` on banking-service | No work to lose. The run stops and pays nothing more | `SettlementWhenAServiceFailsTest.aPaymentWhoseAccountLookupFailsWith5xxStaysPaidAndTheNextRunPaysOnce` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount` |
+| `POST /banking/firmbanking/request` on banking-service, the payout | `SettlementJobTest.concurrentAndRepeatedRunsPayEachPaymentOnceAfterTheBankAnswersAgain`, `SettlementServiceTest.aPayoutWithoutAnAnswerStaysPaidAndTheNextRunFinishesItOnce` | `SettlementWhenAServiceFailsTest.aPayoutBankingServiceFailsWith5xxSendsNothingStaysPaidAndTheNextRunPaysOnce` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount`, `SettlementServiceTest.aPayoutWithoutAnAnswerIsNotSentToTheAccountTheMerchantRegistersNext` |
+| `POST /payment/finish-settlement` on payment-service | `SettlementWhenAServiceFailsTest.aSettlementWhoseFinishAnswerWasLostIsNeitherPaidNorSettledAgain` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount` | `SettlementServiceTest.aPayoutThatLandedIsNotSentToTheAccountTheMerchantRegistersNext` |
+
+### Not covered yet
+
+These cells have no test, because the current answer moves money the wrong way or because nobody has decided the right answer yet:
+
+- Top-up, `GET /banking/account/{id}` answers 5xx. money-service reads the outage as a member without an account and stores the top-up as failed. The same request sent after banking-service is back answers failed again.
+- Top-up, `RollbackFirmBankingRequestCommand` fails. The saga logs the failure and nothing sends the rollback again. A charge that left the member's bank account is not returned.
+- Remittance, a debit whose answer was lost, then the sender or the receiver becomes invalid. The repeat does not check the members again. Decision record 0017 settles this for payments only.
+- Remittance, a refund that money-service answered with 5xx without doing it, then the sender becomes invalid. money-service refuses a change for a member that is not valid, so the repeat cannot refund and answers 503 every time.
+- Remittance, `POST /banking/info` answers 5xx. The remittance is refused as `INVALID_BANK_ACCOUNT`, as #176 describes for membership-service.
+
+banking-service's own calls to the bank, and the event flow topic on Kafka, are not in these tables. `BankTransferTest` covers the bank's missing and refused answers.
 
 ## Layers inside a service
 
