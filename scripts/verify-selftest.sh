@@ -103,10 +103,15 @@ dir=$(copy_repo changelog-link)
 perl -0pi -e 's/ \(\[#\d+\]\([^)]*\)\)$//m' "$dir/CHANGELOG.md"
 expect changelog fail "$dir" "does not end with a PR or issue link"
 
+plant_unreleased_entry() {
+  perl -0pi -e 's/(## \[Unreleased\]\n\n### \w+\n\n)/$1- Planted release entry ([#1](https:\/\/github.com\/chrysaor\/JayPay\/pull\/1))\n/ or s/(## \[Unreleased\]\n)/$1\n### Added\n\n- Planted release entry ([#1](https:\/\/github.com\/chrysaor\/JayPay\/pull\/1))\n/' "$1"
+}
+
 dir=$(copy_repo changelog-release)
+plant_unreleased_entry "$dir/CHANGELOG.md"
 expect_run "changelog release" pass "" changelog release "$dir/CHANGELOG.md" 9.0.0 2099-01-01
 expect changelog pass "$dir"
-expect_run "changelog notes" pass "issues/113" changelog notes "$dir/CHANGELOG.md" 9.0.0
+expect_run "changelog notes" pass "pull/1" changelog notes "$dir/CHANGELOG.md" 9.0.0
 expect_run "changelog release of an empty Unreleased" fail "Unreleased has no entries" changelog release "$dir/CHANGELOG.md" 9.0.1 2099-01-02
 expect_run "changelog notes of a missing version" fail "no section for 8.8.8" changelog notes "$root/CHANGELOG.md" 8.8.8
 
@@ -121,10 +126,11 @@ expect_run "changelog entry missing" fail "adds no line to Unreleased" entry
 in_repo commit --quiet --allow-empty -m "docs: fix a typo" -m "Changelog: none"
 expect_run "changelog entry waived by a Changelog: none trailer" pass "" entry
 in_repo reset --quiet --hard HEAD~1
-perl -0pi -e 's/(## \[Unreleased\]\n\n### \w+\n)/$1- Planted entry ([#1](https:\/\/github.com\/chrysaor\/JayPay\/pull\/1))\n/' "$repo/CHANGELOG.md"
+plant_unreleased_entry "$repo/CHANGELOG.md"
 in_repo commit --quiet -am "feat: change behaviour with an entry"
 expect_run "changelog entry added" pass "" entry
 in_repo reset --quiet --hard base
+plant_unreleased_entry "$repo/CHANGELOG.md"
 changelog release "$repo/CHANGELOG.md" 9.0.0 2099-01-01 && in_repo commit --quiet -am "chore: release 9.0.0"
 expect_run "changelog entry of a back-merge" pass "" entry
 
