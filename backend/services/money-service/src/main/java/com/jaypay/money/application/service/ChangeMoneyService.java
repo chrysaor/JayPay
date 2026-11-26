@@ -1,9 +1,6 @@
 package com.jaypay.money.application.service;
 
 import lombok.extern.slf4j.Slf4j;
-import com.jaypay.common.CountDownLatchManager;
-import com.jaypay.common.RechargingMoneyTask;
-import com.jaypay.common.SubTask;
 import com.jaypay.common.UseCase;
 import com.jaypay.money.application.port.in.ChangeMoneyCommand;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
@@ -17,7 +14,6 @@ import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
 import com.jaypay.money.application.port.out.RegisteredBankAccount;
 import com.jaypay.money.application.port.out.RequestMoneyRechargingPort;
-import com.jaypay.money.application.port.out.SendRechargingMoneyTaskPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
@@ -27,10 +23,7 @@ import com.jaypay.money.domain.RequestIdReusedException;
 import lombok.RequiredArgsConstructor;
 
 import jakarta.transaction.Transactional;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @UseCase
 @RequiredArgsConstructor
@@ -38,8 +31,6 @@ import java.util.UUID;
 @Slf4j
 public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoneyUseCase {
 
-    private final CountDownLatchManager countDownLatchManager;
-    private final SendRechargingMoneyTaskPort sendRechargingMoneyTaskPort;
     private final GetMembershipPort getMembershipPort;
     private final ChangeMoneyPort changeMoneyPort;
     private final CreateMemberMoneyPort createMemberMoneyPort;
@@ -56,52 +47,6 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
     @Override
     public MoneyChangingRequest decreaseMoney(ChangeMoneyCommand command) {
         return change(command, MoneyChangingType.DECREASE);
-    }
-
-    @Override
-    public MoneyChangingRequest increaseMoneyRequestAsync(ChangeMoneyCommand command) {
-        SubTask validMemberTask = SubTask.builder()
-                .subTaskName("validMemberTask : " + "Validation of the membership")
-                .membershipID(command.targetMembershipId())
-                .taskType("membership")
-                .status("ready")
-                .build();
-
-        SubTask validBankingAccountTask = SubTask.builder()
-                .subTaskName("validBankingAccountTask : " + "check validation of account")
-                .membershipID(command.targetMembershipId())
-                .taskType("banking")
-                .status("ready")
-                .build();
-
-        List<SubTask> subTaskList = new ArrayList<>();
-        subTaskList.add(validMemberTask);
-        subTaskList.add(validBankingAccountTask);
-
-        RechargingMoneyTask task = RechargingMoneyTask.builder()
-                .taskID(UUID.randomUUID().toString())
-                .taskName("Increase Money Task")
-                .subTaskList(subTaskList)
-                .moneyAmount(Math.toIntExact(command.amount().value()))
-                .membershipID(command.targetMembershipId())
-                .toBankName("jay")
-                .build();
-
-        sendRechargingMoneyTaskPort.sendRechargingMoneyTaskPort(task);
-        countDownLatchManager.addCountDownLatch(task.getTaskID());
-
-        try {
-            countDownLatchManager.getCountDownLatch(task.getTaskID()).await();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
-        String result = countDownLatchManager.getDataForKey(task.getTaskID());
-        if (result.equals("success")) {
-            return increaseMoney(command);
-        }
-
-        return null;
     }
 
     @Override

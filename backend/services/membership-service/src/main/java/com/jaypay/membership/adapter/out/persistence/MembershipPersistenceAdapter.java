@@ -34,6 +34,11 @@ public class MembershipPersistenceAdapter implements RegisterMembershipPort, Fin
     }
 
     @Override
+    public boolean isValidMembership(Membership.MembershipId membershipId) {
+        return membershipRepository.findById(Long.parseLong(membershipId.getMembershipId())).map(MembershipJpaEntity::isValid).orElse(false);
+    }
+
+    @Override
     public List<Membership> findMembershipListByAddress(Membership.MembershipAddress membershipAddress) {
         return membershipRepository.findByAddress(membershipAddress.getMembershipAddress()).stream()
                 .map(MembershipPersistenceAdapter::toDomain)

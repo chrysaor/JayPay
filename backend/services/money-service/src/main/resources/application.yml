@@ -15,10 +15,6 @@ money:
     max: 10000000
   recharge:
     deadline: 60s
-task:
-  topic: ${TASK_TOPIC:jaypay.task.topic}
-  result:
-    topic: ${TASK_RESULT_TOPIC:jaypay.task.result.topic}
 service:
   banking:
     url: ${SERVICE_BANKING_URL:http://localhost:8082}

@@ -2,7 +2,9 @@ package com.jaypay.money.adapter.in.axon;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jaypay.common.event.CheckMembershipCommand;
 import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
+import com.jaypay.common.event.CheckedMembershipEvent;
 import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
@@ -71,6 +73,9 @@ class RechargeSagaTest {
     @Autowired
     private FakeBanking banking;
 
+    @Autowired
+    private FakeMembership membership;
+
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
         String url = "http://127.0.0.1:" + OTHER_SERVICES.getAddress().getPort();
@@ -95,6 +100,50 @@ class RechargeSagaTest {
         assertThat(balanceOf(member)).isEqualTo(700);
         assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
         assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(membership.checks(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRechargeOfAMemberThatMembershipDoesNotConfirmFailsBeforeTheBank() throws Exception {
+        String member = memberWithWallet();
+        membership.refuse(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(balanceOf(member)).isZero();
+        assertThat(membership.checks(requestId)).isEqualTo(1);
+        assertThat(banking.checks(requestId)).isZero();
+        assertThat(banking.charges(requestId)).isZero();
+    }
+
+    @Test
+    void aRechargeMembershipNeverAnswersFailsAtTheDeadlineBeforeTheBank() throws Exception {
+        String member = memberWithWallet();
+        membership.silence(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(balanceOf(member)).isZero();
+        assertThat(banking.checks(requestId)).isZero();
+        assertThat(banking.charges(requestId)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseMembershipCheckCannotBeDeliveredFailsAtTheDeadlineBeforeTheBank() throws Exception {
+        String member = memberWithWallet();
+        membership.disconnect(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(balanceOf(member)).isZero();
+        assertThat(banking.checks(requestId)).isZero();
+        assertThat(banking.charges(requestId)).isZero();
     }
 
     @Test
@@ -249,10 +298,59 @@ class RechargeSagaTest {
     }
 
     @TestConfiguration
-    static class Banking {
+    static class OtherServicesOverAxon {
         @Bean
         FakeBanking fakeBanking(EventGateway eventGateway) {
             return new FakeBanking(eventGateway);
+        }
+
+        @Bean
+        FakeMembership fakeMembership(EventGateway eventGateway) {
+            return new FakeMembership(eventGateway);
+        }
+    }
+
+    static final class FakeMembership {
+        private final EventGateway eventGateway;
+        private final Set<String> refusedMembers = ConcurrentHashMap.newKeySet();
+        private final Set<String> silentMembers = ConcurrentHashMap.newKeySet();
+        private final Set<String> disconnectedMembers = ConcurrentHashMap.newKeySet();
+        private final List<String> checked = new CopyOnWriteArrayList<>();
+
+        FakeMembership(EventGateway eventGateway) {
+            this.eventGateway = eventGateway;
+        }
+
+        void refuse(String member) {
+            refusedMembers.add(member);
+        }
+
+        void silence(String member) {
+            silentMembers.add(member);
+        }
+
+        void disconnect(String member) {
+            disconnectedMembers.add(member);
+        }
+
+        long checks(String rechargeId) {
+            return checked.stream().filter(rechargeId::equals).count();
+        }
+
+        @CommandHandler
+        public void check(CheckMembershipCommand command) {
+            if (disconnectedMembers.contains(command.membershipId())) {
+                throw new IllegalStateException("membership-service is not connected");
+            }
+            checked.add(command.rechargingRequestId());
+            if (silentMembers.contains(command.membershipId())) {
+                return;
+            }
+            eventGateway.publish(new CheckedMembershipEvent(
+                    command.checkMembershipId(),
+                    command.rechargingRequestId(),
+                    command.membershipId(),
+                    !refusedMembers.contains(command.membershipId())));
         }
     }
 

@@ -1,9 +1,0 @@
-spring:
-  application:
-    name: task-consumer
-  config:
-    import: classpath:jaypay-common.yml
-task:
-  topic: ${TASK_TOPIC:jaypay.task.topic}
-  result:
-    topic: ${TASK_RESULT_TOPIC:jaypay.task.result.topic}

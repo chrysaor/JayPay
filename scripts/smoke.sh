@@ -18,7 +18,7 @@ management_port=9080
 stack=${SMOKE_STACK:-compose}
 services=(
   membership-service banking-service money-service remittance-service payment-service
-  money-aggregation-service money-query-service settlement-service auth-service task-consumer logging-consumer
+  money-aggregation-service money-query-service settlement-service auth-service logging-consumer
 )
 
 work=$(mktemp -d)
@@ -315,10 +315,10 @@ request "saga top-up" POST "$money/money/increase-eda" "$saga_trace" "$saga_top_
 eventually 90 "the saga top-up never reached the wallet" wallet_balance_is "$membership_id" 10000
 request "repeated saga top-up" POST "$money/money/increase-eda" "$(hex 16)" "$saga_top_up"
 
-log "top up 5000 through the Kafka task"
-task_trace=$(hex 16)
-request "Kafka task top-up" POST "$money/money/increase-async" "$task_trace" '{"requestId":"smoke-task-'$run'","targetMembershipId":"'$membership_id'","amount":5000}'
-eventually 60 "the Kafka task top-up never reached the wallet" wallet_balance_is "$membership_id" 15000
+log "top up 5000 more through the Axon saga"
+kafka_trace=$(hex 16)
+request "second saga top-up" POST "$money/money/increase-eda" "$kafka_trace" '{"requestId":"smoke-saga-2-'$run'","targetMembershipId":"'$membership_id'","amount":5000}'
+eventually 90 "the second saga top-up never reached the wallet" wallet_balance_is "$membership_id" 15000
 
 log "top up 2000 directly, the way the wallet page does"
 direct_top_up='{"requestId":"smoke-direct-'$run'","targetMembershipId":"'$membership_id'","amount":2000}'
@@ -434,6 +434,16 @@ refused_top_up='{"requestId":"smoke-refused-'$run'","targetMembershipId":"'$refu
 request "saga top-up the bank refuses" POST "$money/money/increase-eda" "$(hex 16)" "$refused_top_up"
 eventually 90 "the refused saga top-up never ended as FAILED" recharge_failed "$refused_top_up"
 wallet_balance_is "$refused_member" 0 || fail "a refused saga top-up moved the wallet: $(cat "$work/last")"
+
+log "a saga top-up of a member that membership-service does not know ends as FAILED and leaves the wallet alone"
+unknown_member="9$run"
+request "bank account registration of an unknown member" POST "$banking/banking/account/register-eda" "$(hex 16)" \
+  '{"membershipId":"'$unknown_member'","bankName":"Jay Bank","bankAccountNumber":"6002-'$run'","valid":true}'
+eventually 60 "the bank account of the unknown member never got an aggregate" bank_account_registered "$unknown_member"
+unknown_top_up='{"requestId":"smoke-unknown-'$run'","targetMembershipId":"'$unknown_member'","amount":6000}'
+request "saga top-up of an unknown member" POST "$money/money/increase-eda" "$(hex 16)" "$unknown_top_up"
+eventually 90 "the saga top-up of the unknown member never ended as FAILED" recharge_failed "$unknown_top_up"
+wallet_balance_is "$unknown_member" 0 || fail "a saga top-up of an unknown member moved its wallet: $(cat "$work/last")"
 
 log "pay a corporate merchant 3000 from the wallet of 12000, at the server's fee of 3%"
 sign_up "Smoke Merchant" "smoke-merchant-$run@example.com" true
@@ -601,9 +611,9 @@ expect "the payout id of payment $payment_id for another amount" 409 POST "$bank
   '{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
-as_staff VIEWER eventually 60 "the region total never reached 14000" region_total_is 14000
+as_staff VIEWER eventually 60 "the region total never reached 19000" region_total_is 19000
 recreate_dynamodb
-as_staff VIEWER eventually 30 "the region total did not survive a new DynamoDB container" region_total_is 14000
+as_staff VIEWER eventually 30 "the region total did not survive a new DynamoDB container" region_total_is 19000
 
 log "an operator edits a member"
 as_staff OPERATOR request "member edit by an operator" PUT "$member_url" "$(hex 16)" "$member"
@@ -681,7 +691,7 @@ log "traces cross the service boundaries and lead to their logs"
 for check in \
   "HTTP:$payment_trace:payment-service,membership-service,money-service" \
   "Gate:$gate_trace:auth-service,membership-service" \
-  "Kafka:$task_trace:money-service,task-consumer" \
+  "Kafka:$kafka_trace:money-service,logging-consumer" \
   "Axon:$saga_trace:money-service,banking-service"; do
   IFS=: read -r boundary trace required <<<"$check"
   eventually 60 "the $boundary trace does not span $required" trace_spans "$trace" "$required"

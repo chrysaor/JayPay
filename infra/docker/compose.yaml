@@ -510,12 +510,6 @@ services:
       keycloak:
         condition: service_healthy
 
-  task-consumer:
-    <<: *service
-    image: jaypay/task-consumer
-    mem_limit: 384m
-    environment: *service-env
-
   logging-consumer:
     <<: *service
     image: jaypay/logging-consumer

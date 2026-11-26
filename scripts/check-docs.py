@@ -219,9 +219,10 @@ def axon_roles(root, service):
         elif "@Saga" in text:
             roles.append("saga")
         else:
-            roles += ["event handler"] * ("@EventHandler" in text) + ["query handler"] * ("@QueryHandler" in text)
+            roles += (["command handler"] * ("@CommandHandler" in text) + ["event handler"] * ("@EventHandler" in text)
+                      + ["query handler"] * ("@QueryHandler" in text))
     counted = []
-    for role in ("aggregate", "saga", "event handler", "query handler"):
+    for role in ("aggregate", "saga", "command handler", "event handler", "query handler"):
         count = roles.count(role)
         if count:
             counted.append(role if count == 1 else f"{count} {role}s")
@@ -404,50 +405,29 @@ def kafka(m):
             topics.setdefault(topic, (set(), set()))[0].add(service)
         for topic in info[service]["consumes"]:
             topics.setdefault(topic, (set(), set()))[1].add(service)
-    requests = [t for t, (writers, readers) in topics.items()
-                if len(writers) == 1 and len(readers) == 1 and info[next(iter(writers))]["port"]
-                and any(topics[u] == (readers, writers) for u in topics)]
-    fan_in = [t for t in topics if t not in requests and not any(topics[r] == (topics[t][1], topics[t][0]) for r in requests)]
-    if len(requests) != 1 or len(fan_in) != 1 or len(topics[fan_in[0]][1]) != 1:
-        return None, [f"scripts/check-docs.py: the Kafka diagram expects one request and result topic pair and one topic that many services write to, found {sorted(topics)}"]
-    request = requests[0]
-    requester, worker = next(iter(topics[request][0])), next(iter(topics[request][1]))
-    result = next(t for t in topics if topics[t] == ({worker}, {requester}))
-    log_topic = fan_in[0]
-    log_consumer = next(iter(topics[log_topic][1]))
-    producers = [s for s in m["services"] if s in topics[log_topic][0]]
-    if requester not in producers:
-        return None, [f"scripts/check-docs.py: the Kafka diagram expects {requester} to write to {log_topic} too"]
-    others = [s for s in m["services"] if s in producers and s != requester]
+    if len(topics) != 1 or len(next(iter(topics.values()))[1]) != 1:
+        return None, [f"scripts/check-docs.py: the Kafka diagram expects one topic that many services write to and one service reads, found {sorted(topics)}"]
+    log_topic, (writers, readers) = next(iter(topics.items()))
+    log_consumer = next(iter(readers))
+    producers = [s for s in m["services"] if s in writers]
     pitch, box_h, top = 48, 36, 24
     left_x, left_w, topic_x, topic_w, right_x, right_w = 16, 210, 300, 250, 640, 180
     width = right_x + right_w + 16
-    rows = 3 + len(others)
-    height = top * 2 + pitch * (rows - 1) + box_h
+    height = top * 2 + pitch * (len(producers) - 1) + box_h
 
     def y(row):
         return top + row * pitch + box_h / 2
 
     svg = Svg(width, height, "JayPay Kafka topics",
-              f"{requester} writes {request}, {worker} reads it and writes {result}, which {requester} reads. "
               f"{', '.join(producers)} write one record for each web request to {log_topic}, which {log_consumer} reads.")
-    svg.box(left_x, top, left_w, pitch * 2 + box_h, requester)
-    svg.box(right_x, top, right_w, pitch + box_h, worker)
-    svg.box(topic_x, top, topic_w, box_h, request, cls="purplebox", rx=18)
-    svg.box(topic_x, top + pitch, topic_w, box_h, result, cls="purplebox", rx=18)
-    svg.arrow([(left_x + left_w, y(0)), (topic_x, y(0))], "purple", "purplef")
-    svg.arrow([(topic_x + topic_w, y(0)), (right_x, y(0))], "purple", "purplef")
-    svg.arrow([(right_x, y(1)), (topic_x + topic_w, y(1))], "purple", "purplef")
-    svg.arrow([(topic_x, y(1)), (left_x + left_w, y(1))], "purple", "purplef")
     bus = (left_x + left_w + topic_x) / 2
-    for i, name in enumerate(others):
-        svg.box(left_x, top + (3 + i) * pitch, left_w, box_h, name)
-    last = 2 + len(others)
-    middle = (2 + last) // 2
-    for row in range(2, last + 1):
+    last = len(producers) - 1
+    middle = last // 2
+    for row, name in enumerate(producers):
+        svg.box(left_x, top + row * pitch, left_w, box_h, name)
         if row != middle:
             svg.path([(left_x + left_w, y(row)), (bus, y(row))], "purple")
-    svg.path([(bus, y(2)), (bus, y(last))], "purple")
+    svg.path([(bus, y(0)), (bus, y(last))], "purple")
     svg.arrow([(left_x + left_w, y(middle)), (topic_x, y(middle))], "purple", "purplef")
     svg.box(topic_x, top + middle * pitch, topic_w, box_h, log_topic, cls="purplebox", rx=18)
     svg.arrow([(topic_x + topic_w, y(middle)), (right_x, y(middle))], "purple", "purplef")
@@ -462,15 +442,19 @@ def storage(m):
     vault_users = [s for s in with_db if "vault" in info[s]["stores"]]
     axon_users = [s for s in with_db if info[s]["axon"]]
     dynamo_users = [s for s in axon_users if "dynamodb" in info[s]["stores"]]
-    axon_users = [s for s in axon_users if s not in dynamo_users] + dynamo_users
+    vault_axon_users = [s for s in vault_users if s in axon_users]
+    axon_users = vault_axon_users + [s for s in axon_users if s not in dynamo_users + vault_axon_users] + dynamo_users
     rest = [s for s in with_db if s not in vault_users + axon_users]
     problems = []
-    if any("dynamodb" in info[s]["stores"] for s in with_db if s not in axon_users) or set(vault_users) & set(axon_users):
-        problems.append("scripts/check-docs.py: the storage diagram expects DynamoDB users to use Axon and Vault users not to")
+    if any("dynamodb" in info[s]["stores"] for s in with_db if s not in axon_users) or set(vault_users) & set(dynamo_users):
+        problems.append("scripts/check-docs.py: the storage diagram expects DynamoDB users to use Axon and not Vault")
     order, spans = [], {}
-    for name in vault_users + axon_users + rest:
-        spans[name] = (len(order), 2 if name in dynamo_users else 1)
+    for name in [s for s in vault_users if s not in axon_users] + axon_users + rest:
+        spans[name] = (len(order), 2 if name in dynamo_users + vault_axon_users else 1)
         order += [name] * spans[name][1]
+
+    def axon_row(name):
+        return spans[name][0] + (name in vault_axon_users)
     pitch, box_h, top = 48, 36, 24
     store_x, store_w, service_x, service_w, pg_x, pg_w = 16, 196, 416, 210, 786, 170
     width, height = pg_x + pg_w + 16, top * 2 + pitch * (len(order) - 1) + box_h
@@ -489,11 +473,11 @@ def storage(m):
         svg.arrow([(service_x + service_w, center), (pg_x, center)], "gray", "grayf")
         svg.label((service_x + service_w + pg_x) / 2, center - 6, info[name]["database"], "grayf", "middle")
     svg.box(pg_x, top, pg_w, height - top * 2, "PostgreSQL", "one database per service")
-    first, last = spans[axon_users[0]][0], spans[axon_users[-1]][0]
+    first, last = axon_row(axon_users[0]), axon_row(axon_users[-1])
     kinds = "commands, events, queries" if any("query" in info[s]["axon"] for s in axon_users) else "commands and events"
     svg.box(store_x, top + first * pitch, store_w, pitch * (last - first) + box_h, "Axon Server", kinds, "greenbox")
     for name in axon_users:
-        row = spans[name][0]
+        row = axon_row(name)
         svg.arrow([(store_x + store_w, y(row)), (service_x, y(row))], "green", "greenf", both=True)
         svg.label((store_x + store_w + service_x) / 2, y(row) - 6, info[name]["axon"], "greenf", "middle")
     for name in vault_users:

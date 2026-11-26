@@ -27,6 +27,5 @@ include(
     ":services:payment-service",
     ":services:remittance-service",
     ":services:settlement-service",
-    ":services:task-consumer",
     ":tools:utility",
 )
