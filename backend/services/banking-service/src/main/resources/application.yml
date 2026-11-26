@@ -13,6 +13,9 @@ spring:
 banking:
   amount:
     max: 10000000
+  company-account:
+    bank-name: jaypay-company
+    bank-account-number: 123-333-9999
 service:
   membership:
     url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}

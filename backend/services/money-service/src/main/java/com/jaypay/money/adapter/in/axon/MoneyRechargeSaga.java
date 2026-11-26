@@ -34,8 +34,6 @@ import java.util.UUID;
 public class MoneyRechargeSaga {
 
     private static final String DEADLINE = "recharge-deadline";
-    private static final String COMPANY_BANK_NAME = "jaypay-company";
-    private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123456789";
 
     private transient CommandGateway commandGateway;
     private transient DeadlineManager deadlineManager;
@@ -130,8 +128,6 @@ public class MoneyRechargeSaga {
                 membershipId,
                 bankName,
                 bankAccountNumber,
-                COMPANY_BANK_NAME,
-                COMPANY_BANK_ACCOUNT_NUMBER,
                 amount)
         ).exceptionally(failure -> {
             log.warn("The charge of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());

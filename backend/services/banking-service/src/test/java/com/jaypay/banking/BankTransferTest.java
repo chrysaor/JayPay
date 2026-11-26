@@ -1,5 +1,6 @@
 package com.jaypay.banking;
 
+import com.jaypay.banking.application.port.in.TransferMoneyUseCase;
 import com.jaypay.banking.application.port.out.BankAnswer;
 import com.jaypay.banking.application.port.out.ExternalBankPort;
 import com.jaypay.banking.domain.BankTransfer;
@@ -69,6 +70,9 @@ class BankTransferTest {
 
     @Autowired
     private RecordingBank bank;
+
+    @Autowired
+    private TransferMoneyUseCase transferMoneyUseCase;
 
     @DynamicPropertySource
     static void kafka(DynamicPropertyRegistry registry) {
@@ -183,6 +187,19 @@ class BankTransferTest {
 
         assertThat(bank.delivered).containsExactly(new BankTransfer(
                 requestId, COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, "KB bank", "778", 2000));
+    }
+
+    @Test
+    void aTransferStoredWithAnotherSourceAccountIsAnsweredAsARepeatOfTheSameRequest() throws Exception {
+        String requestId = newRequestId();
+        transferMoneyUseCase.transfer(new BankTransfer(requestId, "jaypay", "an-older-company-account", "KB bank", "779", 2000));
+
+        transfer(requestId, "779", 2000)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transferStatus").value("SUCCEEDED"));
+        transfer(requestId, "779", 2001).andExpect(status().isConflict());
+
+        assertThat(bank.sent(requestId)).isEqualTo(1);
     }
 
     @ParameterizedTest
@@ -374,7 +391,7 @@ class BankTransferTest {
     private static RequestFirmBankingCommand charge(String rechargeId, String aggregateId, String memberAccount, long amount) {
         String bankName = memberAccount.startsWith("9") ? "Woori bank" : "Shinhan bank";
         return new RequestFirmBankingCommand("firmbanking-" + rechargeId, aggregateId, rechargeId, "1",
-                bankName, memberAccount, "jaypay-company", "123456789", amount);
+                bankName, memberAccount, amount);
     }
 
     private static RollbackFirmBankingRequestCommand rollback(String rechargeId) {

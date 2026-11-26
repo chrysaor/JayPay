@@ -1,7 +1,7 @@
 package com.jaypay.banking.adapter.in.axon;
 
 import com.jaypay.banking.application.port.in.TransferMoneyUseCase;
-import com.jaypay.banking.domain.BankTransfer;
+import com.jaypay.banking.domain.CompanyAccount;
 import com.jaypay.banking.domain.RecordedTransfer;
 import com.jaypay.banking.domain.TransferStatus;
 import com.jaypay.common.event.RequestFirmBankingCommand;
@@ -28,29 +28,24 @@ import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 @Slf4j
 public class FirmBankingRequestAggregate {
 
-    private static final String COMPANY_BANK_NAME = "jaypay-company";
-    private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123-333-9999";
-
     @AggregateIdentifier
     private String id;
 
     @CommandHandler
     public FirmBankingRequestAggregate(RequestFirmBankingCommand command, TransferMoneyUseCase transferMoneyUseCase,
-                                       FlowEventPublisher flowEvents) {
+                                       CompanyAccount companyAccount, FlowEventPublisher flowEvents) {
         id = command.getAggregateIdentifier();
-        RecordedTransfer charge = transferMoneyUseCase.transfer(new BankTransfer(
+        RecordedTransfer charge = transferMoneyUseCase.transfer(companyAccount.receive(
                 chargeRequestId(command.getRechargeRequestId()),
                 command.getFromBankName(),
                 command.getFromBankAccountNumber(),
-                COMPANY_BANK_NAME,
-                COMPANY_BANK_ACCOUNT_NUMBER,
                 command.getMoneyAmount()));
         apply(new RequestFirmBankingFinishedEvent(
                 command.getRequestFirmBankingId(),
                 command.getRechargeRequestId(),
                 command.getMembershipId(),
-                command.getToBankName(),
-                command.getToBankAccountNumber(),
+                companyAccount.bankName(),
+                companyAccount.bankAccountNumber(),
                 command.getMoneyAmount(),
                 finishedStatus(charge.status()),
                 id));

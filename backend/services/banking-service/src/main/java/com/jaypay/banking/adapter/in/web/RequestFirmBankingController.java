@@ -2,6 +2,7 @@ package com.jaypay.banking.adapter.in.web;
 
 import com.jaypay.banking.application.port.in.TransferMoneyUseCase;
 import com.jaypay.banking.domain.BankTransfer;
+import com.jaypay.banking.domain.CompanyAccount;
 import com.jaypay.banking.domain.RecordedTransfer;
 import com.jaypay.banking.domain.TransferStatus;
 import com.jaypay.common.WebAdapter;
@@ -20,19 +21,20 @@ public class RequestFirmBankingController {
     private static final Pattern REQUEST_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     private final TransferMoneyUseCase transferMoneyUseCase;
+    private final CompanyAccount companyAccount;
     private final BigDecimal maxAmount;
 
-    public RequestFirmBankingController(TransferMoneyUseCase transferMoneyUseCase, @Value("${banking.amount.max}") long maxAmount) {
+    public RequestFirmBankingController(TransferMoneyUseCase transferMoneyUseCase, CompanyAccount companyAccount,
+                                        @Value("${banking.amount.max}") long maxAmount) {
         this.transferMoneyUseCase = transferMoneyUseCase;
+        this.companyAccount = companyAccount;
         this.maxAmount = BigDecimal.valueOf(maxAmount);
     }
 
     @PostMapping(path = "/banking/firmbanking/request")
     TransferDetail requestFirmBanking(@RequestBody TransferRequest request) {
-        RecordedTransfer recorded = transferMoneyUseCase.transfer(new BankTransfer(
+        RecordedTransfer recorded = transferMoneyUseCase.transfer(companyAccount.send(
                 requestId(request.requestId()),
-                required(request.fromBankName()),
-                required(request.fromBankAccountNumber()),
                 required(request.toBankName()),
                 required(request.toBankAccountNumber()),
                 amount(request.moneyAmount())));
@@ -51,7 +53,7 @@ public class RequestFirmBankingController {
 
     private static String required(String value) {
         if (value == null || value.isBlank()) {
-            throw new TransferRequestRejected("INVALID_BANK_ACCOUNT", "Send the bank name and account number of both sides.");
+            throw new TransferRequestRejected("INVALID_BANK_ACCOUNT", "Send the bank name and account number of the receiving account.");
         }
         return value;
     }
@@ -65,8 +67,6 @@ public class RequestFirmBankingController {
 
     record TransferRequest(
             String requestId,
-            String fromBankName,
-            String fromBankAccountNumber,
             String toBankName,
             String toBankAccountNumber,
             BigDecimal moneyAmount) {

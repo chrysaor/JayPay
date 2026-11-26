@@ -39,3 +39,4 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [A payment whose debit answer was lost could never finish](2026-11-27-payment-checks-parties-before-resuming.md) | [#170](https://github.com/chrysaor/JayPay/pull/170) |
 | 2026-11-27 | [A wallet change asked during a membership-service outage failed for good](2026-11-27-membership-outage-read-as-missing-member.md) | [#175](https://github.com/chrysaor/JayPay/pull/175) |
 | 2026-11-27 | [A refused payout could not be sent again after the merchant changed the account](2026-11-27-refused-payout-bound-to-one-request-id.md) | [#174](https://github.com/chrysaor/JayPay/pull/174) |
+| 2026-11-27 | [The company bank account had four definitions in four services](2026-11-27-company-account-defined-in-four-services.md) | [#140](https://github.com/chrysaor/JayPay/issues/140) |

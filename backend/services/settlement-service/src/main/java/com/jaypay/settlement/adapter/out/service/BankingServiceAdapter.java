@@ -15,9 +15,6 @@ import java.util.Optional;
 @Slf4j
 public class BankingServiceAdapter implements BankingPort {
 
-    private static final String SETTLEMENT_BANK_NAME = "jaypay";
-    private static final String SETTLEMENT_BANK_ACCOUNT_NUMBER = "111-222-333";
-
     private final CommonHttpClient commonHttpClient;
     private final String bankingServiceUrl;
 
@@ -40,8 +37,6 @@ public class BankingServiceAdapter implements BankingPort {
         try {
             HttpReply<TransferResult> reply = commonHttpClient.post(url, new TransferRequest(
                     requestId,
-                    SETTLEMENT_BANK_NAME,
-                    SETTLEMENT_BANK_ACCOUNT_NUMBER,
                     to.bankName(),
                     to.bankAccountNumber(),
                     amount), TransferResult.class);
@@ -66,8 +61,6 @@ public class BankingServiceAdapter implements BankingPort {
 
     record TransferRequest(
             String requestId,
-            String fromBankName,
-            String fromBankAccountNumber,
             String toBankName,
             String toBankAccountNumber,
             long moneyAmount) {

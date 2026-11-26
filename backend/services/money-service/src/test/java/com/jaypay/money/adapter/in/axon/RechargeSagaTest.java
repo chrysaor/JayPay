@@ -502,8 +502,8 @@ class RechargeSagaTest {
                     command.getRequestFirmBankingId(),
                     command.getRechargeRequestId(),
                     command.getMembershipId(),
-                    command.getToBankName(),
-                    command.getToBankAccountNumber(),
+                    "Company bank",
+                    "000",
                     command.getMoneyAmount(),
                     status,
                     command.getAggregateIdentifier()));
