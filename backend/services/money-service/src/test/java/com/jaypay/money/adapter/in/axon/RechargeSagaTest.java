@@ -37,6 +37,8 @@ import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -322,6 +324,7 @@ class RechargeSagaTest {
     private static List<JsonNode> flowSteps(String requestId, int count) {
         return KafkaTestBroker.awaitValues("jaypay.flow.events", requestId, values -> values.size() >= count, PATIENCE).stream()
                 .map(RechargeSagaTest::parse)
+                .sorted(Comparator.comparing(step -> Instant.parse(step.get("occurredAt").asText())))
                 .toList();
     }
 

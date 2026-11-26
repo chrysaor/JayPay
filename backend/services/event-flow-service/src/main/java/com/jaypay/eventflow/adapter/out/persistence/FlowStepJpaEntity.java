@@ -1,8 +1,6 @@
 package com.jaypay.eventflow.adapter.out.persistence;
 
 import com.jaypay.common.flow.FlowOutcome;
-import com.jaypay.common.flow.FlowStep;
-import com.jaypay.common.flow.FlowType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -33,15 +31,13 @@ public class FlowStepJpaEntity {
     private Long id;
 
     @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    private FlowType flowType;
+    private String flowType;
 
     @Column(nullable = false)
     private String flowId;
 
     @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    private FlowStep step;
+    private String step;
 
     @Column(nullable = false)
     private String service;

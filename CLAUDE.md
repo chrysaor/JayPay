@@ -26,12 +26,13 @@ Do not report work as done until `make verify` passes. On a PR into `develop`, C
 
 1. Start from an issue. Ask for one if the task has none.
 2. Branch from `develop` as `feature/<issue>-<short-name>`, for example `feature/40-workflow-release`.
-3. Write the failing test first, then the code that makes it pass.
+3. Write the failing test first, then the code that makes it pass. Run a new test at least five times before you push when it waits on a processor, Kafka, a scheduler or polling.
 4. Add a line to Unreleased in `CHANGELOG.md` that says what changed for a user or an operator, ending with the PR or issue link. Use the `Changelog: none` trailer only for a change nobody outside the repository notices, such as a typo, a CI internal or a test. The format is in `CONTRIBUTING.md`.
 5. Run `make verify`.
 6. Open the PR against `develop`. Fill in `.github/pull_request_template.md` and link the issue with `Closes #<issue>`.
 7. Once CI passes, merge the PR into `develop` yourself.
 8. Close the issue right after the merge. `Closes` only fires on `master`, so an issue merged into `develop` stays open until you close it. When a PR is replaced by another, close it and delete its branch.
+9. When a PR fixes a bug that reached `develop`, that `make verify` missed, or that took more than one attempt, add a retrospective to `docs/retrospectives/` in the same PR. The format is in `docs/retrospectives/README.md`.
 
 Never push to `master` or `develop` directly. Every change reaches them through a PR.
 

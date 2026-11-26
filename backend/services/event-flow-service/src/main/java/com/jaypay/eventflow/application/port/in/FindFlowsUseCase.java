@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface FindFlowsUseCase {
 
-    List<FlowSummary> recent(Optional<FlowStatus> status);
+    List<FlowSummary> recent(Optional<FlowType> flowType, Optional<FlowStatus> status);
 
     Optional<Flow> flow(FlowType flowType, String flowId);
 }

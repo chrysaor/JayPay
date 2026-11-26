@@ -13,3 +13,6 @@ spring:
   kafka:
     consumer:
       auto-offset-reset: earliest
+flow:
+  retention:
+    period: ${FLOW_RETENTION_PERIOD:30d}

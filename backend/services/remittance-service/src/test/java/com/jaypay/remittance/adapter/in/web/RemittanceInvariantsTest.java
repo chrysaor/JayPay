@@ -24,6 +24,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -458,6 +459,101 @@ class RemittanceInvariantsTest {
             statuses.put(remittance.get("remittanceId").asText(), remittance.get("remittanceStatus").asText());
         }
         assertThat(statuses).containsExactlyInAnyOrderEntriesOf(Map.of(sent, "COMPLETED", failed, "FAILED", received, "COMPLETED"));
+    }
+
+    @Test
+    void aRemittanceToAMemberReportsEachStepToItsFlowUnderItsRequestId() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+
+        remit(toMember(requestId, sender, receiver, "4000"));
+
+        List<JsonNode> steps = flowSteps(requestId, 3);
+        assertThat(steps).extracting(RemittanceInvariantsTest::stepAndOutcome)
+                .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "RECEIVER_CREDITED SUCCEEDED");
+        assertThat(steps).allSatisfy(step -> {
+            assertThat(step.get("flowType").asText()).isEqualTo("REMITTANCE");
+            assertThat(step.get("service").asText()).isEqualTo("remittance-service");
+            assertThat(step.get("membershipId").asText()).isEqualTo(sender);
+            assertThat(step.get("amount").asLong()).isEqualTo(4000);
+        });
+    }
+
+    @Test
+    void aTransferTheBankRefusesReportsTheFailureAndTheRefundWithoutTheAccount() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1002-" + sender;
+        REFUSED_ACCOUNTS.add(account);
+        String requestId = UUID.randomUUID().toString();
+
+        remit(toBank(requestId, sender, "Jay Bank", account, "7000"));
+
+        List<JsonNode> steps = flowSteps(requestId, 4);
+        assertThat(steps).extracting(RemittanceInvariantsTest::stepAndOutcome).containsExactly(
+                "REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "BANK_TRANSFERRED FAILED", "SENDER_REFUNDED SUCCEEDED");
+        assertThat(steps.get(2).get("reason").asText()).isEqualTo("The bank refused the transfer");
+        assertThat(steps).allSatisfy(step -> assertThat(step.toString()).doesNotContain(account, "Jay Bank"));
+    }
+
+    @Test
+    void aRemittanceAboveTheBalanceReportsTheRefusedDebit() throws Exception {
+        String sender = memberWithBalance(1000);
+        String requestId = UUID.randomUUID().toString();
+
+        remit(toMember(requestId, sender, memberWithBalance(0), "5000"));
+
+        List<JsonNode> steps = flowSteps(requestId, 2);
+        assertThat(steps).extracting(RemittanceInvariantsTest::stepAndOutcome)
+                .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED FAILED");
+        assertThat(steps.get(1).get("reason").asText()).isEqualTo("money-service refused to take the amount from the sender's wallet");
+    }
+
+    @Test
+    void aRefusedReceiverReportsTheRequestAsFailedWithTheReason() throws Exception {
+        String sender = memberWithBalance(5000);
+        String closed = memberWithBalance(0);
+        INVALID.add(closed);
+        String requestId = UUID.randomUUID().toString();
+
+        assertThat(post(toMember(requestId, sender, closed, "1000")).statusCode()).isEqualTo(400);
+
+        JsonNode step = flowSteps(requestId, 1).getFirst();
+        assertThat(stepAndOutcome(step)).isEqualTo("REMITTANCE_REQUESTED FAILED");
+        assertThat(step.get("reason").asText()).isEqualTo("The receiver does not exist or is not valid");
+        assertThat(step.get("membershipId").asText()).isEqualTo(sender);
+    }
+
+    @Test
+    void aDebitWithoutAnAnswerReportsEachStepOnceAfterTheRetryFinishesIt() throws Exception {
+        String sender = memberWithBalance(10000);
+        String requestId = UUID.randomUUID().toString();
+        String body = toMember(requestId, sender, memberWithBalance(0), "2500");
+        unanswered("-decrease", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        remit(body);
+        remit(body);
+
+        assertThat(flowSteps(requestId, 3)).extracting(RemittanceInvariantsTest::stepAndOutcome)
+                .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "RECEIVER_CREDITED SUCCEEDED");
+    }
+
+    private static List<JsonNode> flowSteps(String requestId, int count) {
+        return KafkaTestBroker.awaitValues("jaypay.flow.events", requestId, values -> values.size() >= count, Duration.ofSeconds(30))
+                .stream().map(RemittanceInvariantsTest::readJson).toList();
+    }
+
+    private static JsonNode readJson(String value) {
+        try {
+            return JSON.readTree(value);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static String stepAndOutcome(JsonNode step) {
+        return step.get("step").asText() + " " + step.get("outcome").asText();
     }
 
     private static String memberWithBalance(long balance) {

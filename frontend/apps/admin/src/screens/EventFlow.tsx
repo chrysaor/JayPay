@@ -7,10 +7,13 @@ import {
   findFlow,
   findFlows,
   flowTypeLabel,
+  flowTypeLabels,
+  flowTypeSchema,
   formatGap,
   outcomeSchema,
   stepLabel,
   type FlowDetail,
+  type FlowType,
   type Outcome,
 } from '../api/eventFlow'
 
@@ -27,8 +30,10 @@ const clock = new Intl.DateTimeFormat('en-US', { timeStyle: 'medium' })
 
 type Selection = { flowType: string; flowId: string }
 
-function searchOf(status: Outcome | null, selection: Selection | null) {
-  return new URLSearchParams({ ...(status ? { status } : {}), ...selection })
+type Filters = { type: FlowType | null; status: Outcome | null }
+
+function searchOf({ type, status }: Filters, selection: Selection | null) {
+  return new URLSearchParams({ ...(type ? { type } : {}), ...(status ? { status } : {}), ...selection })
 }
 
 function OutcomeBadge({ outcome }: { outcome: Outcome }) {
@@ -96,25 +101,43 @@ function Timeline({ flowType, flowId }: Selection) {
 export function EventFlow() {
   const [params, setParams] = useSearchParams()
   const status = outcomeSchema.safeParse(params.get('status')).data ?? null
+  const type = flowTypeSchema.safeParse(params.get('type')).data ?? null
+  const filters = { type, status }
   const flowType = params.get('flowType')
   const flowId = params.get('flowId')
   const selection = flowType && flowId ? { flowType, flowId } : null
   const flows = useQuery({
-    queryKey: ['event-flows', status],
-    queryFn: () => findFlows(status),
+    queryKey: ['event-flows', type, status],
+    queryFn: () => findFlows(status, type),
     refetchInterval: listInterval,
   })
   return (
     <>
       <h1>Event flow</h1>
-      <p className="summary">Recent top-ups, newest first, step by step across the services. The list refreshes every 5 seconds.</p>
+      <p className="summary">Recent top-ups, remittances, payments and settlements, newest first, step by step across the services. The list refreshes every 5 seconds.</p>
       <div className="toolbar">
+        <label>
+          Type
+          <select
+            value={type ?? ''}
+            onChange={(event) => {
+              setParams(searchOf({ ...filters, type: flowTypeSchema.safeParse(event.target.value).data ?? null }, selection))
+            }}
+          >
+            <option value="">All</option>
+            {flowTypeSchema.options.map((flowType) => (
+              <option key={flowType} value={flowType}>
+                {flowTypeLabels[flowType]}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Status
           <select
             value={status ?? ''}
             onChange={(event) => {
-              setParams(searchOf(outcomeSchema.safeParse(event.target.value).data ?? null, selection))
+              setParams(searchOf({ ...filters, status: outcomeSchema.safeParse(event.target.value).data ?? null }, selection))
             }}
           >
             <option value="">All</option>
@@ -130,19 +153,19 @@ export function EventFlow() {
         <div className="flow-list">
           <ErrorNotice error={flows.error} />
           {flows.data?.length === 0 ? (
-            <p className="empty">{status ? 'No flows have this status.' : 'No flows have started yet.'}</p>
+            <p className="empty">{type || status ? 'No flows match these filters.' : 'No flows have started yet.'}</p>
           ) : null}
           {flows.data?.length ? (
             <table>
               <thead>
                 <tr>
                   <th>Status</th>
+                  <th>Type</th>
                   <th>Flow</th>
                   <th>Amount</th>
                   <th>Last step</th>
                   <th>Started at</th>
                   <th>Member</th>
-                  <th>Type</th>
                 </tr>
               </thead>
               <tbody>
@@ -153,14 +176,14 @@ export function EventFlow() {
                       <td>
                         <OutcomeBadge outcome={flow.status} />
                       </td>
+                      <td>{flowTypeLabel(flow.flowType)}</td>
                       <td>
-                        <Link to={`?${searchOf(status, { flowType: flow.flowType, flowId: flow.flowId }).toString()}`}>{flow.flowId}</Link>
+                        <Link to={`?${searchOf(filters, { flowType: flow.flowType, flowId: flow.flowId }).toString()}`}>{flow.flowId}</Link>
                       </td>
                       <td>{formatWon(flow.amount)}</td>
                       <td>{stepLabel(flow.failedStep ?? flow.lastStep)}</td>
                       <td>{formatDateTime(flow.startedAt)}</td>
                       <td>{flow.membershipId}</td>
-                      <td>{flowTypeLabel(flow.flowType)}</td>
                     </tr>
                   )
                 })}

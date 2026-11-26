@@ -7,7 +7,17 @@ public enum FlowStep {
     BANK_CHARGED(FlowType.RECHARGE, false),
     WALLET_INCREASED(FlowType.RECHARGE, true),
     RECHARGE_FAILED(FlowType.RECHARGE, false),
-    CHARGE_ROLLED_BACK(FlowType.RECHARGE, false);
+    CHARGE_ROLLED_BACK(FlowType.RECHARGE, false),
+    REMITTANCE_REQUESTED(FlowType.REMITTANCE, false),
+    SENDER_DEBITED(FlowType.REMITTANCE, false),
+    RECEIVER_CREDITED(FlowType.REMITTANCE, true),
+    BANK_TRANSFERRED(FlowType.REMITTANCE, true),
+    SENDER_REFUNDED(FlowType.REMITTANCE, false),
+    PAYMENT_REQUESTED(FlowType.PAYMENT, false),
+    PAYER_DEBITED(FlowType.PAYMENT, true),
+    SETTLEMENT_STARTED(FlowType.SETTLEMENT, false),
+    MERCHANT_PAID_OUT(FlowType.SETTLEMENT, false),
+    PAYMENT_SETTLED(FlowType.SETTLEMENT, true);
 
     private final FlowType flowType;
     private final boolean completesFlow;

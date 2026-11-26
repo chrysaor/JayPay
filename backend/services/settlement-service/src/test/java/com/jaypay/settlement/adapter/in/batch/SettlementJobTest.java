@@ -1,6 +1,8 @@
 package com.jaypay.settlement.adapter.in.batch;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jaypay.common.kafka.KafkaTestBroker;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
@@ -20,6 +22,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,6 +63,7 @@ class SettlementJobTest {
         String url = "http://127.0.0.1:" + JAYPAY.getAddress().getPort();
         registry.add("service.payment.url", () -> url);
         registry.add("service.banking.url", () -> url);
+        registry.add("spring.kafka.bootstrap-servers", KafkaTestBroker::bootstrapServers);
     }
 
     @AfterAll
@@ -89,6 +93,35 @@ class SettlementJobTest {
         assertThat(SETTLED).containsExactlyInAnyOrder(1L, 2L, 3L);
         assertThat(LANDED).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "settlement-1", "100-1:9700", "settlement-2", "100-2:4825", "settlement-3", "100-1:194"));
+
+        for (String settlementId : List.of("settlement-1", "settlement-2", "settlement-3")) {
+            List<JsonNode> steps = flowSteps(settlementId);
+            assertThat(steps.stream().map(step -> step.get("step").asText()).distinct())
+                    .as(settlementId).containsExactly("SETTLEMENT_STARTED", "MERCHANT_PAID_OUT", "PAYMENT_SETTLED");
+            assertThat(steps).allSatisfy(step -> {
+                assertThat(step.get("flowType").asText()).isEqualTo("SETTLEMENT");
+                assertThat(step.get("service").asText()).isEqualTo("settlement-service");
+                assertThat(step.get("outcome").asText()).isEqualTo("SUCCEEDED");
+                assertThat(step.toString()).doesNotContain("100-", "jaybank");
+            });
+        }
+        JsonNode settled = flowSteps("settlement-2").getLast();
+        assertThat(settled.get("membershipId").asText()).isEqualTo("12");
+        assertThat(settled.get("amount").asLong()).isEqualTo(4825);
+    }
+
+    private static List<JsonNode> flowSteps(String settlementId) {
+        return KafkaTestBroker.awaitValues("jaypay.flow.events", settlementId,
+                        values -> values.stream().anyMatch(value -> value.contains("\"PAYMENT_SETTLED\"")), Duration.ofSeconds(30))
+                .stream().map(SettlementJobTest::readJson).toList();
+    }
+
+    private static JsonNode readJson(String value) {
+        try {
+            return JSON.readTree(value);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private BatchStatus run() throws Exception {

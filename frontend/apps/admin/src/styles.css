@@ -499,6 +499,7 @@ tr[aria-current='true'] td {
 
   .flow-layout > .card {
     position: static;
+    order: -1;
   }
 }
 

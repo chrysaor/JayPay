@@ -152,8 +152,8 @@ region_total_is() {
 }
 
 flow_is() {
-  local flow=$1 status=$2 failed=$3 steps=$4
-  call GET "$admin/api/event-flow/flows/RECHARGE/$flow" "$(hex 16)"
+  local type=$1 flow=$2 status=$3 failed=$4 steps=$5
+  call GET "$admin/api/event-flow/flows/$type/$flow" "$(hex 16)"
   observed "HTTP $http_status: $(response)"
   [ "$http_status" = 200 ] && python3 - "$work/body" "$status" "$failed" "$steps" <<'PY'
 import json, sys
@@ -621,18 +621,40 @@ flows="$admin/api/event-flow/flows"
 expect "the event flows without a token" 401 GET "$flows" "$(hex 16)"
 [ "$(json_field error)" = UNAUTHENTICATED ] || fail "the event flows without a token answered $(response)"
 as "$customer_token" expect "the event flows with a customer token" 401 GET "$flows" "$(hex 16)"
-as_staff VIEWER eventually 60 "the saga top-up smoke-saga-$run never showed every step as SUCCEEDED" flow_is "smoke-saga-$run" SUCCEEDED "" \
+as_staff VIEWER eventually 60 "the saga top-up smoke-saga-$run never showed every step as SUCCEEDED" flow_is RECHARGE "smoke-saga-$run" SUCCEEDED "" \
   "RECHARGE_REQUESTED MEMBERSHIP_CHECKED BANK_ACCOUNT_CHECKED BANK_CHARGED WALLET_INCREASED"
 [ "$(json_field membershipId)" = "$membership_id" ] && [ "$(json_field amount)" = 10000 ] || fail "the flow smoke-saga-$run names $(response)"
-as_staff VIEWER eventually 60 "the saga top-up of the unknown member never failed at the member check" flow_is "smoke-unknown-$run" FAILED MEMBERSHIP_CHECKED \
+as_staff VIEWER eventually 60 "the saga top-up of the unknown member never failed at the member check" flow_is RECHARGE "smoke-unknown-$run" FAILED MEMBERSHIP_CHECKED \
   "RECHARGE_REQUESTED MEMBERSHIP_CHECKED RECHARGE_FAILED"
-as_staff VIEWER eventually 60 "the saga top-up the bank refused never failed at the charge" flow_is "smoke-refused-$run" FAILED BANK_CHARGED \
+as_staff VIEWER eventually 60 "the saga top-up the bank refused never failed at the charge" flow_is RECHARGE "smoke-refused-$run" FAILED BANK_CHARGED \
   "RECHARGE_REQUESTED MEMBERSHIP_CHECKED BANK_ACCOUNT_CHECKED BANK_CHARGED RECHARGE_FAILED"
 ! grep -q -e "5002-$run" -e "smoke-refused-$run@" -e "Smoke Refused" "$work/body" || fail "the flow smoke-refused-$run shows personal data: $(response)"
 as_staff VIEWER request "the failed event flows" GET "$flows?status=FAILED" "$(hex 16)"
 python3 -c 'import json, sys; ids = [f["flowId"] for f in json.load(open(sys.argv[1]))]; sys.exit(0 if {sys.argv[2], sys.argv[3]} <= set(ids) and sys.argv[4] not in ids else 1)' \
   "$work/body" "smoke-unknown-$run" "smoke-refused-$run" "smoke-saga-$run" || fail "the failed event flows were $(response)"
 as_staff VIEWER expect "an event flow nobody started" 404 GET "$flows/RECHARGE/smoke-nothing-$run" "$(hex 16)"
+
+log "a viewer follows each remittance and payment step by step in the event flow"
+as_staff VIEWER eventually 60 "the remittance smoke-remit-$run never showed every step as SUCCEEDED" flow_is REMITTANCE "smoke-remit-$run" SUCCEEDED "" \
+  "REMITTANCE_REQUESTED SENDER_DEBITED RECEIVER_CREDITED"
+[ "$(json_field membershipId)" = "$membership_id" ] && [ "$(json_field amount)" = 5000 ] || fail "the flow smoke-remit-$run names $(response)"
+as_staff VIEWER eventually 60 "the remittance above the balance never failed at the sender's debit" flow_is REMITTANCE "smoke-overdraw-remit-$run" FAILED SENDER_DEBITED \
+  "REMITTANCE_REQUESTED SENDER_DEBITED"
+as_staff VIEWER eventually 60 "the bank remittance smoke-bank-remit-$run never showed the bank transfer" flow_is REMITTANCE "smoke-bank-remit-$run" SUCCEEDED "" \
+  "REMITTANCE_REQUESTED SENDER_DEBITED BANK_TRANSFERRED"
+! grep -q -e "4002-$run" -e "Jay Bank" "$work/body" || fail "the flow smoke-bank-remit-$run shows the bank account: $(response)"
+as_staff VIEWER eventually 60 "the payment smoke-pay-$run never showed every step as SUCCEEDED" flow_is PAYMENT "smoke-pay-$run" SUCCEEDED "" \
+  "PAYMENT_REQUESTED PAYER_DEBITED"
+[ "$(json_field membershipId)" = "$membership_id" ] && [ "$(json_field amount)" = 3000 ] || fail "the flow smoke-pay-$run names $(response)"
+as_staff VIEWER eventually 60 "the payment above the balance never failed at the payer's debit" flow_is PAYMENT "smoke-overpay-$run" FAILED PAYER_DEBITED \
+  "PAYMENT_REQUESTED PAYER_DEBITED"
+as_staff VIEWER eventually 60 "the payment to a personal member never failed at the request" flow_is PAYMENT "smoke-personal-$run" FAILED PAYMENT_REQUESTED \
+  "PAYMENT_REQUESTED"
+as_staff VIEWER request "the payment event flows" GET "$flows?flowType=PAYMENT" "$(hex 16)"
+python3 -c 'import json, sys; flows = json.load(open(sys.argv[1])); ids = [f["flowId"] for f in flows]; sys.exit(0 if {sys.argv[2], sys.argv[3]} <= set(ids) and all(f["flowType"] == "PAYMENT" for f in flows) else 1)' \
+  "$work/body" "smoke-pay-$run" "smoke-overpay-$run" || fail "the payment event flows were $(response)"
+as_staff VIEWER expect "the event flows of a type nobody knows" 400 GET "$flows?flowType=TRANSFER" "$(hex 16)"
+[ "$(json_field error)" = INVALID_FLOW_TYPE ] || fail "the event flows of an unknown type answered $(response)"
 
 log "the settlement job settles the payment once the bank confirms its payout"
 as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
@@ -641,6 +663,10 @@ request "the payout the settlement job sent, sent again" POST "$banking/banking/
 [ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank holds no settled payout for payment $payment_id: $(response)"
 expect "the payout id of payment $payment_id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
   '{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
+as_staff VIEWER eventually 60 "the settlement of payment $payment_id never showed every step as SUCCEEDED" flow_is SETTLEMENT "settlement-$payment_id" SUCCEEDED "" \
+  "SETTLEMENT_STARTED MERCHANT_PAID_OUT PAYMENT_SETTLED"
+[ "$(json_field membershipId)" = "$merchant" ] && [ "$(json_field amount)" = 2910 ] || fail "the flow settlement-$payment_id names $(response)"
+! grep -q -e "3002-$run" -e "111-222-333" "$work/body" || fail "the flow settlement-$payment_id shows a bank account: $(response)"
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
 as_staff VIEWER eventually 60 "the region total never reached 19000" region_total_is 19000

@@ -24,6 +24,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -275,6 +276,70 @@ class PaymentInvariantsTest {
         assertThat(JSON.readTree(notPaid.body()).get("error").asText()).isEqualTo("PAYMENT_NOT_PAID");
         assertThat(unknown.statusCode()).isEqualTo(404);
         assertThat(JSON.readTree(unknown.body()).get("error").asText()).isEqualTo("PAYMENT_NOT_FOUND");
+    }
+
+    @Test
+    void aPaidPaymentReportsItsRequestAndItsDebitToItsFlowUnderItsRequestId() throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+
+        pay(requestId, payer, merchant, "3000");
+        pay(requestId, payer, merchant, "3000");
+
+        List<JsonNode> steps = flowSteps(requestId, 2);
+        assertThat(steps).extracting(PaymentInvariantsTest::stepAndOutcome)
+                .containsExactly("PAYMENT_REQUESTED SUCCEEDED", "PAYER_DEBITED SUCCEEDED");
+        assertThat(steps).allSatisfy(step -> {
+            assertThat(step.get("flowType").asText()).isEqualTo("PAYMENT");
+            assertThat(step.get("service").asText()).isEqualTo("payment-service");
+            assertThat(step.get("membershipId").asText()).isEqualTo(payer);
+            assertThat(step.get("amount").asLong()).isEqualTo(3000);
+        });
+    }
+
+    @Test
+    void aPaymentAboveTheBalanceReportsTheRefusedDebit() throws Exception {
+        String payer = memberWithBalance(1000);
+        String requestId = UUID.randomUUID().toString();
+
+        pay(requestId, payer, corporateMember(), "3000");
+
+        List<JsonNode> steps = flowSteps(requestId, 2);
+        assertThat(steps).extracting(PaymentInvariantsTest::stepAndOutcome)
+                .containsExactly("PAYMENT_REQUESTED SUCCEEDED", "PAYER_DEBITED FAILED");
+        assertThat(steps.get(1).get("reason").asText()).isEqualTo("money-service refused to take the price from the payer's wallet");
+    }
+
+    @Test
+    void aRefusedMerchantReportsTheRequestAsFailedWithTheReason() throws Exception {
+        String payer = memberWithBalance(10000);
+        String personal = String.valueOf(MEMBERS.incrementAndGet());
+        String requestId = UUID.randomUUID().toString();
+
+        assertThat(request(requestId, payer, personal, "1000").statusCode()).isEqualTo(400);
+
+        JsonNode step = flowSteps(requestId, 1).getFirst();
+        assertThat(stepAndOutcome(step)).isEqualTo("PAYMENT_REQUESTED FAILED");
+        assertThat(step.get("reason").asText()).isEqualTo("The merchant does not exist, is not valid or is not a corporate member");
+        assertThat(step.get("membershipId").asText()).isEqualTo(payer);
+    }
+
+    private static List<JsonNode> flowSteps(String requestId, int count) {
+        return KafkaTestBroker.awaitValues("jaypay.flow.events", requestId, values -> values.size() >= count, Duration.ofSeconds(30))
+                .stream().map(PaymentInvariantsTest::readJson).toList();
+    }
+
+    private static JsonNode readJson(String value) {
+        try {
+            return JSON.readTree(value);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static String stepAndOutcome(JsonNode step) {
+        return step.get("step").asText() + " " + step.get("outcome").asText();
     }
 
     private static String memberWithBalance(long balance) {

@@ -156,7 +156,7 @@ Sends money from one member's wallet to another member or to a bank account.
 | Database | PostgreSQL `remittance`, table `remittance` |
 | Calls | `membership-service`, `banking-service`, `money-service` |
 | Called by | `frontend-web` |
-| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a remittance |
 | Axon | none |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `SERVICE_MONEY_URL`, `REMITTANCE_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
@@ -226,7 +226,7 @@ Takes payments from member wallets to merchants and tracks which ones are settle
 | Database | PostgreSQL `payment`, table `payment` |
 | Calls | `membership-service`, `money-service` |
 | Called by | `settlement-service`, `frontend-web`, `frontend-admin` |
-| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a payment |
 | Axon | none |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_MONEY_URL`, `PAYMENT_FEE_RATE_BASIS_POINTS`, `PAYMENT_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
@@ -341,7 +341,7 @@ Spring Batch job that pays merchants out for their paid payments every 30 second
 | Database | PostgreSQL `settlement`, the Spring Batch tables, which Spring Batch creates because `SPRING_BATCH_JDBC_INITIALIZE_SCHEMA` defaults to `always` |
 | Calls | `banking-service`, `payment-service` |
 | Called by | none |
-| Kafka | none |
+| Kafka | Produces `jaypay.flow.events`, one record for each step of the settlement of a payment |
 | Axon | none |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SPRING_BATCH_JOB_ENABLED`, `SPRING_BATCH_JDBC_INITIALIZE_SCHEMA`, `SERVICE_BANKING_URL`, `SERVICE_PAYMENT_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
@@ -367,7 +367,7 @@ The service has no HTTP endpoints of its own. Actuator answers on the management
 
 ## event-flow-service
 
-Read model of the flows that move money: it collects the step records of each saga top-up and serves the flows to the admin console.
+Read model of the flows that move money: it collects the step records of each saga top-up, remittance, payment and settlement and serves the flows to the admin console.
 
 | | |
 | --- | --- |
@@ -379,11 +379,11 @@ Read model of the flows that move money: it collects the step records of each sa
 | Kafka | Consumes `jaypay.flow.events` in the group `event-flow-service`. Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | none |
 | Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`. The topic is the key `flow.topic` in `backend/libs/common/src/main/resources/jaypay-common.yml`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `FLOW_RETENTION_PERIOD`. The topic is the key `flow.topic` in `backend/libs/common/src/main/resources/jaypay-common.yml`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
 ### What it does
 
-`FlowEventPublisher` in `backend/libs/common` writes one JSON record to `jaypay.flow.events` for each step, keyed by the flow id, so the steps of one flow stay in order on one partition. A record holds `flowType`, `flowId`, `step`, `service`, `outcome`, `reason`, `occurredAt`, `membershipId` and `amount`, and nothing else: no name, email, address or account number. The flow id of a top-up is its request id. The publisher sends after the step's transaction commits, waits at most two seconds for Kafka and never throws, so a Kafka outage loses flow records but never stops or changes a top-up.
+`FlowEventPublisher` in `backend/libs/common` writes one JSON record to `jaypay.flow.events` for each step, keyed by the flow id, so the steps of one flow stay in order on one partition. A record holds `flowType`, `flowId`, `step`, `service`, `outcome`, `reason`, `occurredAt`, `membershipId` and `amount`, and nothing else: no name, email, address or account number. The flow id of a top-up, a remittance and a payment is its request id, and the flow id of a settlement is `settlement-<paymentId>`, the request id of its payout. The member id of a remittance is the sender, of a payment the payer and of a settlement the merchant. The publisher sends after the step's transaction commits, waits at most two seconds for Kafka and never throws, so a Kafka outage loses flow records but never stops or changes the money.
 
 | Step | Service | Outcome |
 | --- | --- | --- |
@@ -395,11 +395,34 @@ Read model of the flows that move money: it collects the step records of each sa
 | `RECHARGE_FAILED` | money-service | failed, with the reason the saga gave up |
 | `CHARGE_ROLLED_BACK` | banking-service | succeeded, in progress or failed, for the refund of a charge |
 
-The service stores each step once per flow and step. A record that Kafka delivers again keeps the first copy, and a record that is not a well formed step is logged and skipped. After each new step it recomputes the flow: failed once any step failed, succeeded once `WALLET_INCREASED` succeeded, in progress otherwise.
+| Remittance step | Outcome |
+| --- | --- |
+| `REMITTANCE_REQUESTED` | succeeded, or failed when the sender, the receiver or the receiving bank account is not valid |
+| `SENDER_DEBITED` | succeeded, or failed when money-service refused to take the amount from the sender's wallet |
+| `RECEIVER_CREDITED` | succeeded, which ends a remittance to a member, or failed when money-service refused to add the amount |
+| `BANK_TRANSFERRED` | succeeded, which ends a remittance to a bank account, or failed when the bank refused the transfer |
+| `SENDER_REFUNDED` | succeeded once the amount is back in the sender's wallet |
+
+| Payment step | Outcome |
+| --- | --- |
+| `PAYMENT_REQUESTED` | succeeded, or failed when the payer or the merchant is not valid |
+| `PAYER_DEBITED` | succeeded, which ends the payment, or failed when money-service refused to take the price |
+
+| Settlement step | Outcome |
+| --- | --- |
+| `SETTLEMENT_STARTED` | succeeded, or in progress while the merchant has no registered bank account |
+| `MERCHANT_PAID_OUT` | succeeded, or failed when the bank refused the payout |
+| `PAYMENT_SETTLED` | succeeded once payment-service marked the payment settled, which ends the flow |
+
+remittance-service publishes every remittance step, payment-service every payment step and settlement-service every settlement step. A step whose call got no answer publishes nothing until the retry gets one. settlement-service runs each job in one transaction, so it sends that run's records when the run commits.
+
+The service stores each step once per flow and step. A record that Kafka delivers again keeps the first copy, and a record that is not a well formed step is logged and skipped. A record whose step belongs to another type of flow is skipped too. After each new step it recomputes the flow: failed once any step failed, succeeded once its last step succeeded (`WALLET_INCREASED`, `RECEIVER_CREDITED`, `BANK_TRANSFERRED`, `PAYER_DEBITED` or `PAYMENT_SETTLED`), in progress otherwise.
+
+Every hour it deletes each flow, with its steps, whose newest step is older than `flow.retention.period`. The period is `FLOW_RETENTION_PERIOD` and defaults to `30d`. The test profile turns the schedule off with `flow.retention.schedule.enabled: false`.
 
 ### Endpoints
 
-- `GET /flows` returns the 50 newest flows by start time, each with its status, member id, amount, start and last time, last step, failed step and step count. `?status=IN_PROGRESS`, `SUCCEEDED` or `FAILED` keeps one status, and any other status answers 400 `INVALID_STATUS`.
+- `GET /flows` returns the 50 newest flows by start time, each with its status, member id, amount, start and last time, last step, failed step and step count. `?flowType=RECHARGE`, `REMITTANCE`, `PAYMENT` or `SETTLEMENT` keeps one type, and any other type answers 400 `INVALID_FLOW_TYPE`. `?status=IN_PROGRESS`, `SUCCEEDED` or `FAILED` keeps one status, and any other status answers 400 `INVALID_STATUS`. The two filters combine.
 - `GET /flows/{flowType}/{flowId}` returns one flow with its steps in the order they happened, or 404 `FLOW_NOT_FOUND`.
 
 The admin console reaches both through `/api/event-flow/` for every staff role.
@@ -408,9 +431,10 @@ The admin console reaches both through `/api/event-flow/` for every staff role.
 
 ### Known limitations
 
-- Only saga top-ups publish steps. `POST /money/increase`, remittance, payment and settlement do not.
+- `POST /money/increase` and the settlement an admin finishes by hand with `POST /payment/finish-settlement` publish no steps.
+- A request that is refused and then sent again under the same request id keeps the first, failed copy of its first step.
 - A flow whose records were lost while Kafka was down shows fewer steps or stays in progress.
-- The service keeps every flow. Nothing removes old ones.
+- A settlement waiting for a merchant account sends its first step again on every run until the account appears. The service keeps the first copy, so the flow shows when the wait began.
 
 ## auth-service
 
@@ -531,7 +555,7 @@ The console has these pages:
 - `/members` finds members by id or by address.
 - `/members/:membershipId` shows a member and lets an operator or admin edit it.
 - `/money` shows the sum of balances at an address from money-aggregation-service and the total from money-query-service.
-- `/event-flow` lists the 50 newest flows, newest first, filtered by status, and refreshes the list every 5 seconds. Selecting a flow shows its steps in order with the service, the outcome, the time since the previous step and the reason of a failure. The timeline refreshes every 2 seconds while the flow is in progress and stops once it succeeded or failed. Members appear by id only. Every staff role may open it.
+- `/event-flow` lists the 50 newest flows, newest first, filtered by type and status, with a column that names each type, and refreshes the list every 5 seconds. Selecting a flow shows its steps in order with the service, the outcome, the time since the previous step and the reason of a failure. The timeline refreshes every 2 seconds while the flow is in progress and stops once it succeeded or failed. On a screen narrower than 1500 pixels the timeline shows above the list. Members appear by id only. Every staff role may open it.
 - `/settlement` lists the paid payments with their fee and payout, and lets an operator or admin mark one settled. Marking a payment that is settled already says so and changes nothing.
 - `/account` shows the username and role and links to the Keycloak account console at `/realms/staff/account`, where staff change their password and set up an authenticator app.
 

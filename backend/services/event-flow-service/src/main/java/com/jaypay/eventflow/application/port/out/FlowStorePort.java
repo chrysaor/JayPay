@@ -5,6 +5,7 @@ import com.jaypay.eventflow.domain.FlowStatus;
 import com.jaypay.eventflow.domain.FlowSummary;
 import com.jaypay.eventflow.domain.RecordedStep;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,5 +17,7 @@ public interface FlowStorePort {
 
     void saveSummary(FlowSummary summary);
 
-    List<FlowSummary> recent(Optional<FlowStatus> status, int limit);
+    List<FlowSummary> recent(Optional<FlowType> flowType, Optional<FlowStatus> status, int limit);
+
+    int forgetFlowsUpdatedBefore(Instant cutoff);
 }
