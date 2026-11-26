@@ -70,7 +70,7 @@ Every host port binds to `127.0.0.1`.
 | Customer site | http://localhost:8090 |
 | Admin console | http://localhost:8091 |
 | Keycloak admin console, user `admin` | http://localhost:8092 |
-| Grafana, no login | http://localhost:3030 |
+| Grafana, view without a login | http://localhost:3030 |
 | Prometheus | http://localhost:9090 |
 | Kafka UI | http://localhost:8989 |
 | Axon Server dashboard | http://localhost:8024 |
@@ -196,7 +196,7 @@ JayPay is a study project and is not safe to run with real money or real users.
 - The fake bank in banking-service accepts every account and every transfer to an account number that does not end in `-refused`, and forgets its answers when it restarts. A real bank has to deduplicate a transfer by its request id for a repeated request to stay safe.
 - A bank transfer, a bank remittance or a payout that the bank does not answer waits until the same request is sent again or the next settlement run. Nothing retries a remittance in the background.
 - The saga top-up deadline lives in the memory of one money-service instance. A restart drops it, and a top-up that was waiting on the bank stays running.
-- The local stack runs Vault in dev mode and gives Grafana anonymous edit access.
+- The local stacks run Vault in dev mode: it keeps the key in memory, unsealed, and writes it again from `ENCRYPTION_KEY` at every start, and its root token sits in `infra/docker/.env`. Grafana lets anyone on the machine view dashboards and query ClickHouse and Prometheus through them without a login. Kafka, Axon Server and DynamoDB Local take any client on their loopback ports without credentials.
 - Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, and a payment and a remittance take the paying or sending member from the request body ([#91](https://github.com/chrysaor/JayPay/issues/91)).
 - A payout the bank refuses keeps its payment unsettled, and someone has to fix the merchant's account.
 

@@ -228,10 +228,15 @@ smoke() {
   forward keycloak "$namespace" service/keycloak 8092:8080
   forward money-service "$namespace" service/money-service :8080
   money=$forwarded_port
+  forward grafana "$namespace" service/grafana :3000
+  grafana=$forwarded_port
+  forward vault "$namespace" service/vault :8200
+  vault=$forwarded_port
   until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
   SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" \
     SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$prometheus" \
     SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_KEYCLOAK_URL=http://localhost:8092 SMOKE_MONEY_URL="http://127.0.0.1:$money" \
+    SMOKE_GRAFANA_URL="http://127.0.0.1:$grafana" SMOKE_VAULT_URL="http://127.0.0.1:$vault" \
     SMOKE_SERVICE_URLS="http://127.0.0.1:$banking http://127.0.0.1:$money" scripts/smoke.sh
 }
 

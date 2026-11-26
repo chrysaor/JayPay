@@ -11,6 +11,8 @@ banking=${SMOKE_BANKING_URL:-http://localhost:8082}
 money=${SMOKE_MONEY_URL:-http://localhost:8083}
 clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
+grafana=${SMOKE_GRAFANA_URL:-http://localhost:3030}
+vault=${SMOKE_VAULT_URL:-http://localhost:8200}
 read -r -a service_urls <<<"${SMOKE_SERVICE_URLS:-$(printf 'http://localhost:%s ' 8081 8082 8083 8084 8085 8086 8087 8088 8089)}"
 management_port=9080
 stack=${SMOKE_STACK:-compose}
@@ -195,6 +197,44 @@ trace_spans() {
   [ -z "$missing" ]
 }
 
+as_grafana_reader() {
+  curl -sS -o "$work/body" -w '%{http_code}' --max-time 30 -H @"$work/clickhouse-grafana-auth" --data-binary "$1" \
+    "$clickhouse/?database=otel&default_format=TSV" 2>"$work/curl-error" || true
+}
+
+as_membership_vault() {
+  local method=$1 path=$2 body=${3:-}
+  local args=(-sS -o "$work/body" -w '%{http_code}' --max-time 30 -X "$method" -H @"$work/vault-membership-auth")
+  [ -z "$body" ] || args+=(-H "Content-Type: application/json" --data-binary "$body")
+  curl "${args[@]}" "$vault/v1/$path" 2>"$work/curl-error" || true
+}
+
+root_containers() {
+  if [ "$stack" = kubernetes ]; then
+    cluster get pods --output json | python3 -c '
+import json, sys
+for pod in json.load(sys.stdin)["items"]:
+    spec = pod["spec"]
+    for container in spec.get("initContainers", []) + spec["containers"]:
+        context = {**(spec.get("securityContext") or {}), **(container.get("securityContext") or {})}
+        if context.get("runAsNonRoot") is not True or not context.get("runAsUser"):
+            print(pod["metadata"]["name"] + "/" + container["name"])
+'
+  else
+    docker compose -f "$compose_file" ps --quiet | xargs docker inspect --format '{{.Name}} {{.Config.User}}' |
+      awk '{ split($2, id, ":"); if (id[1] == "" || id[1] == "0" || id[1] == "root") print substr($1, 2) }'
+  fi
+}
+
+wide_ports() {
+  if [ "$stack" = kubernetes ]; then
+    cluster get services --output jsonpath='{range .items[?(@.spec.type!="ClusterIP")]}{.metadata.name} {.spec.type}{"\n"}{end}'
+  else
+    docker compose -f "$compose_file" ps --format '{{.Name}} {{.Ports}}' | tr ',' '\n' |
+      awk '/->/ && !/127\.0\.0\.1:[0-9-]+->/'
+  fi
+}
+
 trace_has_logs() {
   local count
   count=$(clickhouse_query "SELECT count() FROM otel_logs WHERE TraceId = '$1'")
@@ -231,6 +271,8 @@ esac
 clickhouse_password=$(sed -n 's/^CLICKHOUSE_PASSWORD=//p' "$env_file")
 umask 077
 printf 'X-ClickHouse-User: otel\nX-ClickHouse-Key: %s\n' "$clickhouse_password" >"$work/clickhouse-auth"
+printf 'X-ClickHouse-User: grafana\nX-ClickHouse-Key: %s\n' "$(sed -n 's/^CLICKHOUSE_GRAFANA_PASSWORD=//p' "$env_file")" >"$work/clickhouse-grafana-auth"
+printf 'X-Vault-Token: %s\n' "$(sed -n 's/^VAULT_MEMBERSHIP_TOKEN=//p' "$env_file")" >"$work/vault-membership-auth"
 run=$(date +%s)
 region="Smoke-$run"
 
@@ -646,5 +688,51 @@ for check in \
   eventually 30 "no logs carry the $boundary trace id" trace_has_logs "$trace"
   log "$boundary trace $trace spans $required"
 done
+
+log "anonymous Grafana visitors read dashboards but cannot change anything"
+request "anonymous dashboard search" GET "$grafana/api/search" "$(hex 16)"
+for write in \
+  'api/dashboards/db {"dashboard":{"title":"smoke-'$run'","panels":[]},"overwrite":false}' \
+  'api/folders {"title":"smoke-'$run'"}' \
+  'api/datasources {"name":"smoke-'$run'","type":"prometheus","access":"proxy","url":"http://localhost"}' \
+  'api/admin/users {"login":"smoke-'$run'","password":"Smoke-'$(hex 8)'"}'; do
+  read -r path body <<<"$write"
+  call POST "$grafana/$path" "$(hex 16)" "$body"
+  case "$http_status" in
+    401 | 403) ;;
+    *) fail "anonymous POST /$path returned HTTP $http_status: $(response)" ;;
+  esac
+done
+
+log "the ClickHouse user behind Grafana reads the telemetry but cannot change it"
+[ "$(as_grafana_reader "SELECT count() > 0 FROM otel_logs")" = 200 ] && [ "$(cat "$work/body")" = 1 ] ||
+  fail "the grafana user could not read otel_logs: $(response)"
+for statement in "CREATE TABLE otel.smoke_$run (id UInt8) ENGINE = Memory" "DROP TABLE otel.otel_logs" \
+  "INSERT INTO otel.otel_logs (ServiceName) VALUES ('smoke')" "SELECT count() FROM system.users"; do
+  [ "$(as_grafana_reader "$statement")" != 200 ] || fail "the grafana user ran $statement"
+done
+
+log "the Vault token of membership-service reads its key and nothing else"
+[ "$(as_membership_vault GET kv-v1/data/encrypt/data/dbkey)" = 200 ] || fail "membership-service could not read its key: $(response)"
+[ "$(as_membership_vault POST kv-v1/data/encrypt/data/dbkey '{"data":{"key":"smoke"}}')" = 403 ] || fail "membership-service could overwrite its key: $(response)"
+[ "$(as_membership_vault GET sys/mounts)" = 403 ] || fail "membership-service could list the Vault mounts: $(response)"
+[ "$(as_membership_vault POST auth/token/create '{}')" = 403 ] || fail "membership-service could create a Vault token: $(response)"
+
+if [ "$stack" != kubernetes ]; then
+  log "Vault holds the key again after it restarts"
+  docker restart "$(docker compose -f "$compose_file" ps -q vault)" >/dev/null || fail "could not restart the vault container"
+  restored=no
+  for _ in $(seq 1 30); do
+    [ "$(as_membership_vault GET kv-v1/data/encrypt/data/dbkey)" = 200 ] && restored=yes && break
+    sleep 2
+  done
+  [ "$restored" = yes ] || fail "membership-service could not read its key after Vault restarted: $(response)"
+fi
+
+log "no container runs as root and every port stays on the loopback address"
+running_as_root=$(root_containers)
+[ -z "$running_as_root" ] || fail "these containers run as root: $(echo $running_as_root)"
+wide=$(wide_ports)
+[ -z "$wide" ] || fail "these ports are reachable beyond the loopback address: $(echo $wide)"
 
 log "PASSED"

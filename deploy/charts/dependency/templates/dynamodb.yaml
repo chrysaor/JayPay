@@ -10,8 +10,6 @@
       containers:
         - {{- include "dependency.container" . | nindent 10 }}
           args: [-jar, DynamoDBLocal.jar, -sharedDb, -dbPath, /home/dynamodblocal/data]
-          securityContext:
-            runAsUser: 0
           ports:
             - name: http
               containerPort: 8000
@@ -25,6 +23,7 @@
             periodSeconds: 5
             timeoutSeconds: 5
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: data
               mountPath: /home/dynamodblocal/data
             - name: files
@@ -36,6 +35,7 @@
               subPath: table.json
               readOnly: true
       volumes:
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
         - name: files
           configMap:
             name: dynamodb-files

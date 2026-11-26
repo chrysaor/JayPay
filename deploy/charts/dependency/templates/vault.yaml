@@ -22,19 +22,13 @@
             periodSeconds: 5
             timeoutSeconds: 5
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: files
               mountPath: /scripts
               readOnly: true
-            - name: file
-              mountPath: /vault/file
-            - name: logs
-              mountPath: /vault/logs
       volumes:
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
         - name: files
           configMap:
             name: vault-files
-        - name: file
-          emptyDir: {}
-        - name: logs
-          emptyDir: {}
 {{- end }}

@@ -26,11 +26,13 @@
             periodSeconds: 5
             timeoutSeconds: 3
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: files
               mountPath: /etc/otelcol-contrib/config.yaml
               subPath: config.yaml
               readOnly: true
       volumes:
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
         - name: files
           configMap:
             name: otel-collector-files

@@ -16,14 +16,14 @@ Members of the customer site: sign up, look-up, edits and the customer tokens.
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | none |
 | Other stores | Vault, KV version 2 mount `kv-v1/data/encrypt`, secret `dbkey`, field `key`, read once at startup |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SPRING_CLOUD_VAULT_TOKEN`, `SPRING_CLOUD_VAULT_SCHEME`, `SPRING_CLOUD_VAULT_HOST`, `SPRING_CLOUD_VAULT_PORT`, `JWT_SECRET`, `ENCRYPTION_FALLBACK_KEY`. Secrets are `SPRING_DATASOURCE_PASSWORD`, `SPRING_CLOUD_VAULT_TOKEN`, `JWT_SECRET` and `ENCRYPTION_FALLBACK_KEY`. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SPRING_CLOUD_VAULT_TOKEN`, `SPRING_CLOUD_VAULT_SCHEME`, `SPRING_CLOUD_VAULT_HOST`, `SPRING_CLOUD_VAULT_PORT`, `JWT_SECRET`. Secrets are `SPRING_DATASOURCE_PASSWORD`, `SPRING_CLOUD_VAULT_TOKEN`, which is `VAULT_MEMBERSHIP_TOKEN` and may only read `dbkey`, and `JWT_SECRET`. |
 
 The other services call `GET /memberships/{membershipId}` to check that a member exists and is valid. money-query-service uses the same call to read the member's address. money-aggregation-service calls `GET /memberships/address/{addressName}` to list the members at one address.
 
 ### What it does
 
 - Sign-up stores a member with a name, an email, an address and a corporate flag. A new member is always valid.
-- The email is encrypted with AES-GCM before it is stored and decrypted on every read. The key comes from Vault. When Vault does not answer at startup, the service logs a warning and uses `ENCRYPTION_FALLBACK_KEY`.
+- The email is encrypted with AES-GCM before it is stored and decrypted on every read. The key comes from Vault. When Vault does not answer, refuses the token or holds no `key` field at startup, the service fails to start.
 - Login takes a member id and returns an access token and a refresh token, both HS512 JWTs signed with `JWT_SECRET`. The access token lives 20 seconds and the refresh token 60 seconds. The service stores the refresh token on the member.
 - An edit replaces the name, email, address, valid flag and corporate flag, and clears the stored refresh token.
 

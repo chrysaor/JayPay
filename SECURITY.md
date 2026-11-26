@@ -35,6 +35,20 @@ What the gate does not cover:
 - An access token stays valid for 2 minutes and auth-service accepts 60 seconds of clock skew. Disabling an account stops its sign-in and refresh at once, but its access token keeps working for up to 3 minutes. Signing out ends the Keycloak session.
 - The local stacks serve Keycloak over plain HTTP, and the brute force lockout counts failures per account, not per address.
 
+## Local stacks
+
+Both local stacks run every container as a numeric non-root user with every capability dropped, no privilege escalation and, except Keycloak, a read-only root file system. Compose sets `no-new-privileges` and the cluster sets `seccompProfile: RuntimeDefault`. Every host port binds to `127.0.0.1`. `make verify` fails when Compose or the cluster loses one of these settings or when they differ, and `make smoke` and `make k8s-smoke` fail when a container runs as root or a port is reachable beyond the loopback address. [infra/docker/README.md](infra/docker/README.md#container-privileges) lists what each container may write.
+
+- membership-service reads its encryption key from Vault at startup with `VAULT_MEMBERSHIP_TOKEN`, which may read that key and nothing else. It fails to start when Vault does not answer, refuses the token or holds no key, so it never encrypts with another key.
+- Anonymous Grafana visitors are viewers, and only `admin` with `GRAFANA_ADMIN_PASSWORD` may change dashboards, datasources or users. Grafana reads ClickHouse as `grafana`, which may only read the `otel` database. Kafka UI is read-only.
+
+What this does not cover:
+
+- Vault runs in dev mode: unsealed, in memory, over plain HTTP, with the root token in `infra/docker/.env`. A production Vault needs storage, unsealing, TLS and an auth method per service instead of a fixed token.
+- A viewer in Grafana can still run any `SELECT` on `otel` and any PromQL query through Explore, so anyone on the machine reads every log and trace.
+- Kafka, Axon Server and DynamoDB Local take any client on their loopback ports, and inside the Compose network every container reaches them ([#100](https://github.com/chrysaor/JayPay/issues/100)).
+- Keycloak keeps a writable root file system.
+
 ## Payments and settlement
 
 A payment takes its price from the paying member's wallet once, through money-service with a request id derived from the payment, and the server sets the fee. The merchant must be a valid corporate member, and the price is a whole number from 1 to `PAYMENT_AMOUNT_MAX`. A paid payment moves to settled once, so settlement-service pays it out at most once. [docs/services.md](docs/services.md#payment-service) has the rules and the rounding.

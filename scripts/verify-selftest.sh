@@ -208,6 +208,22 @@ dir=$(copy_repo charts-policy-port)
 perl -pi -e 's/(SERVICE_MEMBERSHIP_URL: http:\/\/membership-service):8080/$1:9999/' "$dir/deploy/envs/local/spring-service/banking-service.yaml"
 expect charts fail "$dir" "points at membership-service:9999, a port that the Service membership-service does not expose"
 
+dir=$(copy_repo charts-port-address)
+perl -pi -e 's/"127\.0\.0\.1:3030:3000"/"3030:3000"/' "$dir/infra/docker/compose.yaml"
+expect charts fail "$dir" "grafana: compose.yaml publishes port 3030 on every address"
+
+dir=$(copy_repo charts-root-user)
+perl -0pi -e 's/(\n  prometheus:\n(?:    .*\n)*?    user: )"65534:65534"/$1"0:0"/' "$dir/infra/docker/compose.yaml"
+expect charts fail "$dir" "prometheus: compose.yaml runs it as 0:0"
+
+dir=$(copy_repo charts-dependency-user)
+perl -pi -e 's/^user: 65534$/user: 1/' "$dir/deploy/envs/local/dependency/prometheus.yaml"
+expect charts fail "$dir" "prometheus: deploy/envs/local runs it as 1:65534, compose.yaml as 65534:65534"
+
+dir=$(copy_repo charts-scratch)
+perl -ni -e 'print unless m{^  - /home/vault$}' "$dir/deploy/envs/local/dependency/vault.yaml"
+expect charts fail "$dir" "vault: deploy/envs/local mounts emptyDir volumes at"
+
 dir=$(copy_repo charts-secret)
 printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: {{ .Release.Name }}\nstringData:\n  planted: "1"\n' >"$dir/deploy/charts/frontend/templates/secret.yaml"
 expect charts fail "$dir" "renders the Secret frontend-web"

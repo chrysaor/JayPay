@@ -18,5 +18,3 @@ spring:
       port: ${SPRING_CLOUD_VAULT_PORT:8200}
 jwt:
   secret: ${JWT_SECRET}
-encryption:
-  fallback-key: ${ENCRYPTION_FALLBACK_KEY}
