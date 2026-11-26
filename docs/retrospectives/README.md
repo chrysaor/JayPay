@@ -41,3 +41,4 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [A refused payout could not be sent again after the merchant changed the account](2026-11-27-refused-payout-bound-to-one-request-id.md) | [#174](https://github.com/chrysaor/JayPay/pull/174) |
 | 2026-11-27 | [The region total kept top-ups the saga rolled back](2026-11-27-region-total-kept-rolled-back-top-ups.md) | [#178](https://github.com/chrysaor/JayPay/pull/178) |
 | 2026-11-27 | [The company bank account had four definitions in four services](2026-11-27-company-account-defined-in-four-services.md) | [#177](https://github.com/chrysaor/JayPay/pull/177) |
+| 2026-11-27 | [One negative Kafka counter took logging-consumer out of Prometheus](2026-11-27-negative-kafka-counter-failed-every-scrape.md) | [#154](https://github.com/chrysaor/JayPay/issues/154) |

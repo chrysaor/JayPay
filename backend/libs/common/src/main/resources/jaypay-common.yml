@@ -29,6 +29,9 @@ logging:
     format:
       console: ${LOG_FORMAT:}
 management:
+  metrics:
+    enable:
+      "[kafka.consumer.coordinator.rebalance.latency.total]": false
   server:
     port: 9080
   endpoints:
