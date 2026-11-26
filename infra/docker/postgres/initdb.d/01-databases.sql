@@ -6,4 +6,5 @@ CREATE DATABASE payment;
 CREATE DATABASE money_aggregation;
 CREATE DATABASE money_query;
 CREATE DATABASE settlement;
+CREATE DATABASE event_flow;
 CREATE DATABASE keycloak;

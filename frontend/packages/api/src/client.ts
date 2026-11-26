@@ -9,6 +9,7 @@ export type Service =
   | 'payment'
   | 'money-aggregation'
   | 'money-query'
+  | 'event-flow'
 
 type Credentials = { token: string; onUnauthorized: () => void }
 

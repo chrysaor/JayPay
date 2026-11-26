@@ -27,6 +27,10 @@ CALL_PURPOSES = {
     ("settlement-service", "payment-service"): "paid payments, finish settlement",
     ("settlement-service", "banking-service"): "merchant account, firm banking",
 }
+TOPIC_PURPOSES = {
+    "jaypay.flow.events": "one record for each flow step",
+    "jaypay.logging.out.stdout": "one record for each web request",
+}
 SITE_ROLES = {"frontend-web": "customer site", "frontend-admin": "admin console"}
 STORE_PURPOSES = {"vault": "email encryption key"}
 
@@ -203,6 +207,8 @@ def kafka_topics(root, service):
     has_web = any(f"{os.sep}adapter{os.sep}in{os.sep}web{os.sep}" in path for path, _ in sources)
     if has_web and any('@ComponentScan("com.jaypay.common")' in text for _, text in sources):
         sources += [(path, text) for path, text in java_sources(os.path.join(root, COMMON_LIB)) if path.endswith("LoggingProducer.java")]
+    if any("FlowEventPublisher" in text for _, text in sources):
+        sources += [(path, text) for path, text in java_sources(os.path.join(root, COMMON_LIB)) if path.endswith("FlowEventPublisher.java")]
     produces, consumes = set(), set()
     for _, text in sources:
         consumes.update(re.findall(r'@KafkaListener\(topics = "\$\{([\w.]+)\}"', text))
@@ -405,34 +411,41 @@ def kafka(m):
             topics.setdefault(topic, (set(), set()))[0].add(service)
         for topic in info[service]["consumes"]:
             topics.setdefault(topic, (set(), set()))[1].add(service)
-    if len(topics) != 1 or len(next(iter(topics.values()))[1]) != 1:
-        return None, [f"scripts/check-docs.py: the Kafka diagram expects one topic that many services write to and one service reads, found {sorted(topics)}"]
-    log_topic, (writers, readers) = next(iter(topics.items()))
-    log_consumer = next(iter(readers))
-    producers = [s for s in m["services"] if s in writers]
+    problems = [f"scripts/check-docs.py: {t} is a Kafka topic, add its purpose to TOPIC_PURPOSES" for t in sorted(set(topics) - set(TOPIC_PURPOSES))]
+    problems += [f"scripts/check-docs.py: TOPIC_PURPOSES lists {t}, which no service writes and reads" for t in sorted(set(TOPIC_PURPOSES) - set(topics))]
+    problems += [f"scripts/check-docs.py: the Kafka diagram expects one service to read {t}, found {sorted(readers) or 'none'}"
+                 for t, (writers, readers) in sorted(topics.items()) if len(readers) != 1 or not writers]
+    if problems:
+        return None, problems
     pitch, box_h, top = 48, 36, 24
     left_x, left_w, topic_x, topic_w, right_x, right_w = 16, 210, 300, 250, 640, 180
     width = right_x + right_w + 16
-    height = top * 2 + pitch * (len(producers) - 1) + box_h
+    sections = [(t, [s for s in m["services"] if s in topics[t][0]], next(iter(topics[t][1]))) for t in sorted(topics)]
+    rows = sum(len(producers) for _, producers, _ in sections) + len(sections) - 1
+    height = top * 2 + pitch * (rows - 1) + box_h
 
     def y(row):
         return top + row * pitch + box_h / 2
 
-    svg = Svg(width, height, "JayPay Kafka topics",
-              f"{', '.join(producers)} write one record for each web request to {log_topic}, which {log_consumer} reads.")
+    svg = Svg(width, height, "JayPay Kafka topics", " ".join(
+        f"{', '.join(producers)} write {TOPIC_PURPOSES[topic]} to {topic}, which {reader} reads." for topic, producers, reader in sections))
     bus = (left_x + left_w + topic_x) / 2
-    last = len(producers) - 1
-    middle = last // 2
-    for row, name in enumerate(producers):
-        svg.box(left_x, top + row * pitch, left_w, box_h, name)
-        if row != middle:
-            svg.path([(left_x + left_w, y(row)), (bus, y(row))], "purple")
-    svg.path([(bus, y(0)), (bus, y(last))], "purple")
-    svg.arrow([(left_x + left_w, y(middle)), (topic_x, y(middle))], "purple", "purplef")
-    svg.box(topic_x, top + middle * pitch, topic_w, box_h, log_topic, cls="purplebox", rx=18)
-    svg.arrow([(topic_x + topic_w, y(middle)), (right_x, y(middle))], "purple", "purplef")
-    svg.box(right_x, top + middle * pitch, right_w, box_h, log_consumer)
-    svg.label(topic_x + topic_w / 2, top + middle * pitch - 6, "one record per web request", "purplef", "middle")
+    first = 0
+    for topic, producers, reader in sections:
+        last = first + len(producers) - 1
+        middle = (first + last) // 2
+        for row, name in enumerate(producers, start=first):
+            svg.box(left_x, top + row * pitch, left_w, box_h, name)
+            if row != middle:
+                svg.path([(left_x + left_w, y(row)), (bus, y(row))], "purple")
+        if last > first:
+            svg.path([(bus, y(first)), (bus, y(last))], "purple")
+        svg.arrow([(left_x + left_w, y(middle)), (topic_x, y(middle))], "purple", "purplef")
+        svg.box(topic_x, top + middle * pitch, topic_w, box_h, topic, cls="purplebox", rx=18)
+        svg.arrow([(topic_x + topic_w, y(middle)), (right_x, y(middle))], "purple", "purplef")
+        svg.box(right_x, top + middle * pitch, right_w, box_h, reader)
+        svg.label(topic_x + topic_w / 2, top + middle * pitch - 6, TOPIC_PURPOSES[topic], "purplef", "middle")
+        first = last + 2
     return svg, []
 
 

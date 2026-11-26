@@ -10,6 +10,7 @@ import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
+import com.jaypay.money.domain.RechargeFailure;
 import com.jaypay.money.domain.RequestId;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -92,7 +93,7 @@ public class MoneyRechargeSaga {
     public void handle(CheckedMembershipEvent event) {
         if (!event.valid()) {
             log.warn("Member {} of recharge {} is not a valid member, so the recharge fails", membershipId, rechargingRequestId);
-            changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId));
+            changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.MEMBER_NOT_CONFIRMED);
             end();
             return;
         }
@@ -116,7 +117,7 @@ public class MoneyRechargeSaga {
     public void handle(CheckedRegisteredBankAccountEvent event) {
         if (!event.isChecked()) {
             log.warn("The bank account of recharge {} did not pass the check, so the recharge fails", rechargingRequestId);
-            changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId));
+            changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.BANK_ACCOUNT_NOT_CONFIRMED);
             end();
             return;
         }
@@ -150,7 +151,7 @@ public class MoneyRechargeSaga {
             }
             case RequestFirmBankingFinishedEvent.REFUSED -> {
                 log.warn("The bank refused the charge of recharge {}, so the recharge fails", rechargingRequestId);
-                changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId));
+                changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.CHARGE_REFUSED);
                 end();
             }
             default -> log.warn("The bank did not confirm the charge of recharge {}, so the deadline settles it", rechargingRequestId);
@@ -160,7 +161,7 @@ public class MoneyRechargeSaga {
     @DeadlineHandler(deadlineName = DEADLINE)
     public void onDeadline() {
         deadlineId = null;
-        if (changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId))) {
+        if (changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.DEADLINE_PASSED)) {
             log.warn("Recharge {} did not finish before its deadline, so it fails and its charge is rolled back", rechargingRequestId);
             rollBack();
         } else {

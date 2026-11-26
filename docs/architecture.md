@@ -142,7 +142,7 @@ flowchart RL
 
 ## Workloads on Kubernetes
 
-[deploy/README.md](../deploy/README.md) packages the same twelve workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
+[deploy/README.md](../deploy/README.md) packages the same thirteen workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
 
 ```mermaid
 flowchart LR

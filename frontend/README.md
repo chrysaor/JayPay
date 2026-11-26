@@ -39,6 +39,7 @@ Copy `.env.example` to `.env` to point the dev servers somewhere else. Both dev 
 | `JAYPAY_PAYMENT_URL` | `/api/payment` | web, admin | `http://localhost:8085` | `http://payment-service:8080` |
 | `JAYPAY_MONEY_AGGREGATION_URL` | `/api/money-aggregation` | admin | `http://localhost:8086` | `http://money-aggregation-service:8080` |
 | `JAYPAY_MONEY_QUERY_URL` | `/api/money-query` | admin | `http://localhost:8087` | `http://money-query-service:8080` |
+| `JAYPAY_EVENT_FLOW_URL` | `/api/event-flow` | admin | `http://localhost:8093` | `http://event-flow-service:8080` |
 | `JAYPAY_AUTH_URL` | `auth_request` before each `/api` request | admin image | not used | `http://auth-service:8080` |
 | `JAYPAY_KEYCLOAK_URL` | `/realms/staff/`, `/resources/` | admin image | not used | `http://keycloak:8080` |
 

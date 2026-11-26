@@ -16,6 +16,7 @@ scrape_configs:
           - money-aggregation-service:9080
           - money-query-service:9080
           - settlement-service:9080
+          - event-flow-service:9080
           - auth-service:9080
           - logging-consumer:9080
     relabel_configs:

@@ -13,12 +13,12 @@ clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
 grafana=${SMOKE_GRAFANA_URL:-http://localhost:3030}
 vault=${SMOKE_VAULT_URL:-http://localhost:8200}
-read -r -a service_urls <<<"${SMOKE_SERVICE_URLS:-$(printf 'http://localhost:%s ' 8081 8082 8083 8084 8085 8086 8087 8088 8089)}"
+read -r -a service_urls <<<"${SMOKE_SERVICE_URLS:-$(printf 'http://localhost:%s ' 8081 8082 8083 8084 8085 8086 8087 8088 8089 8093)}"
 management_port=9080
 stack=${SMOKE_STACK:-compose}
 services=(
   membership-service banking-service money-service remittance-service payment-service
-  money-aggregation-service money-query-service settlement-service auth-service logging-consumer
+  money-aggregation-service money-query-service settlement-service event-flow-service auth-service logging-consumer
 )
 
 work=$(mktemp -d)
@@ -149,6 +149,20 @@ region_total_is() {
   [ "$http_status" != 200 ] || total=$(cat "$work/body")
   observed "HTTP $http_status, total ${total:-none}: $(response)"
   [ "$total" = "$expected" ]
+}
+
+flow_is() {
+  local flow=$1 status=$2 failed=$3 steps=$4
+  call GET "$admin/api/event-flow/flows/RECHARGE/$flow" "$(hex 16)"
+  observed "HTTP $http_status: $(response)"
+  [ "$http_status" = 200 ] && python3 - "$work/body" "$status" "$failed" "$steps" <<'PY'
+import json, sys
+flow = json.load(open(sys.argv[1]))
+steps = [step["step"] for step in flow["steps"]]
+failed = [step["step"] for step in flow["steps"] if step["outcome"] == "FAILED"]
+sys.exit(0 if flow["status"] == sys.argv[2] and (flow["failedStep"] or "") == sys.argv[3]
+         and steps == sys.argv[4].split() and failed[:1] == sys.argv[3].split() else 1)
+PY
 }
 
 cluster() { kubectl --context jaypay --namespace "${SMOKE_NAMESPACE:?scripts/k8s.sh sets it}" "$@"; }
@@ -601,6 +615,24 @@ for role in VIEWER OPERATOR; do
   as_staff "$role" expect "settling a payment by hand as $role" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
     '{"paymentId":"'$payment_id'"}'
 done
+
+log "a viewer follows each saga top-up step by step in the event flow"
+flows="$admin/api/event-flow/flows"
+expect "the event flows without a token" 401 GET "$flows" "$(hex 16)"
+[ "$(json_field error)" = UNAUTHENTICATED ] || fail "the event flows without a token answered $(response)"
+as "$customer_token" expect "the event flows with a customer token" 401 GET "$flows" "$(hex 16)"
+as_staff VIEWER eventually 60 "the saga top-up smoke-saga-$run never showed every step as SUCCEEDED" flow_is "smoke-saga-$run" SUCCEEDED "" \
+  "RECHARGE_REQUESTED MEMBERSHIP_CHECKED BANK_ACCOUNT_CHECKED BANK_CHARGED WALLET_INCREASED"
+[ "$(json_field membershipId)" = "$membership_id" ] && [ "$(json_field amount)" = 10000 ] || fail "the flow smoke-saga-$run names $(response)"
+as_staff VIEWER eventually 60 "the saga top-up of the unknown member never failed at the member check" flow_is "smoke-unknown-$run" FAILED MEMBERSHIP_CHECKED \
+  "RECHARGE_REQUESTED MEMBERSHIP_CHECKED RECHARGE_FAILED"
+as_staff VIEWER eventually 60 "the saga top-up the bank refused never failed at the charge" flow_is "smoke-refused-$run" FAILED BANK_CHARGED \
+  "RECHARGE_REQUESTED MEMBERSHIP_CHECKED BANK_ACCOUNT_CHECKED BANK_CHARGED RECHARGE_FAILED"
+! grep -q -e "5002-$run" -e "smoke-refused-$run@" -e "Smoke Refused" "$work/body" || fail "the flow smoke-refused-$run shows personal data: $(response)"
+as_staff VIEWER request "the failed event flows" GET "$flows?status=FAILED" "$(hex 16)"
+python3 -c 'import json, sys; ids = [f["flowId"] for f in json.load(open(sys.argv[1]))]; sys.exit(0 if {sys.argv[2], sys.argv[3]} <= set(ids) and sys.argv[4] not in ids else 1)' \
+  "$work/body" "smoke-unknown-$run" "smoke-refused-$run" "smoke-saga-$run" || fail "the failed event flows were $(response)"
+as_staff VIEWER expect "an event flow nobody started" 404 GET "$flows/RECHARGE/smoke-nothing-$run" "$(hex 16)"
 
 log "the settlement job settles the payment once the bank confirms its payout"
 as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"

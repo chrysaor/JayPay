@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: event-flow-service
+  config:
+    import: classpath:jaypay-common.yml
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jaypay}
+    username: ${SPRING_DATASOURCE_USERNAME:jaypay}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+  kafka:
+    consumer:
+      auto-offset-reset: earliest

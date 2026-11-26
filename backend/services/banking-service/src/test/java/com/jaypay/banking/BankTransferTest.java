@@ -6,6 +6,9 @@ import com.jaypay.banking.domain.BankTransfer;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.kafka.KafkaTestBroker;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.eventsourcing.eventstore.EventStore;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,9 +23,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class BankTransferTest {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final int CONCURRENT_REQUESTS = 16;
     private static final String COMPANY_BANK_NAME = "jaypay-company";
     private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123-333-9999";
@@ -60,6 +69,11 @@ class BankTransferTest {
 
     @Autowired
     private RecordingBank bank;
+
+    @DynamicPropertySource
+    static void kafka(DynamicPropertyRegistry registry) {
+        registry.add("spring.kafka.bootstrap-servers", KafkaTestBroker::bootstrapServers);
+    }
 
     @BeforeEach
     void openTheBank() {
@@ -250,6 +264,71 @@ class BankTransferTest {
 
         assertThat(bank.delivered).isEmpty();
         assertThat(finished(aggregateId).getStatus()).isEqualTo(RequestFirmBankingFinishedEvent.REFUSED);
+    }
+
+    @Test
+    void aChargeReportsItsOutcomeToTheFlowOfItsRechargeWithoutTheAccount() {
+        String rechargeId = UUID.randomUUID().toString();
+
+        commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "904", 3000));
+
+        JsonNode step = flowSteps(rechargeId, 1).getFirst();
+        assertThat(stepOutcomeAndReason(step)).isEqualTo("BANK_CHARGED SUCCEEDED null");
+        assertThat(step.get("service").asText()).isEqualTo("banking-service");
+        assertThat(step.get("membershipId").asText()).isEqualTo("1");
+        assertThat(step.get("amount").asLong()).isEqualTo(3000);
+        assertThat(step.toString()).doesNotContain("Woori bank", "Shinhan bank");
+    }
+
+    @Test
+    void aChargeTheBankRefusesReportsWhy() {
+        String rechargeId = UUID.randomUUID().toString();
+        bank.refuse("905");
+
+        commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "905", 3000));
+
+        assertThat(flowSteps(rechargeId, 1)).extracting(BankTransferTest::stepOutcomeAndReason)
+                .containsExactly("BANK_CHARGED FAILED The bank refused the charge");
+    }
+
+    @Test
+    void aChargeTheBankDoesNotAnswerStaysInProgress() {
+        String rechargeId = UUID.randomUUID().toString();
+        bank.silence("906");
+
+        commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "906", 3000));
+
+        assertThat(flowSteps(rechargeId, 1)).extracting(BankTransferTest::stepOutcomeAndReason)
+                .containsExactly("BANK_CHARGED IN_PROGRESS The bank has not confirmed the charge yet");
+    }
+
+    @Test
+    void aRollbackReportsThatTheChargeWentBack() {
+        String rechargeId = UUID.randomUUID().toString();
+        commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "907", 4000));
+
+        commandGateway.sendAndWait(rollback(rechargeId));
+
+        assertThat(flowSteps(rechargeId, 2)).extracting(BankTransferTest::stepOutcomeAndReason)
+                .containsExactly("BANK_CHARGED SUCCEEDED null", "CHARGE_ROLLED_BACK SUCCEEDED null");
+    }
+
+    private static List<JsonNode> flowSteps(String rechargeId, int count) {
+        return KafkaTestBroker.awaitValues("jaypay.flow.events", rechargeId, values -> values.size() >= count, Duration.ofSeconds(20)).stream()
+                .map(BankTransferTest::parse)
+                .toList();
+    }
+
+    private static JsonNode parse(String value) {
+        try {
+            return JSON.readTree(value);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static String stepOutcomeAndReason(JsonNode step) {
+        return step.get("step").asText() + " " + step.get("outcome").asText() + " " + step.get("reason").asText();
     }
 
     private ResultActions transfer(String requestId, String toAccount, long amount) throws Exception {

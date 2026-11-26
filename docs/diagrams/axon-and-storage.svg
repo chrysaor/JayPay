@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 972 516" width="972" height="516" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 972 564" width="972" height="564" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
 <title id="title">JayPay Axon Server and data stores</title>
-<desc id="desc">membership-service uses Axon Server as command handler; banking-service uses Axon Server as 2 aggregates; money-service uses Axon Server as aggregate, saga; money-query-service uses Axon Server as event handler. banking-service uses the PostgreSQL database banking. membership-service uses the PostgreSQL database membership. money-aggregation-service uses the PostgreSQL database money_aggregation. money-query-service uses the PostgreSQL database money_query. money-service uses the PostgreSQL database money. payment-service uses the PostgreSQL database payment. remittance-service uses the PostgreSQL database remittance. settlement-service uses the PostgreSQL database settlement. membership-service reads the email encryption key from Vault. money-query-service writes the DynamoDB table MoneyIncreaseEventByRegion.</desc>
+<desc id="desc">membership-service uses Axon Server as command handler; banking-service uses Axon Server as 2 aggregates; money-service uses Axon Server as aggregate, saga; money-query-service uses Axon Server as event handler. banking-service uses the PostgreSQL database banking. event-flow-service uses the PostgreSQL database event_flow. membership-service uses the PostgreSQL database membership. money-aggregation-service uses the PostgreSQL database money_aggregation. money-query-service uses the PostgreSQL database money_query. money-service uses the PostgreSQL database money. payment-service uses the PostgreSQL database payment. remittance-service uses the PostgreSQL database remittance. settlement-service uses the PostgreSQL database settlement. membership-service reads the email encryption key from Vault. money-query-service writes the DynamoDB table MoneyIncreaseEventByRegion.</desc>
 <style>
 .bg{fill:#ffffff}
 .box{fill:#f6f8fa;stroke:#8c959f;stroke-width:1.2}
@@ -25,7 +25,7 @@
 .green{stroke:#3fb950}.greenf{fill:#3fb950}.greenbox{fill:#04260f;stroke:#3fb950}
 .gray{stroke:#8b949e}.grayf{fill:#9198a1}}
 </style>
-<rect class="bg" x="0" y="0" width="972" height="516" rx="12"/>
+<rect class="bg" x="0" y="0" width="972" height="564" rx="12"/>
 <rect class="box" x="416" y="24" width="210" height="84" rx="8"/>
 <text class="t" x="521" y="70">membership-service</text>
 <path class="gray" d="M626 66 H786"/>
@@ -47,28 +47,33 @@
 <path class="grayf" d="M778 253 L778 263 L786 258 Z"/>
 <text class="l grayf" text-anchor="middle" x="706" y="252">money_query</text>
 <rect class="box" x="416" y="312" width="210" height="36" rx="8"/>
-<text class="t" x="521" y="334">money-aggregation-service</text>
+<text class="t" x="521" y="334">event-flow-service</text>
 <path class="gray" d="M626 330 H786"/>
 <path class="grayf" d="M778 325 L778 335 L786 330 Z"/>
-<text class="l grayf" text-anchor="middle" x="706" y="324">money_aggregation</text>
+<text class="l grayf" text-anchor="middle" x="706" y="324">event_flow</text>
 <rect class="box" x="416" y="360" width="210" height="36" rx="8"/>
-<text class="t" x="521" y="382">payment-service</text>
+<text class="t" x="521" y="382">money-aggregation-service</text>
 <path class="gray" d="M626 378 H786"/>
 <path class="grayf" d="M778 373 L778 383 L786 378 Z"/>
-<text class="l grayf" text-anchor="middle" x="706" y="372">payment</text>
+<text class="l grayf" text-anchor="middle" x="706" y="372">money_aggregation</text>
 <rect class="box" x="416" y="408" width="210" height="36" rx="8"/>
-<text class="t" x="521" y="430">remittance-service</text>
+<text class="t" x="521" y="430">payment-service</text>
 <path class="gray" d="M626 426 H786"/>
 <path class="grayf" d="M778 421 L778 431 L786 426 Z"/>
-<text class="l grayf" text-anchor="middle" x="706" y="420">remittance</text>
+<text class="l grayf" text-anchor="middle" x="706" y="420">payment</text>
 <rect class="box" x="416" y="456" width="210" height="36" rx="8"/>
-<text class="t" x="521" y="478">settlement-service</text>
+<text class="t" x="521" y="478">remittance-service</text>
 <path class="gray" d="M626 474 H786"/>
 <path class="grayf" d="M778 469 L778 479 L786 474 Z"/>
-<text class="l grayf" text-anchor="middle" x="706" y="468">settlement</text>
-<rect class="box" x="786" y="24" width="170" height="468" rx="8"/>
-<text class="t" x="871" y="255">PostgreSQL</text>
-<text class="s" x="871" y="271">one database per service</text>
+<text class="l grayf" text-anchor="middle" x="706" y="468">remittance</text>
+<rect class="box" x="416" y="504" width="210" height="36" rx="8"/>
+<text class="t" x="521" y="526">settlement-service</text>
+<path class="gray" d="M626 522 H786"/>
+<path class="grayf" d="M778 517 L778 527 L786 522 Z"/>
+<text class="l grayf" text-anchor="middle" x="706" y="516">settlement</text>
+<rect class="box" x="786" y="24" width="170" height="516" rx="8"/>
+<text class="t" x="871" y="279">PostgreSQL</text>
+<text class="s" x="871" y="295">one database per service</text>
 <rect class="greenbox" x="16" y="72" width="196" height="180" rx="8"/>
 <text class="t" x="114" y="159">Axon Server</text>
 <text class="s" x="114" y="175">commands and events</text>

@@ -159,7 +159,7 @@ describe('the signed-in console', () => {
     renderApp('/members')
 
     await screen.findByRole('heading', { name: 'Members' })
-    expect(menuLabels()).toEqual(['Members', 'Regional money', 'Settlement', 'My account'])
+    expect(menuLabels()).toEqual(['Members', 'Regional money', 'Settlement', 'Event flow', 'My account'])
   })
 
   test('the staff accounts address is gone', async () => {

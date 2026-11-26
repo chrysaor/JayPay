@@ -1,13 +1,13 @@
 # Kubernetes packaging
 
-This directory packages every workload that the repository builds as Helm charts: the ten Spring Boot services and the two nginx sites. It also packages the nine dependencies that the local cluster runs, the OpenTelemetry Collector, Prometheus and Grafana among them. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` starts a local minikube cluster in which Argo CD syncs `deploy/envs/local`. The cloud comes in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
+This directory packages every workload that the repository builds as Helm charts: the eleven Spring Boot services and the two nginx sites. It also packages the nine dependencies that the local cluster runs, the OpenTelemetry Collector, Prometheus and Grafana among them. `make verify STEPS=charts` renders every workload and checks the result, and `make k8s-up` starts a local minikube cluster in which Argo CD syncs `deploy/envs/local`. The cloud comes in later phases of [the roadmap](https://github.com/chrysaor/JayPay/issues/71).
 
 ## Layout
 
 ```
 deploy/
   charts/
-    spring-service/          one chart for all ten Spring Boot services
+    spring-service/          one chart for all eleven Spring Boot services
     frontend/                one chart for frontend-web and frontend-admin
       ci/ingress-values.yaml values that only the gate renders, to cover the Ingress template
     dependency/              one chart for the dependencies of the local cluster
@@ -197,7 +197,7 @@ make k8s-down
 - `make k8s-policy-check` proves the NetworkPolicies on the running cluster. It starts a pod labelled `policy-probe` in the namespace and a pod labelled `frontend-admin` in the namespace `jaypay-policy-probe`, and opens a TCP connection to every port of every Service in the namespace from those two pods, from one pod of every workload and dependency and from the ingress controller. It expects a connection to open exactly when a rendered NetworkPolicy admits that caller on that port, and fails on any difference, so every workload but Prometheus must find every `management` port closed. A pod that has neither `nc` nor `bash`, such as the Collector, cannot run the check and is listed as skipped. The two probe pods, both sites and the ingress controller must run it. It deletes the probe pods when it ends.
 - `make k8s-down` deletes the profile, everything in it and the published repository.
 
-The profile asks for every CPU of the Docker VM and 10 GiB of memory. Set `K8S_CPUS` and `K8S_MEMORY` to change that. The memory requests of the workloads and the dependencies add up to 9.9 GiB, because each request equals the Compose `mem_limit`, and the node's own pods and kindnet bring the requests on the node to about 10.2 GiB, more than the 10 GiB the node has. Argo CD sets no requests and uses about 175 MiB. Right after `make k8s-smoke` the node used 9.5 GiB of its 10 GiB, with Keycloak at 640 MiB of its 768 MiB. The node reports the memory of the whole Docker VM as allocatable, so the scheduler would admit about 1.1 GiB more requests than the node can hold. Check the sum before adding a workload. Do not run the Compose stack at the same time.
+The profile asks for every CPU of the Docker VM and 10 GiB of memory. Set `K8S_CPUS` and `K8S_MEMORY` to change that. The memory requests of the workloads and the dependencies add up to 10.3 GiB, because each request equals the Compose `mem_limit`, and the node's own pods and kindnet bring the requests on the node to about 10.6 GiB, more than the 10 GiB the node has. Argo CD sets no requests and uses about 175 MiB. Right after `make k8s-smoke` the node used 9.5 GiB of its 10 GiB, with Keycloak at 640 MiB of its 768 MiB. The node reports the memory of the whole Docker VM as allocatable, so the scheduler would admit about 1.1 GiB more requests than the node can hold. Check the sum before adding a workload. Do not run the Compose stack at the same time.
 
 A new node pulls the nine dependency images, about 5.5 GB, from their registries. The node cannot reuse the images of the host's Docker, because `docker load` drops the digest that the dependency images are pinned by. `make k8s-up` starts all nine pulls at once and logs how long each took. The waits time out after `K8S_TIMEOUT` seconds, 1200 by default.
 

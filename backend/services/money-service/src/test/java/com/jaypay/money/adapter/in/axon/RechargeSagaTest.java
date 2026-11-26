@@ -104,6 +104,24 @@ class RechargeSagaTest {
     }
 
     @Test
+    void aRechargeTheBankConfirmsReportsItsRequestAndItsWalletIncreaseToTheFlowTopic() throws Exception {
+        String member = memberWithWallet();
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        List<JsonNode> steps = flowSteps(requestId, 2);
+        assertThat(steps).extracting(step -> step.get("step").asText() + " " + step.get("outcome").asText())
+                .containsExactly("RECHARGE_REQUESTED SUCCEEDED", "WALLET_INCREASED SUCCEEDED");
+        assertThat(steps).allSatisfy(step -> {
+            assertThat(step.get("flowType").asText()).isEqualTo("RECHARGE");
+            assertThat(step.get("service").asText()).isEqualTo("money-service");
+            assertThat(step.get("membershipId").asText()).isEqualTo(member);
+            assertThat(step.get("amount").asLong()).isEqualTo(700);
+        });
+    }
+
+    @Test
     void aRechargeOfAMemberThatMembershipDoesNotConfirmFailsBeforeTheBank() throws Exception {
         String member = memberWithWallet();
         membership.refuse(member);
@@ -175,6 +193,30 @@ class RechargeSagaTest {
     }
 
     @Test
+    void aRechargeTheBankRefusesReportsWhyItFailed() throws Exception {
+        String member = memberWithWallet();
+        banking.refuse(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(flowSteps(requestId, 2)).extracting(RechargeSagaTest::stepOutcomeAndReason)
+                .containsExactly("RECHARGE_REQUESTED SUCCEEDED null", "RECHARGE_FAILED FAILED The bank refused the charge");
+    }
+
+    @Test
+    void aRechargeOfAMemberMembershipDoesNotConfirmReportsWhyItFailed() throws Exception {
+        String member = memberWithWallet();
+        membership.refuse(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(flowSteps(requestId, 2)).extracting(RechargeSagaTest::stepOutcomeAndReason)
+                .containsExactly("RECHARGE_REQUESTED SUCCEEDED null", "RECHARGE_FAILED FAILED membership-service did not confirm the member");
+    }
+
+    @Test
     void aRechargeTheBankNeverConfirmsFailsAtTheDeadlineAndIsRolledBack() throws Exception {
         String member = memberWithWallet();
         banking.silence(account(member));
@@ -188,6 +230,18 @@ class RechargeSagaTest {
     }
 
     @Test
+    void aRechargeThatMissesItsDeadlineReportsTheDeadline() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(flowSteps(requestId, 2)).extracting(RechargeSagaTest::stepOutcomeAndReason)
+                .containsExactly("RECHARGE_REQUESTED SUCCEEDED null", "RECHARGE_FAILED FAILED The recharge did not finish before its deadline");
+    }
+
+    @Test
     void aRechargeOfAMemberWithoutARegisteredAccountFailsAtOnce() throws Exception {
         String member = memberWithWallet();
         WITHOUT_ACCOUNT.add(member);
@@ -197,6 +251,18 @@ class RechargeSagaTest {
 
         assertThat(statusOf(requestId)).contains(MoneyChangingStatus.FAILED);
         assertThat(banking.checks(requestId)).isZero();
+    }
+
+    @Test
+    void aRechargeOfAMemberWithoutARegisteredAccountReportsThatItsRequestFailed() throws Exception {
+        String member = memberWithWallet();
+        WITHOUT_ACCOUNT.add(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(flowSteps(requestId, 1)).extracting(RechargeSagaTest::stepOutcomeAndReason)
+                .containsExactly("RECHARGE_REQUESTED FAILED The member has no registered bank account");
     }
 
     @Test
@@ -251,6 +317,24 @@ class RechargeSagaTest {
 
     private static String account(String member) {
         return "1002-" + member;
+    }
+
+    private static List<JsonNode> flowSteps(String requestId, int count) {
+        return KafkaTestBroker.awaitValues("jaypay.flow.events", requestId, values -> values.size() >= count, PATIENCE).stream()
+                .map(RechargeSagaTest::parse)
+                .toList();
+    }
+
+    private static JsonNode parse(String value) {
+        try {
+            return JSON.readTree(value);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static String stepOutcomeAndReason(JsonNode step) {
+        return step.get("step").asText() + " " + step.get("outcome").asText() + " " + step.get("reason").asText();
     }
 
     private static <T> T eventually(Supplier<Optional<T>> probe) throws InterruptedException {

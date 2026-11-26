@@ -3,6 +3,7 @@ map $jaypay_service $jaypay_upstream {
     payment            ${JAYPAY_PAYMENT_URL};
     money-aggregation  ${JAYPAY_MONEY_AGGREGATION_URL};
     money-query        ${JAYPAY_MONEY_QUERY_URL};
+    event-flow         ${JAYPAY_EVENT_FLOW_URL};
 }
 
 server {
@@ -11,7 +12,7 @@ server {
 
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
-    location ~ ^/api/(?<jaypay_service>membership|payment|money-aggregation|money-query)/ {
+    location ~ ^/api/(?<jaypay_service>membership|payment|money-aggregation|money-query|event-flow)/ {
         auth_request /_authorize;
         error_page 401 @unauthenticated;
         error_page 403 @forbidden;

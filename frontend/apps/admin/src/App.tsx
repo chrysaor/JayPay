@@ -1,5 +1,6 @@
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router'
 import { roles } from './permissions'
+import { EventFlow } from './screens/EventFlow'
 import { MemberDetail } from './screens/MemberDetail'
 import { Members } from './screens/Members'
 import { MyAccount } from './screens/MyAccount'
@@ -12,6 +13,7 @@ const menu = [
   { to: '/members', label: 'Members' },
   { to: '/money', label: 'Regional money' },
   { to: '/settlement', label: 'Settlement' },
+  { to: '/event-flow', label: 'Event flow' },
   { to: '/account', label: 'My account' },
 ]
 
@@ -80,6 +82,7 @@ export function App() {
         <Route path="members/:membershipId" element={<MemberDetail />} />
         <Route path="money" element={<RegionalMoney />} />
         <Route path="settlement" element={<Settlement />} />
+        <Route path="event-flow" element={<EventFlow />} />
         <Route path="account" element={<MyAccount />} />
         <Route path="*" element={<NotFound />} />
       </Route>
