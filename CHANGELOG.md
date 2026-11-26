@@ -6,6 +6,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ### Added
 
+- The README has a **How it is built** section: how the maintainer and the coding agents split the work, the issue and pull request flow, the `make verify` gate, the release confirmation, and where decisions, retrospectives and the scorecard live ([#172](https://github.com/chrysaor/JayPay/issues/172))
 - `make scorecard` writes `docs/scorecard.md` from GitHub and the local test reports: merged PRs and the time from open to merge per release, the CI failure rate, the time between releases, line coverage, test counts, smoke scenes, and issues by label and milestone, each with its source and what it does not measure. The vitest runs of both frontend apps also write `coverage/test-results.json` ([#152](https://github.com/chrysaor/JayPay/issues/152))
 
 ### Changed
