@@ -41,5 +41,6 @@ When a schema change that `ddl-auto: update` cannot make is needed, or when the 
 ## Links
 
 - Issue [#148](https://github.com/chrysaor/JayPay/issues/148), [#124](https://github.com/chrysaor/JayPay/issues/124)
+- PR [#180](https://github.com/chrysaor/JayPay/pull/180)
 - [0014](0014-flow-type-and-step-stored-as-text.md)
 - [Retrospective](../retrospectives/2026-11-27-status-columns-refuse-later-values.md)

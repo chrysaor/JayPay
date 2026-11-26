@@ -14,7 +14,7 @@ Every test and every CI job creates its database from nothing, so the schema alw
 
 ## Fix
 
-Each service that uses JPA now drops every single-column check constraint on an enum column right after Hibernate has built or updated the schema, on every start. An existing database loses the constraints of 0.4.0 on its first start with the new version, and a new database loses them as soon as Hibernate creates them. Checks named on an entity, such as `wallet_balance_not_negative`, stay. See the [decision](../decisions/0022-enum-columns-without-value-checks.md).
+In [#180](https://github.com/chrysaor/JayPay/pull/180), each service that uses JPA now drops every single-column check constraint on an enum column right after Hibernate has built or updated the schema, on every start. An existing database loses the constraints of 0.4.0 on its first start with the new version, and a new database loses them as soon as Hibernate creates them. Checks named on an entity, such as `wallet_balance_not_negative`, stay. See the [decision](../decisions/0022-enum-columns-without-value-checks.md).
 
 ## What changed so it is caught next time
 

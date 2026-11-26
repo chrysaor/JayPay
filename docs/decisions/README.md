@@ -55,7 +55,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0019](0019-payout-attempts-in-settlement-service.md) | settlement-service keeps a payout attempt for each payment | 0.5.0 (unreleased) | accepted | [#174](https://github.com/chrysaor/JayPay/pull/174), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0020](0020-company-account-owned-by-banking-service.md) | banking-service owns the company bank account | 0.5.0 (unreleased) | accepted | [#177](https://github.com/chrysaor/JayPay/pull/177), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0021](0021-region-total-counts-wallet-increases.md) | The region total counts wallet increases, once per recharge | 0.5.0 (unreleased) | accepted | [#178](https://github.com/chrysaor/JayPay/pull/178), [Unreleased](../../CHANGELOG.md#unreleased) |
-| [0022](0022-enum-columns-without-value-checks.md) | Enum columns keep no check of their values, without a migration tool | 0.5.0 (unreleased) | accepted | [#148](https://github.com/chrysaor/JayPay/issues/148), [retrospective](../retrospectives/2026-11-27-status-columns-refuse-later-values.md), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0022](0022-enum-columns-without-value-checks.md) | Enum columns keep no check of their values, without a migration tool | 0.5.0 (unreleased) | accepted | [#180](https://github.com/chrysaor/JayPay/pull/180), [retrospective](../retrospectives/2026-11-27-status-columns-refuse-later-values.md), [Unreleased](../../CHANGELOG.md#unreleased) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 
