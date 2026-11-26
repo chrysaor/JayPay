@@ -31,16 +31,16 @@ sequenceDiagram
     money->>banking: RequestFirmBankingCommand
     Note over banking: stores the transfer under recharge-<id>,<br/>the fake bank moves the money once
     banking->>money: RequestFirmBankingFinishedEvent
-    banking->>query: RequestFirmBankingFinishedEvent
     Note over money: a confirmed charge adds the amount<br/>to the balance in PostgreSQL once,<br/>a refused one fails the wallet change
     alt the deadline passes or the wallet change is no longer running
         money->>banking: RollbackFirmBankingRequestCommand
         banking->>money: RollbackFirmBankingFinishedEvent
+    else the wallet was increased
+        money->>query: WalletRechargedEvent
+        query->>membership: GET /memberships/{membershipId}
+        membership-->>query: member address
+        query->>dynamodb: record the recharge and add the amount<br/>to the totals of that address, once per recharge
     end
-    Note over query: only a confirmed charge counts
-    query->>membership: GET /memberships/{membershipId}
-    membership-->>query: member address
-    query->>dynamodb: add the amount to the total of that address
 ```
 
 When membership-service does not answer, or the command cannot reach it, nothing else happens until the deadline fails the wallet change.
