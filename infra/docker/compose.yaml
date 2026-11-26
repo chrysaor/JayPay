@@ -228,16 +228,14 @@ services:
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
       VAULT_TOKEN: ${VAULT_TOKEN:?run scripts/init-env.py}
       VAULT_MEMBERSHIP_TOKEN: ${VAULT_MEMBERSHIP_TOKEN:?run scripts/init-env.py}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run scripts/init-env.py}
     volumes:
       - ./vault:/scripts:ro
     tmpfs:
       - /vault/file
       - /vault/logs
       - /home/vault:uid=100,gid=1000
-    post_start:
-      - command: ["sh", "/scripts/encryption-key.sh", "write"]
-        environment:
-          ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run scripts/init-env.py}
+    entrypoint: ["sh", "-c", "sh /scripts/encryption-key.sh write & exec docker-entrypoint.sh server -dev"]
     healthcheck:
       test: ["CMD", "sh", "/scripts/encryption-key.sh", "check"]
       interval: 5s

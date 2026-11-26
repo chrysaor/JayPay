@@ -718,6 +718,17 @@ log "the Vault token of membership-service reads its key and nothing else"
 [ "$(as_membership_vault GET sys/mounts)" = 403 ] || fail "membership-service could list the Vault mounts: $(response)"
 [ "$(as_membership_vault POST auth/token/create '{}')" = 403 ] || fail "membership-service could create a Vault token: $(response)"
 
+if [ "$stack" != kubernetes ]; then
+  log "Vault holds the key again after it restarts"
+  docker restart "$(docker compose -f "$compose_file" ps -q vault)" >/dev/null || fail "could not restart the vault container"
+  restored=no
+  for _ in $(seq 1 30); do
+    [ "$(as_membership_vault GET kv-v1/data/encrypt/data/dbkey)" = 200 ] && restored=yes && break
+    sleep 2
+  done
+  [ "$restored" = yes ] || fail "membership-service could not read its key after Vault restarted: $(response)"
+fi
+
 log "no container runs as root and every port stays on the loopback address"
 running_as_root=$(root_containers)
 [ -z "$running_as_root" ] || fail "these containers run as root: $(echo $running_as_root)"
