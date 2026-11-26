@@ -152,6 +152,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make k8s-up`, `make k8s-smoke`, `make k8s-down` | Runs the same stack on a local minikube cluster, drives it through its ingress, or deletes the cluster, see [deploy/README.md](deploy/README.md#local-cluster) |
 | `make scan`, `make scan-images` | Runs the Trivy and gitleaks scans, or the Trivy image scan |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
+| `make dependencies` | Downloads the backend dependencies and retries when the repository refuses, which CI runs before the build |
 | `make contract` | Regenerates `docs/api-contract.md` after an intended endpoint change |
 | `make diagrams` | Redraws `docs/diagrams/*.svg` after a change to the calls, `compose.yaml` or the Kafka and Axon code |
 | `make release-branch VERSION=X.Y.Z` | Creates `release/X.Y.Z` from `origin/develop` with a commit that sets the version and turns Unreleased in `CHANGELOG.md` into X.Y.Z |
