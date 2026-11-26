@@ -83,7 +83,7 @@ banking-service calls membership-service for the member check before it register
 
 - `POST /banking/account/register` registers a bank account for a member.
 - `POST /banking/account/register-eda` registers a bank account through an Axon command and returns no body.
-- `GET /banking/account/{membershipId}` returns the registered account of a member.
+- `GET /banking/account/{membershipId}` returns the registered account of a member, or 404 when the member has no registered account.
 - `POST /banking/info` asks the fake bank whether an account is valid.
 - `POST /banking/firmbanking/request` sends a bank transfer once per request id and returns its result.
 
@@ -95,7 +95,6 @@ banking-service calls membership-service for the member check before it register
 - A transfer left `PENDING` stays that way until the same request is sent again. Nothing retries it in the background.
 - Firm banking requests from before the `bank_transfer` table stay in the old `request_firm_banking` table, which banking-service no longer reads.
 - `POST /banking/account/register` throws a `NullPointerException` when the member is not valid, because the membership adapter returns no status for such a member.
-- `GET /banking/account/{membershipId}` throws `NoSuchElementException` when the member has no registered account.
 
 ## money-service
 
@@ -127,7 +126,7 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. A member that does not exist or is not valid answers with the status `2`.
 - `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
 - When membership-service does not answer, or answers with neither a member nor 404, `POST /money/increase` and `POST /money/decrease` answer 503 with `{"error":"MEMBERSHIP_NOT_CONFIRMED"}` and record nothing under the request id. Sending the same request again checks the member again and applies the change once.
-- `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account fails at once with the status `2`.
+- `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account, which banking-service answers with 404, fails at once with the status `2`. When banking-service does not answer, or answers with neither an account nor 404, the request answers 503 with `{"error":"REGISTERED_ACCOUNT_NOT_CONFIRMED"}`, records nothing under the request id and starts no saga. Sending the same request again looks the account up again and tops up once.
 - The saga first sends `CheckMembershipCommand` to membership-service, then checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. After it added the amount, it publishes `WalletRechargedEvent` with the `rechargingRequestId`, the member and the amount, which money-query-service counts. A member that does not exist or is not valid, an account that fails the check, or a charge the bank refuses ends the wallet change as `2` and moves no money. When membership-service does not answer, or the command cannot reach it, the deadline ends the saga. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
 - `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created. It waits for the command, so a failure answers as an error. A wallet keeps the first aggregate it was linked to. A saga top-up for a member without an aggregate creates one first.
 - `POST /money/member-money` returns the wallets of a list of member ids. money-aggregation-service uses it to read balances.

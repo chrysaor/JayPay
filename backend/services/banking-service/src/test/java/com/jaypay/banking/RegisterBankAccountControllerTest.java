@@ -89,6 +89,12 @@ class RegisterBankAccountControllerTest {
     }
 
     @Test
+    void aMembershipWithoutARegisteredBankAccountIsNotFound() throws Exception {
+        mockMvc.perform(get("/banking/account/" + UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void reportsExternalBankAccountInfo() throws Exception {
         mockMvc.perform(post("/banking/info")
                         .contentType(MediaType.APPLICATION_JSON)

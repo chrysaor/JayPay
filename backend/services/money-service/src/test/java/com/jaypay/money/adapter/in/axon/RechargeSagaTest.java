@@ -65,6 +65,7 @@ class RechargeSagaTest {
     private static final AtomicInteger MEMBERS = new AtomicInteger(500);
     private static final Set<String> WITHOUT_ACCOUNT = ConcurrentHashMap.newKeySet();
     private static final Set<String> ACCOUNT_LOOKUP_DROPPED = ConcurrentHashMap.newKeySet();
+    private static final Set<String> ACCOUNT_LOOKUP_FAILING = ConcurrentHashMap.newKeySet();
     private static final HttpServer OTHER_SERVICES = startOtherServices();
 
     @Autowired
@@ -463,15 +464,32 @@ class RechargeSagaTest {
         ACCOUNT_LOOKUP_DROPPED.add(member);
         String requestId = UUID.randomUUID().toString();
 
-        int lost = mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member + "\",\"amount\":700}"))
-                .andReturn().getResponse().getStatus();
-
-        assertThat(lost).isGreaterThanOrEqualTo(500);
+        assertThat(unconfirmedRecharge(requestId, member, 700).get("error").asText()).isEqualTo("REGISTERED_ACCOUNT_NOT_CONFIRMED");
         assertThat(statusOf(requestId)).isEmpty();
         assertThat(banking.checks(requestId)).isZero();
 
         ACCOUNT_LOOKUP_DROPPED.remove(member);
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(700);
+    }
+
+    @Test
+    void aRechargeWhoseAccountLookupFailsWith5xxStoresNothingAndTheRepeatCreditsOnce() throws Exception {
+        String member = memberWithWallet();
+        ACCOUNT_LOOKUP_FAILING.add(member);
+        String requestId = UUID.randomUUID().toString();
+
+        assertThat(unconfirmedRecharge(requestId, member, 700).get("error").asText()).isEqualTo("REGISTERED_ACCOUNT_NOT_CONFIRMED");
+        assertThat(unconfirmedRecharge(requestId, member, 700).get("error").asText()).isEqualTo("REGISTERED_ACCOUNT_NOT_CONFIRMED");
+        assertThat(statusOf(requestId)).isEmpty();
+        assertThat(banking.checks(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+
+        ACCOUNT_LOOKUP_FAILING.remove(member);
         recharge(requestId, member, 700);
 
         assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
@@ -493,6 +511,14 @@ class RechargeSagaTest {
         String body = mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member + "\",\"amount\":" + amount + "}"))
                 .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return JSON.readTree(body);
+    }
+
+    private JsonNode unconfirmedRecharge(String requestId, String member, long amount) throws Exception {
+        String body = mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member + "\",\"amount\":" + amount + "}"))
+                .andExpect(status().isServiceUnavailable())
                 .andReturn().getResponse().getContentAsString();
         return JSON.readTree(body);
     }
@@ -556,6 +582,10 @@ class RechargeSagaTest {
                 }
                 if (ACCOUNT_LOOKUP_DROPPED.contains(member)) {
                     exchange.close();
+                    return;
+                }
+                if (ACCOUNT_LOOKUP_FAILING.contains(member)) {
+                    respond(exchange, 503, "{\"status\":503}");
                     return;
                 }
                 respond(exchange, 200, "{\"registeredBankAccountId\":\"3\",\"membershipId\":\"" + member + "\",\"bankName\":\"jay-bank\","

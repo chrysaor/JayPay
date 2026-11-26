@@ -36,4 +36,5 @@ When another service stores a final result from a membership check, or when wall
 
 - Issue [#137](https://github.com/chrysaor/JayPay/issues/137)
 - PR [#175](https://github.com/chrysaor/JayPay/pull/175)
+- PR [#186](https://github.com/chrysaor/JayPay/pull/186), the same rule for the account lookup of a saga top-up on banking-service ([#182](https://github.com/chrysaor/JayPay/issues/182))
 - Retrospective [A wallet change asked during a membership-service outage failed for good](../retrospectives/2026-11-27-membership-outage-read-as-missing-member.md)
