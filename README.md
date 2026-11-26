@@ -20,6 +20,14 @@ make down
 
 `make images` builds every image, and `make up` starts the stack and waits until it is healthy. Then open the customer site at http://localhost:8090 and the admin console at http://localhost:8091, which asks for a staff account from `infra/docker/.env`. `make smoke` drives the stack end to end, and `make down` stops it. [Local stack](#local-stack) explains each step and lists every address.
 
+## Screens
+
+The customer site after a top-up, and the event flow of the admin console showing a remittance that money-service refused.
+
+![The wallet page of the customer site with a balance and a top-up form](docs/images/web-wallet.jpg)
+
+![The event flow page of the admin console with the steps of a failed remittance above the list of recent flows](docs/images/admin-event-flow.jpg)
+
 ## Architecture
 
 Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services. Staff sign in to the admin console through Keycloak, and before the admin console forwards a request, nginx asks auth-service whether the staff token's role may make it.
