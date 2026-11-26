@@ -2,6 +2,8 @@
 
 This page describes each of the eleven Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
 
+The services that use PostgreSQL let Hibernate create and update their tables with `SPRING_JPA_HIBERNATE_DDL_AUTO`, `update` in both local stacks. Hibernate adds a check constraint that lists the values of each enum column, and `update` never changes it, so on every start each service drops the checks that cover a single enum column, on a new database and on one that an older version created. The database then takes any status value, and only the code checks it. Checks named on an entity, such as the `wallet` balance and the `payment` fee, stay.
+
 ## membership-service
 
 Members of the customer site: sign up, look-up, edits and the customer tokens.

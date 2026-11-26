@@ -26,11 +26,11 @@ class FlowSchemaTest {
     }
 
     @Test
-    void aDatabaseCreatedTodayAcceptsTheFlowTypesAndStepsOfALaterVersion() {
+    void aDatabaseCreatedTodayAcceptsTheValuesOfALaterVersion() {
         List<String> checks = database.queryForList("""
                 select pg_get_constraintdef(oid) from pg_constraint
                 where contype = 'c' and conrelid::regclass::text in ('flow', 'flow_step')""", String.class);
 
-        assertThat(checks).noneMatch(check -> check.contains("flow_type") || check.contains("step"));
+        assertThat(checks).isEmpty();
     }
 }

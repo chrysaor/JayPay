@@ -11,6 +11,7 @@ dependencies {
     api(libs.jackson2.databind)
     api(libs.jackson2.datatype.jsr310)
     api(libs.axon.spring.boot.starter)
+    compileOnly(libs.spring.boot.starter.data.jpa)
     implementation(libs.micrometer.java11)
     implementation(libs.opentelemetry.logback.appender)
 
