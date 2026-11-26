@@ -1,11 +1,16 @@
 package com.jaypay.money.adapter.out.service;
 
 import com.jaypay.common.CommonHttpClient;
+import com.jaypay.common.HttpReply;
 import com.jaypay.common.membership.MembershipResponse;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.MembershipStatus;
+import com.jaypay.money.domain.MembershipNotConfirmedException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.io.UncheckedIOException;
+import java.net.HttpURLConnection;
 
 
 @Component
@@ -23,8 +28,19 @@ public class MembershipServiceAdapter implements GetMembershipPort {
     @Override
     public MembershipStatus getMembership(String membershipId) {
         String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
-        MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class).body();
-        return new MembershipStatus(membershipId, membership != null && membership.valid());
+        HttpReply<MembershipResponse> reply;
+        try {
+            reply = commonHttpClient.get(url, MembershipResponse.class);
+        } catch (UncheckedIOException unanswered) {
+            throw new MembershipNotConfirmedException(membershipId, unanswered.getMessage());
+        }
+        if (reply.status() == HttpURLConnection.HTTP_NOT_FOUND) {
+            return new MembershipStatus(membershipId, false);
+        }
+        if (reply.body() == null) {
+            throw new MembershipNotConfirmedException(membershipId, "status " + reply.status());
+        }
+        return new MembershipStatus(membershipId, reply.body().valid());
     }
 
 }

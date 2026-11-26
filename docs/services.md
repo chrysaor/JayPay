@@ -31,7 +31,7 @@ The other services call `GET /memberships/{membershipId}` to check that a member
 ### Endpoints
 
 - `POST /memberships` signs a member up.
-- `GET /memberships/{membershipId}` returns one member.
+- `GET /memberships/{membershipId}` returns one member, or answers 404 when the id names no member.
 - `GET /memberships/address/{addressName}` returns the members at one address.
 - `PUT /memberships/{membershipId}` edits a member.
 - `POST /memberships/login` issues the two tokens for a valid member.
@@ -121,8 +121,9 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - `wallet` holds one row per member, a unique `membership_id`, and a `bigint` balance that a check constraint keeps at or above 0. An increase is one `INSERT ... ON CONFLICT DO UPDATE` that adds the amount, so concurrent top-ups all count and a first top-up creates the only row. A decrease is one `UPDATE ... WHERE balance >= amount`, so it fails instead of going below 0.
 - The answer carries `moneyChangingRequestId`, the request id, `moneyChangingType` `1` for an increase or `2` for a decrease, `moneyChangingResultStatus` `1` for success, `2` for failure or `0` while a saga top-up is still running, and `amount`.
 
-- `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. An invalid member answers with the status `2`.
+- `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. A member that does not exist or is not valid answers with the status `2`.
 - `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
+- When membership-service does not answer, or answers with neither a member nor 404, `POST /money/increase` and `POST /money/decrease` answer 503 with `{"error":"MEMBERSHIP_NOT_CONFIRMED"}` and record nothing under the request id. Sending the same request again checks the member again and applies the change once.
 - `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account fails at once with the status `2`.
 - The saga first sends `CheckMembershipCommand` to membership-service, then checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. A member that does not exist or is not valid, an account that fails the check, or a charge the bank refuses ends the wallet change as `2` and moves no money. When membership-service does not answer, or the command cannot reach it, the deadline ends the saga. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
 - `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created. It waits for the command, so a failure answers as an error. A wallet keeps the first aggregate it was linked to. A saga top-up for a member without an aggregate creates one first.

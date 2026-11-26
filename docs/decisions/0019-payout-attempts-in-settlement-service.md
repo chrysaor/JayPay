@@ -28,6 +28,7 @@ settlement-service has the table `payout_attempt`, one row per payment with the 
 - An unanswered payout stays bound to the account it was first sent to until the bank answers, even when the merchant changes the account.
 - settlement-service now stores merchant account numbers, next to the copy in banking-service.
 - If `payout_attempt` is lost, attempt numbers start again from 1 with the current account. banking-service then refuses a different transfer under a used id, so no payment is paid twice, but such a payment waits for an operator.
+- A payout that was refused before this change and whose merchant has already changed the account starts at attempt 1 with the new account. banking-service refuses it the same way, so it also waits for an operator.
 
 ## When to decide again
 

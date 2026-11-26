@@ -28,6 +28,16 @@ The customer site after a top-up, and the event flow of the admin console showin
 
 ![The event flow page of the admin console with the steps of a failed remittance above the list of recent flows](docs/images/admin-event-flow.jpg)
 
+## How it is built
+
+One maintainer develops JayPay with coding agents. The agents follow the rules in [CLAUDE.md](CLAUDE.md), and the maintainer decides what to build, answers the open decisions and confirms every release.
+
+- Every change starts from an issue. An agent branches from `develop`, writes the failing test first, and opens a pull request that names the issue.
+- `make verify` is the one gate. Agents run it before they report work as done, and CI runs the same target on every pull request. `make verify-selftest` plants errors and proves that the gate fails on each of them.
+- An agent merges its pull request into `develop` once CI passes. Merging into `master` and tagging a release need the maintainer's confirmation every time.
+- A pull request that makes a decision adds a record to [docs/decisions](docs/decisions/README.md), and a bug that reached `develop` or took more than one attempt gets a retrospective in [docs/retrospectives](docs/retrospectives/README.md).
+- [docs/scorecard.md](docs/scorecard.md) shows merged pull requests, time to merge, the CI failure rate, coverage and tests, each with its source and what it does not measure.
+
 ## Architecture
 
 Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services. Staff sign in to the admin console through Keycloak, and before the admin console forwards a request, nginx asks auth-service whether the staff token's role may make it.

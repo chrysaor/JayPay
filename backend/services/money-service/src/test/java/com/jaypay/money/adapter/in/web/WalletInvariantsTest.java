@@ -27,8 +27,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,6 +46,7 @@ class WalletInvariantsTest {
 
     private static final int CONCURRENT_REQUESTS = 40;
     private static final AtomicLong MEMBERS = new AtomicLong(5000);
+    private static final Set<String> UNANSWERED = ConcurrentHashMap.newKeySet();
     private static final HttpServer MEMBERSHIP = startMembershipService();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -185,6 +188,29 @@ class WalletInvariantsTest {
         assertThat(balanceOf(member)).isEqualTo(4_000_000_000L);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/money/increase", "/money/decrease"})
+    void aChangeAskedWhileMembershipServiceFailsIsAppliedOnceWhenTheSameRequestComesBack(String path) throws Exception {
+        String member = memberWithBalance(5000);
+        String requestId = UUID.randomUUID().toString();
+
+        UNANSWERED.add(member);
+        HttpResponse<String> duringOutage = post(path, "{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member
+                + "\",\"amount\":3000}");
+        UNANSWERED.remove(member);
+
+        assertThat(duringOutage.statusCode()).isEqualTo(503);
+        assertThat(JSON.readTree(duringOutage.body()).get("error").asText()).isEqualTo("MEMBERSHIP_NOT_CONFIRMED");
+        assertThat(balanceOf(member)).isEqualTo(5000);
+
+        JsonNode afterRecovery = change(path, requestId, member, 3000);
+        JsonNode repeated = change(path, requestId, member, 3000);
+
+        assertThat(afterRecovery.get("moneyChangingResultStatus").asInt()).isEqualTo(1);
+        assertThat(repeated).isEqualTo(afterRecovery);
+        assertThat(balanceOf(member)).isEqualTo(path.endsWith("increase") ? 8000 : 2000);
+    }
+
     private String memberWithBalance(long balance) throws Exception {
         String member = String.valueOf(MEMBERS.incrementAndGet());
         post("/money/create-member-money", "{\"membershipId\":\"" + member + "\"}");
@@ -243,6 +269,11 @@ class WalletInvariantsTest {
             server.setExecutor(Executors.newFixedThreadPool(CONCURRENT_REQUESTS));
             server.createContext("/memberships/", exchange -> {
                 String membershipId = exchange.getRequestURI().getPath().substring("/memberships/".length());
+                if (UNANSWERED.contains(membershipId)) {
+                    exchange.sendResponseHeaders(503, -1);
+                    exchange.close();
+                    return;
+                }
                 byte[] body = ("{\"membershipId\":\"" + membershipId + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
                         + "\"address\":\"Seocho\",\"valid\":true,\"corp\":false,\"refreshToken\":\"\"}").getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");

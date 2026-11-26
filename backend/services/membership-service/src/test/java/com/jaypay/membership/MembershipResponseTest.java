@@ -2,6 +2,8 @@ package com.jaypay.membership;
 
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -36,6 +38,13 @@ class MembershipResponseTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("kim@example.com"))
                 .andExpect(onlyPublicFields("$"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"9223372036854775807", "not-a-number"})
+    void findByIdAnswersNotFoundForAMemberThatDoesNotExist(String membershipId) throws Exception {
+        mockMvc.perform(get("/memberships/{membershipId}", membershipId))
+                .andExpect(status().isNotFound());
     }
 
     @Test

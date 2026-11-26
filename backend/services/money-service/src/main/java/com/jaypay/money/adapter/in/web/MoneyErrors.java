@@ -1,5 +1,6 @@
 package com.jaypay.money.adapter.in.web;
 
+import com.jaypay.money.domain.MembershipNotConfirmedException;
 import com.jaypay.money.domain.RequestIdReusedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -29,5 +30,11 @@ class MoneyErrors {
     @ResponseStatus(HttpStatus.CONFLICT)
     Error reused(RequestIdReusedException reused) {
         return new Error("REQUEST_ID_REUSED", "This requestId was already used for a different change.");
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    Error notConfirmed(MembershipNotConfirmedException notConfirmed) {
+        return new Error("MEMBERSHIP_NOT_CONFIRMED", "The member could not be checked, so nothing changed. Send the same request again.");
     }
 }
