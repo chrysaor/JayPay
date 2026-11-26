@@ -54,10 +54,13 @@ class RemittanceInvariantsTest {
     private static final Map<String, Long> BALANCES = new ConcurrentHashMap<>();
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
     private static final Map<String, AtomicInteger> UNANSWERED = new ConcurrentHashMap<>();
+    private static final Map<String, AtomicInteger> FAILING = new ConcurrentHashMap<>();
     private static final List<String> MONEY_CALLS = new CopyOnWriteArrayList<>();
     private static final Set<String> INVALID_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> REFUSED_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> SILENT_ACCOUNTS = ConcurrentHashMap.newKeySet();
+    private static final Set<String> FAILING_ACCOUNTS = ConcurrentHashMap.newKeySet();
+    private static final Map<String, String> TRANSFER_RESULTS = new ConcurrentHashMap<>();
     private static final List<JsonNode> ASKED = new CopyOnWriteArrayList<>();
     private static final Map<String, JsonNode> LANDED = new ConcurrentHashMap<>();
     private static final HttpServer JAYPAY = startFakeJayPay();
@@ -341,6 +344,124 @@ class RemittanceInvariantsTest {
     }
 
     @Test
+    void aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        failing("-decrease", 1);
+
+        HttpResponse<String> failed = post(body);
+
+        assertThat(failed.statusCode()).isEqualTo(503);
+        assertThat(error(failed)).isEqualTo("REMITTANCE_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+        assertThat(BALANCES.get(receiver)).isZero();
+
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @Test
+    void aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderSpentTheRest() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        unanswered("-decrease", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        BALANCES.put(sender, 0L);
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isZero();
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @Test
+    void aCreditMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        failing("-increase", 1);
+
+        HttpResponse<String> failed = post(body);
+
+        assertThat(failed.statusCode()).isEqualTo(503);
+        assertThat(error(failed)).isEqualTo("REMITTANCE_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isZero();
+
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @Test
+    void aCreditWhoseAnswerWasLostCompletesOnTheRepeatAfterTheReceiverBecomesInvalid() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        unanswered("-increase", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        INVALID.add(receiver);
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @Test
+    void aRefundMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        CREDIT_REFUSED.add(receiver);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        failing("-refund", 1);
+
+        HttpResponse<String> failed = post(body);
+
+        assertThat(failed.statusCode()).isEqualTo(503);
+        assertThat(error(failed)).isEqualTo("REMITTANCE_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("REFUNDED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+        assertThat(BALANCES.get(receiver)).isZero();
+    }
+
+    @Test
+    void aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        CREDIT_REFUSED.add(receiver);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        unanswered("-refund", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        INVALID.add(sender);
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("REFUNDED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+        assertThat(BALANCES.get(receiver)).isZero();
+    }
+
+    @Test
     void aBankRemittanceDebitsTheSenderAndSendsOneTransfer() throws Exception {
         String sender = memberWithBalance(20000);
         String account = "1002-" + sender;
@@ -418,6 +539,47 @@ class RemittanceInvariantsTest {
                 .satisfies(transfer -> assertThat(transfer.get("requestId").asText()).isEqualTo("remittance-" + retried.get("remittanceId").asText() + "-transfer"));
         assertThat(ASKED.stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account)).map(transfer -> transfer.get("requestId").asText()).distinct())
                 .hasSize(1);
+    }
+
+    @Test
+    void aTransferBankingServiceFailsWith5xxSendsNothingAndTheRepeatSendsItOnce() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1002-" + sender;
+        FAILING_ACCOUNTS.add(account);
+        String body = toBank(UUID.randomUUID().toString(), sender, "Jay Bank", account, "7000");
+
+        HttpResponse<String> failed = post(body);
+
+        assertThat(failed.statusCode()).isEqualTo(503);
+        assertThat(error(failed)).isEqualTo("REMITTANCE_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(13000);
+        assertThat(transfersTo(account)).isEmpty();
+
+        FAILING_ACCOUNTS.remove(account);
+        JsonNode retried = remit(body);
+
+        assertThat(retried.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(retried);
+        assertThat(BALANCES.get(sender)).isEqualTo(13000);
+        assertThat(transfersTo(account)).hasSize(1);
+    }
+
+    @Test
+    void aTransferWhoseAnswerWasLostCompletesOnTheRepeatAfterTheBankStartsRefusingTheAccount() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1002-" + sender;
+        SILENT_ACCOUNTS.add(account);
+        String body = toBank(UUID.randomUUID().toString(), sender, "Jay Bank", account, "7000");
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        SILENT_ACCOUNTS.remove(account);
+        REFUSED_ACCOUNTS.add(account);
+        JsonNode retried = remit(body);
+
+        assertThat(retried.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(retried);
+        assertThat(BALANCES.get(sender)).isEqualTo(13000);
+        assertThat(transfersTo(account)).hasSize(1);
     }
 
     @RepeatedTest(3)
@@ -577,6 +739,10 @@ class RemittanceInvariantsTest {
         UNANSWERED.put(suffix, new AtomicInteger(times));
     }
 
+    private static void failing(String suffix, int times) {
+        FAILING.put(suffix, new AtomicInteger(times));
+    }
+
     private static List<JsonNode> transfersTo(String account) {
         return LANDED.values().stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account)).toList();
     }
@@ -656,16 +822,23 @@ class RemittanceInvariantsTest {
                 JsonNode transfer = JSON.readTree(exchange.getRequestBody().readAllBytes());
                 ASKED.add(transfer);
                 String account = transfer.get("toBankAccountNumber").asText();
-                boolean refused = REFUSED_ACCOUNTS.contains(account);
-                if (!refused) {
-                    LANDED.putIfAbsent(transfer.get("requestId").asText(), transfer);
+                if (FAILING_ACCOUNTS.contains(account)) {
+                    respond(exchange, 500, "{\"status\":500}");
+                    return;
                 }
+                String status = TRANSFER_RESULTS.computeIfAbsent(transfer.get("requestId").asText(), id -> {
+                    if (REFUSED_ACCOUNTS.contains(account)) {
+                        return "FAILED";
+                    }
+                    LANDED.put(id, transfer);
+                    return "SUCCEEDED";
+                });
                 if (SILENT_ACCOUNTS.contains(account)) {
                     respond(exchange, 503, "{\"error\":\"TRANSFER_NOT_CONFIRMED\",\"message\":\"no answer\"}");
                     return;
                 }
                 respond(exchange, 200, "{\"requestId\":\"" + transfer.get("requestId").asText() + "\",\"moneyAmount\":"
-                        + transfer.get("moneyAmount").asLong() + ",\"transferStatus\":\"" + (refused ? "FAILED" : "SUCCEEDED") + "\"}");
+                        + transfer.get("moneyAmount").asLong() + ",\"transferStatus\":\"" + status + "\"}");
             });
             server.start();
             return server;
@@ -678,6 +851,10 @@ class RemittanceInvariantsTest {
         JsonNode change = JSON.readTree(exchange.getRequestBody().readAllBytes());
         String requestId = change.get("requestId").asText();
         MONEY_CALLS.add(requestId);
+        if (FAILING.entrySet().stream().anyMatch(rule -> requestId.endsWith(rule.getKey()) && rule.getValue().getAndDecrement() > 0)) {
+            respond(exchange, 500, "{\"status\":500}");
+            return;
+        }
         String result = MONEY_RESULTS.computeIfAbsent(requestId, id -> apply(id, change.get("targetMembershipId").asText(),
                 sign, change.get("amount").asLong()));
         boolean dropAnswer = UNANSWERED.entrySet().stream()
