@@ -53,8 +53,8 @@ class RechargeSagaFirstStartTest {
     @Test
     void aRechargeRequestedBeforeTheSagaProcessorFirstStartsIsStillProcessed() throws Exception {
         TrackingEventProcessor processor = processors.eventProcessor(PROCESSOR, TrackingEventProcessor.class).orElseThrow();
-        assertThat(eventually(() -> !processor.processingStatus().isEmpty()))
-                .as(() -> "the processor never claimed its segment: " + progress(processor, null))
+        assertThat(eventually(() -> processor.processingStatus().values().stream().anyMatch(EventTrackerStatus::isCaughtUp)))
+                .as(() -> "the worker of the processor never caught up: " + progress(processor, null))
                 .isTrue();
         processor.shutDown();
         database.update("delete from token_entry where processor_name = ?", PROCESSOR);

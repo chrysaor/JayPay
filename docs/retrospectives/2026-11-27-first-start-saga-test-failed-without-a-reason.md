@@ -1,4 +1,4 @@
-# The first-start saga test failed in CI and said only its line number
+# The first-start saga test stopped the processor before its worker ran
 
 ## What happened
 
@@ -6,15 +6,15 @@
 
 ## Cause
 
-Not found yet. The CI log showed `AssertionFailedError at RechargeSagaFirstStartTest.java:65` and nothing else, so it does not say which step stopped.
+The test stopped the saga processor in the moment between its claim of the segment and the start of its worker, and Axon Framework 4.13.2 then leaves the processor unable to work after the next start.
 
-What was ruled out:
+- The launcher thread of a `TrackingEventProcessor` records the segment in `processingStatus()` inside the transaction that claims the token. After the transaction it takes one of the processor's threads, here the only one, and then runs the worker.
+- The test waited until `processingStatus()` was not empty and called `shutDown()` right away. When the shutdown landed before the worker ran, the launcher freed the segment without giving the thread back. `availableProcessorThreads()` stayed at 0.
+- After `start()` the processor ran, claimed no segment and read no event, for as long as the JVM lived. The top-up was never processed, so no membership check arrived.
 
-- The failure does not come back by repeating. The whole money-service test task ran 12 times in the file order of macOS and 12 times in a random class order, while other builds ran on the same machine. All 24 passed, and the test took 1.2 to 1.4 seconds every time, so the CI run did not just take a little longer. It went down a path that waited at least 20 seconds.
-- Another test class does not share its state. The test has its own PostgreSQL database, so its events, tokens and sagas are not seen by the other Spring contexts in the JVM, and each context has its own command bus.
-- The processor was started again. A start that the processor refuses throws, and the test failed at the assertion after it.
+The test polled every 100 ms, so it hit that moment only now and then. A probe that polls without sleeping hits it on the first try: 0 threads after the shutdown, and 12 seconds after the next start the processor still has no segment. A probe that waits until the worker has caught up before it shuts down ran 300 cycles without losing the thread.
 
-The Axon paths that wait that long are a token claimed by another owner, which the token store keeps for 10 seconds, a processing error that retries after 1, 2, 4 and 8 seconds, and a failed fetch of the segments, which backs off the same way.
+No service stops and starts a processor inside one JVM, so only the test was affected. The first investigation in [#187](https://github.com/chrysaor/JayPay/pull/187) repeated the test 34 times, did not see the failure and stopped at the list of what it had ruled out. The cause was found by reading `TrackingEventProcessor` for a path that never recovers, since a test that takes 1.2 seconds and then waits 20 does not point at a slow runner.
 
 ## Why the checks missed it
 
@@ -22,10 +22,12 @@ The assertion had a description, but Gradle printed only the exception class and
 
 ## Fix
 
-- The assertion now reports each step when it fails: the global index of the stored top-up, whether the processor runs or is in error, each segment with its position and its last error, the token rows with their owner and claim time, the sagas of the top-up and the membership checks sent.
+- The test waits until a worker of the processor has caught up, which only a running worker reports, and stops the processor after that.
+- The assertion reports each step when it fails: the global index of the stored top-up, whether the processor runs or is in error, each segment with its position and its last error, the token rows with their owner and claim time, the sagas of the top-up and the membership checks sent.
 - Every backend test task prints the full message of a failed test, so a description reaches the CI log in every service.
 
 ## What changed so it is caught next time
 
-- The next failure names the step it stopped at, and #185 stays open until a run shows it.
+- A test that stops a processor waits for a state that only its running worker reports, not for the claim.
+- A failure that does not come back by repeating is not closed as unknown. The next step is to read the code for a path that explains the symptom and to force that path.
 - A test that waits on a processor describes the state it waited for, so its failure can be read from the CI log alone.
