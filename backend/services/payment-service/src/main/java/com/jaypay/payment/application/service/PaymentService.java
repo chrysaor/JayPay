@@ -46,20 +46,13 @@ public class PaymentService implements RequestPaymentUseCase, FinishSettlementUs
     public Payment requestPayment(RequestPaymentCommand command) {
         NewPayment requested = NewPayment.of(command.requestId(), command.requestMembershipId(), command.franchiseId(),
                 command.requestPrice(), feeRate);
-        Optional<Reason> refusal = refusal(command);
-        if (refusal.isPresent()) {
-            paymentFlowPort.refused(requested, refusal.get());
-            throw new PaymentRejectedException(refusal.get());
-        }
-
-        Payment payment = paymentPort.claim(requested);
+        Payment payment = paymentPort.findByRequestId(requested.requestId()).orElseGet(() -> claim(requested));
         if (!payment.sameRequestAs(requested)) {
             throw new PaymentRejectedException(Reason.REQUEST_ID_REUSED);
         }
         if (payment.paymentStatus() != PaymentStatus.REQUESTED) {
             return payment;
         }
-        paymentFlowPort.requested(payment);
 
         Payment concluded = switch (decreaseMoneyPort.decreaseMoney(payment.debitRequestId(), payment.requestMembershipId(), payment.requestPrice())) {
             case SUCCEEDED -> paymentPort.conclude(payment.paymentId(), PaymentStatus.PAID);
@@ -70,11 +63,24 @@ public class PaymentService implements RequestPaymentUseCase, FinishSettlementUs
         return concluded;
     }
 
-    private Optional<Reason> refusal(RequestPaymentCommand command) {
-        if (!getMembershipPort.getMembership(command.requestMembershipId()).valid()) {
+    private Payment claim(NewPayment requested) {
+        Optional<Reason> refusal = refusal(requested);
+        if (refusal.isPresent()) {
+            paymentFlowPort.refused(requested, refusal.get());
+            throw new PaymentRejectedException(refusal.get());
+        }
+        Payment claimed = paymentPort.claim(requested);
+        if (claimed.sameRequestAs(requested)) {
+            paymentFlowPort.requested(claimed);
+        }
+        return claimed;
+    }
+
+    private Optional<Reason> refusal(NewPayment requested) {
+        if (!getMembershipPort.getMembership(requested.requestMembershipId()).valid()) {
             return Optional.of(Reason.INVALID_PAYER);
         }
-        MembershipStatus merchant = getMembershipPort.getMembership(command.franchiseId());
+        MembershipStatus merchant = getMembershipPort.getMembership(requested.franchiseId());
         if (!merchant.valid() || !merchant.corp()) {
             return Optional.of(Reason.INVALID_MERCHANT);
         }

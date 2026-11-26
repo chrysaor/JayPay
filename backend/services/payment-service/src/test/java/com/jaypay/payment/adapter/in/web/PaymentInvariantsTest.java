@@ -53,6 +53,7 @@ class PaymentInvariantsTest {
     private static final Map<String, Long> BALANCES = new ConcurrentHashMap<>();
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
     private static final List<String> DECREASES = new CopyOnWriteArrayList<>();
+    private static final Set<String> LOSE_NEXT_DEBIT_ANSWER = ConcurrentHashMap.newKeySet();
     private static final HttpServer JAYPAY = startFakeJayPay();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -223,6 +224,46 @@ class PaymentInvariantsTest {
         assertThat(results).allSatisfy(result -> assertThat(result).isEqualTo(results.getFirst()));
         assertThat(results.getFirst().get("paymentStatus").asText()).isEqualTo("PAID");
         assertThat(BALANCES.get(payer)).isEqualTo(7000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"payer becomes invalid", "merchant becomes invalid", "merchant loses corp"})
+    void aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange(String change) throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+
+        HttpResponse<String> lost = request(requestId, payer, merchant, "3000");
+        switch (change) {
+            case "payer becomes invalid" -> INVALID.add(payer);
+            case "merchant becomes invalid" -> INVALID.add(merchant);
+            default -> CORPORATE.remove(merchant);
+        }
+        JsonNode repeat = pay(requestId, payer, merchant, "3000");
+
+        assertThat(lost.statusCode()).isEqualTo(503);
+        assertThat(JSON.readTree(lost.body()).get("error").asText()).isEqualTo("PAYMENT_NOT_CONFIRMED");
+        assertThat(repeat.get("paymentStatus").asText()).isEqualTo("PAID");
+        assertThat(pay(requestId, payer, merchant, "3000")).isEqualTo(repeat);
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+        assertThat(paidPaymentIds()).contains(repeat.get("paymentId").asLong());
+    }
+
+    @Test
+    void aPaymentWhoseRefusedDebitAnswerWasLostFailsOnTheRepeatAndKeepsTheBalance() throws Exception {
+        String payer = memberWithBalance(1000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+
+        assertThat(request(requestId, payer, merchant, "3000").statusCode()).isEqualTo(503);
+        INVALID.add(payer);
+        JsonNode repeat = pay(requestId, payer, merchant, "3000");
+
+        assertThat(repeat.get("paymentStatus").asText()).isEqualTo("FAILED");
+        assertThat(BALANCES.get(payer)).isEqualTo(1000);
+        assertThat(paidPaymentIds()).doesNotContain(repeat.get("paymentId").asLong());
     }
 
     @Test
@@ -418,15 +459,20 @@ class PaymentInvariantsTest {
             server.setExecutor(Executors.newFixedThreadPool(CONCURRENT_REQUESTS * 2));
             server.createContext("/memberships/", exchange -> {
                 String member = exchange.getRequestURI().getPath().substring("/memberships/".length());
-                respond(exchange, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
+                respond(exchange, 200, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
                         + "\"address\":\"Seocho\",\"valid\":" + !INVALID.contains(member) + ",\"corp\":" + CORPORATE.contains(member) + "}");
             });
             server.createContext("/money/decrease", exchange -> {
                 JsonNode change = JSON.readTree(exchange.getRequestBody().readAllBytes());
                 String requestId = change.get("requestId").asText();
+                String payer = change.get("targetMembershipId").asText();
                 DECREASES.add(requestId);
-                respond(exchange, MONEY_RESULTS.computeIfAbsent(requestId, id -> decrease(id,
-                        change.get("targetMembershipId").asText(), change.get("amount").asLong())));
+                String answer = MONEY_RESULTS.computeIfAbsent(requestId, id -> decrease(id, payer, change.get("amount").asLong()));
+                if (LOSE_NEXT_DEBIT_ANSWER.remove(payer)) {
+                    respond(exchange, 503, "{}");
+                } else {
+                    respond(exchange, 200, answer);
+                }
             });
             server.start();
             return server;
@@ -448,10 +494,10 @@ class PaymentInvariantsTest {
                 + status[0] + ",\"amount\":" + amount + "}";
     }
 
-    private static void respond(HttpExchange exchange, String json) throws IOException {
+    private static void respond(HttpExchange exchange, int status, String json) throws IOException {
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, body.length);
+        exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
     }
