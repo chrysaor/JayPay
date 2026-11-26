@@ -4,6 +4,8 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
 ### Added
 
 - The admin console has an **Event flow** page for every staff role. It lists the newest saga top-ups by status and shows each one step by step, with the service, outcome, time and reason of every step, and refreshes while a top-up is in progress. money-service, membership-service and banking-service write each step to the Kafka topic `jaypay.flow.events` with member ids and amounts only, and the new workload event-flow-service, with 512m of memory and its own `event_flow` database, collects them and serves `GET /flows` and `GET /flows/{flowType}/{flowId}` ([#124](https://github.com/chrysaor/JayPay/issues/124))
