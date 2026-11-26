@@ -52,6 +52,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0016](0016-java-25-and-node-26-lts.md) | Java stays on 25 and the sites build on Node 26, the LTS lines | 0.5.0 (unreleased) | accepted | [#169](https://github.com/chrysaor/JayPay/pull/169), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0017](0017-payment-resumes-before-checking-parties.md) | A repeated payment resumes before the parties are checked | 0.5.0 (unreleased) | accepted | [#170](https://github.com/chrysaor/JayPay/pull/170), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0018](0018-membership-outage-is-not-a-missing-member.md) | A membership-service outage is not a missing member | 0.5.0 (unreleased) | accepted | [#175](https://github.com/chrysaor/JayPay/pull/175), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0019](0019-payout-attempts-in-settlement-service.md) | settlement-service keeps a payout attempt for each payment | 0.5.0 (unreleased) | accepted | [#174](https://github.com/chrysaor/JayPay/pull/174), [Unreleased](../../CHANGELOG.md#unreleased) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 

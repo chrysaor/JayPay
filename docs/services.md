@@ -339,7 +339,7 @@ Spring Batch job that pays merchants out for their paid payments every 30 second
 | --- | --- |
 | Host port | `8088` |
 | Memory limit | `512m` |
-| Database | PostgreSQL `settlement`, the Spring Batch tables, which Spring Batch creates because `SPRING_BATCH_JDBC_INITIALIZE_SCHEMA` defaults to `always` |
+| Database | PostgreSQL `settlement`, the table `payout_attempt` and the Spring Batch tables, which Spring Batch creates because `SPRING_BATCH_JDBC_INITIALIZE_SCHEMA` defaults to `always` |
 | Calls | `banking-service`, `payment-service` |
 | Called by | none |
 | Kafka | Produces `jaypay.flow.events`, one record for each step of the settlement of a payment |
@@ -355,16 +355,18 @@ settlement-service calls payment-service for the paid payments and to finish eac
 
 1. It reads the paid payments from `GET /payment/normal-status`.
 2. It reads each merchant's account from `GET /banking/account/{franchiseId}`, once per merchant. A payment whose merchant has no registered bank account stays `PAID` for a later run.
-3. It sends one firm banking request for that payment's `payout`, from the account `jaypay` `111-222-333`, under the request id `settlement-<paymentId>`.
-4. Only when the bank confirmed the transfer does it call `POST /payment/finish-settlement`. A refused transfer is logged as an error and an unanswered one as a warning, and both leave the payment `PAID`.
+3. It sends one firm banking request for that payment's `payout`, from the account `jaypay` `111-222-333`, for the payment's current payout attempt. The first run stores attempt 1 in `payout_attempt` with the merchant's account of that moment, and every later run sends the stored attempt with the stored account again, under the request id `settlement-<paymentId>` for attempt 1 and `settlement-<paymentId>-<attempt>` after it.
+4. When the bank refused the stored attempt and the merchant has registered another account since, it stores the next attempt with the new account and sends it in the same run. An unanswered or confirmed attempt is never replaced, even after the merchant changes the account.
+5. Only when the bank confirmed the transfer does it call `POST /payment/finish-settlement`. A refused transfer is logged as an error and an unanswered one as a warning, and both leave the payment `PAID`.
 
-The amounts are whole won. payment-service computes the fee and the payout when it takes the payment, so settlement-service does no arithmetic and pays out exactly the stored `payout`. Every run sends the same request id for a payment, and banking-service sends a transfer once per request id, so a second run, a run on another replica or a run after an unanswered transfer never pays the same payment twice. `SettlementJobTest` lets the bank stay silent for the first run, then runs the settlement four times at once and the job twice more, and checks that each payment lands at the bank once.
+The amounts are whole won. payment-service computes the fee and the payout when it takes the payment, so settlement-service does no arithmetic and pays out exactly the stored `payout`. Every run sends the same request id and the same account for an attempt, and banking-service sends a transfer once per request id, so a second run, a run on another replica or a run after an unanswered transfer never pays the same payment twice. A new attempt starts only after banking-service answered that the one before it failed, so at most one attempt of a payment can still land. `SettlementJobTest` lets the bank stay silent for the first run, then runs the settlement four times at once and the job twice more, and checks that each payment lands at the bank once. `SettlementAfterAccountChangeTest` changes the merchants' accounts after a refused payout, a payout whose settlement answer was lost and an unanswered payout, and checks that only the refused one is sent again, to the new account, once.
 
 The service has no HTTP endpoints of its own. Actuator answers on the management port.
 
 ### Known limitations
 
-- A payout the bank refuses keeps its payment `PAID`, and every later run asks again under the same id and gets the same refusal. Someone has to fix the merchant's account and settle it.
+- A payout the bank refuses keeps its payment `PAID` until the merchant registers another account. A refusal for a reason that passes, with the same account, is never sent again.
+- An unanswered payout is sent to the account it was first sent to, even after the merchant changes the account, until the bank answers.
 
 ## event-flow-service
 
