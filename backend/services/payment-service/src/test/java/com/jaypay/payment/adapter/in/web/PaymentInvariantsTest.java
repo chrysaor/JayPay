@@ -54,6 +54,7 @@ class PaymentInvariantsTest {
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
     private static final List<String> DECREASES = new CopyOnWriteArrayList<>();
     private static final Set<String> LOSE_NEXT_DEBIT_ANSWER = ConcurrentHashMap.newKeySet();
+    private static final Set<String> FAIL_NEXT_DEBIT = ConcurrentHashMap.newKeySet();
     private static final HttpServer JAYPAY = startFakeJayPay();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -267,6 +268,27 @@ class PaymentInvariantsTest {
     }
 
     @Test
+    void aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatDebitsOnce() throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        FAIL_NEXT_DEBIT.add(payer);
+
+        HttpResponse<String> failed = request(requestId, payer, merchant, "3000");
+
+        assertThat(failed.statusCode()).isEqualTo(503);
+        assertThat(JSON.readTree(failed.body()).get("error").asText()).isEqualTo("PAYMENT_NOT_CONFIRMED");
+        assertThat(BALANCES.get(payer)).isEqualTo(10000);
+
+        JsonNode repeat = pay(requestId, payer, merchant, "3000");
+
+        assertThat(repeat.get("paymentStatus").asText()).isEqualTo("PAID");
+        assertThat(pay(requestId, payer, merchant, "3000")).isEqualTo(repeat);
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+        assertThat(paidPaymentIds()).contains(repeat.get("paymentId").asLong());
+    }
+
+    @Test
     void refusesARequestIdReusedForADifferentPayment() throws Exception {
         String payer = memberWithBalance(10000);
         String merchant = corporateMember();
@@ -467,6 +489,10 @@ class PaymentInvariantsTest {
                 String requestId = change.get("requestId").asText();
                 String payer = change.get("targetMembershipId").asText();
                 DECREASES.add(requestId);
+                if (FAIL_NEXT_DEBIT.remove(payer)) {
+                    respond(exchange, 500, "{\"status\":500}");
+                    return;
+                }
                 String answer = MONEY_RESULTS.computeIfAbsent(requestId, id -> decrease(id, payer, change.get("amount").asLong()));
                 if (LOSE_NEXT_DEBIT_ANSWER.remove(payer)) {
                     respond(exchange, 503, "{}");
