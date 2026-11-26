@@ -18,7 +18,7 @@ datasources:
       port: 9000
       protocol: native
       secure: false
-      username: otel
+      username: grafana
       defaultDatabase: otel
       logs:
         defaultDatabase: otel
@@ -32,4 +32,4 @@ datasources:
         otelVersion: latest
         durationUnit: nanoseconds
     secureJsonData:
-      password: $CLICKHOUSE_PASSWORD
+      password: $CLICKHOUSE_GRAFANA_PASSWORD

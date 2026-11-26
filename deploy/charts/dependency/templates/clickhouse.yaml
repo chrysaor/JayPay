@@ -24,6 +24,7 @@
             periodSeconds: 5
             timeoutSeconds: 5
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: data
               mountPath: /var/lib/clickhouse
             - name: files
@@ -35,6 +36,7 @@
               subPath: users.xml
               readOnly: true
       volumes:
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
         - name: files
           configMap:
             name: clickhouse-files

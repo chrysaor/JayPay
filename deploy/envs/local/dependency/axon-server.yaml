@@ -1,4 +1,11 @@
 image: axoniq/axonserver:2026.1.8-nonroot@sha256:9f7171b3b47b0310f897fe14fb803838c0fdd80b40f5293fab55e2356c76cf70
+user: 1001
+group: 1001
+scratch:
+  - /axonserver/exts
+  - /axonserver/plugins
+  - /axonserver/transformation
+  - /tmp
 env:
   AXONIQ_AXONSERVER_STANDALONE: "true"
   AXONIQ_AXONSERVER_NAME: axon-server

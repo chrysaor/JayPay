@@ -28,6 +28,7 @@
             periodSeconds: 10
             timeoutSeconds: 5
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: import
               mountPath: /opt/keycloak/data/import
               readOnly: true
@@ -35,6 +36,7 @@
               mountPath: /opt/keycloak/data/password-blacklists
               readOnly: true
       volumes:
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
         - name: import
           configMap:
             name: keycloak-files

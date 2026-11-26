@@ -1,4 +1,8 @@
 image: ""
+user: 0
+group: 0
+readOnlyRootFilesystem: true
+scratch: []
 secretName: jaypay
 env: {}
 secretEnv: {}

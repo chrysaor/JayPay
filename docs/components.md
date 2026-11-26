@@ -36,7 +36,7 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 | Keycloak | Staff accounts and sign-in of the admin console: the realm `staff` with the Authorization Code flow and PKCE, brute force protection, the password policy and optional authenticator apps. Keeps its data in the `keycloak` database of PostgreSQL | `infra/docker/compose.yaml` |
 | Apache Kafka | Tasks and logging events between services | `infra/docker/compose.yaml` |
 | Axon Server | Event store and command and event routing | `infra/docker/compose.yaml` |
-| HashiCorp Vault | Holds the encryption key of membership-service, dev mode | `infra/docker/compose.yaml` |
+| HashiCorp Vault | Holds the encryption key of membership-service, which reads it with a token that may read nothing else, dev mode | `infra/docker/compose.yaml` |
 | DynamoDB Local | Regional money totals, stands in for the AWS table | `infra/docker/compose.yaml` |
 | ClickHouse | Stores logs and traces | `infra/docker/compose.yaml` |
 | Kafbat UI | Kafka console, compose only | `infra/docker/compose.yaml` |
@@ -49,7 +49,7 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | --- | --- | --- | --- |
 | OpenTelemetry Collector | Receives logs and traces over OTLP and writes them to ClickHouse | compose, local cluster | `infra/docker/otel-collector/Dockerfile`, `deploy/envs/local/dependency/otel-collector.yaml` |
 | Prometheus | Scrapes `/actuator/prometheus` on the management port 9080 | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/prometheus.yaml` |
-| Grafana | Dashboards over ClickHouse and Prometheus | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/grafana.yaml` |
+| Grafana | Dashboards over ClickHouse, read as the read-only user `grafana`, and Prometheus. Anonymous visitors are viewers | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/grafana.yaml` |
 
 ## Kubernetes and GitOps
 

@@ -44,6 +44,9 @@ spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.user }}
+        runAsGroup: {{ .Values.group }}
         seccompProfile:
           type: RuntimeDefault
 {{- end }}
@@ -65,6 +68,29 @@ env:
   {{- end }}
 resources:
   {{- toYaml .Values.resources | nindent 2 }}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: {{ .Values.readOnlyRootFilesystem }}
+  capabilities:
+    drop: [ALL]
+{{- end }}
+
+{{- define "dependency.scratchName" -}}
+{{ trimPrefix "/" . | replace "/" "-" }}
+{{- end }}
+
+{{- define "dependency.scratchMounts" -}}
+{{- range .Values.scratch }}
+- name: {{ include "dependency.scratchName" . }}
+  mountPath: {{ . }}
+{{- end }}
+{{- end }}
+
+{{- define "dependency.scratchVolumes" -}}
+{{- range .Values.scratch }}
+- name: {{ include "dependency.scratchName" . }}
+  emptyDir: {}
+{{- end }}
 {{- end }}
 
 {{- define "dependency.dataClaim" -}}

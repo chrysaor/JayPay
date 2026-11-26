@@ -1,4 +1,8 @@
 image: amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+user: 1000
+group: 1000
+scratch:
+  - /tmp
 env:
   DYNAMODB_TABLE_NAME: MoneyIncreaseEventByRegion
 resources:

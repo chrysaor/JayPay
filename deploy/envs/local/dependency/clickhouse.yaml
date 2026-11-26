@@ -1,8 +1,12 @@
 image: clickhouse/clickhouse-server:26.10.12.13-alpine@sha256:f3b3c02741a77758052d300a167c75324ef4d53f1c0ee7270ac2c7829fe743cd
+user: 101
+group: 101
+scratch:
+  - /tmp
 env:
-  CLICKHOUSE_DB: otel
-  CLICKHOUSE_USER: otel
+  CLICKHOUSE_SKIP_USER_SETUP: "1"
 secretEnv:
+  CLICKHOUSE_GRAFANA_PASSWORD: CLICKHOUSE_GRAFANA_PASSWORD
   CLICKHOUSE_PASSWORD: CLICKHOUSE_PASSWORD
 resources:
   requests:
