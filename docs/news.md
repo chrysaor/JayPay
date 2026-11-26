@@ -6,7 +6,7 @@ What each release was about, newest first: the theme, the changes that matter, t
 
 | Milestone | Theme | Issues |
 | --- | --- | --- |
-| 0.5.0 | Money correctness: flows that fail between two services finish, and the company account has one owner | [#136](https://github.com/chrysaor/JayPay/issues/136), [#137](https://github.com/chrysaor/JayPay/issues/137), [#138](https://github.com/chrysaor/JayPay/issues/138), [#139](https://github.com/chrysaor/JayPay/issues/139), [#140](https://github.com/chrysaor/JayPay/issues/140), [#142](https://github.com/chrysaor/JayPay/issues/142), [#148](https://github.com/chrysaor/JayPay/issues/148), [#152](https://github.com/chrysaor/JayPay/issues/152), [#154](https://github.com/chrysaor/JayPay/issues/154) |
+| 0.5.0 | Money correctness: flows that fail between two services finish, and the company account has one owner | [#136](https://github.com/chrysaor/JayPay/issues/136), [#137](https://github.com/chrysaor/JayPay/issues/137), [#138](https://github.com/chrysaor/JayPay/issues/138), [#139](https://github.com/chrysaor/JayPay/issues/139), [#140](https://github.com/chrysaor/JayPay/issues/140), [#142](https://github.com/chrysaor/JayPay/issues/142), [#148](https://github.com/chrysaor/JayPay/issues/148), [#152](https://github.com/chrysaor/JayPay/issues/152), [#154](https://github.com/chrysaor/JayPay/issues/154), [#168](https://github.com/chrysaor/JayPay/issues/168) |
 | 0.6.0 | Confidence: the smoke in CI, browser tests and the audit of missing tests | [#143](https://github.com/chrysaor/JayPay/issues/143), [#144](https://github.com/chrysaor/JayPay/issues/144), [#149](https://github.com/chrysaor/JayPay/issues/149) |
 
 The decisions that wait for the owner are listed under [Open decisions](decisions/README.md#open-decisions).
