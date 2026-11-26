@@ -9,6 +9,7 @@
   --side-ink: #cbd2d9;
   --accent: #0f766e;
   --accent-dark: #115e59;
+  --accent-soft: #f0fdfa;
   --ok: #2b8a3e;
   --ok-soft: #ebfbee;
   --warn: #b35c00;
@@ -277,6 +278,89 @@ tbody tr:last-child td {
   color: var(--off);
 }
 
+.badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.flow-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+  gap: 16px;
+  align-items: start;
+}
+
+.flow-list {
+  overflow-x: auto;
+}
+
+.flow-layout > .card {
+  position: sticky;
+  top: 16px;
+  margin-bottom: 0;
+}
+
+tr[aria-current='true'] td {
+  background: var(--accent-soft);
+}
+
+.timeline {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+}
+
+.step {
+  position: relative;
+  margin-left: 6px;
+  padding: 0 0 18px 20px;
+  border-left: 2px solid var(--line);
+}
+
+.step:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
+}
+
+.step::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: -7px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.step-warn::before {
+  background: var(--warn);
+}
+
+.step-danger::before {
+  background: var(--danger);
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.step-reason {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--danger);
+}
+
 .notice {
   margin: 12px 0;
   padding: 10px 12px;
@@ -401,6 +485,16 @@ tbody tr:last-child td {
 
 .auth-card input {
   width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .flow-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-layout > .card {
+    position: static;
+  }
 }
 
 @media (max-width: 760px) {
