@@ -23,6 +23,12 @@ class WindowTest(unittest.TestCase):
 
 
 class PullRequestTest(unittest.TestCase):
+    def test_pull_requests_merged_before_the_rebuild_are_left_out(self):
+        old = pr("2024-03-01T00:00:00Z", "2024-03-01T00:00:05Z")
+        new = pr("2026-11-25T00:00:00Z", "2026-11-25T00:10:00Z")
+
+        self.assertEqual(s.merged_since([old, new], s.REBUILD_START), [new])
+
     def test_merge_time_leaves_out_dependabot(self):
         prs = [
             pr("2026-11-25T00:00:00Z", "2026-11-25T00:10:00Z"),

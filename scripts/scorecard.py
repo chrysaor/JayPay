@@ -6,7 +6,7 @@ import statistics
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
@@ -18,6 +18,7 @@ UNRELEASED = "Unreleased"
 NONE = "(none)"
 DEPENDABOT = "app/dependabot"
 GH_LIMIT = 2000
+REBUILD_START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 COVERAGE_AREAS = ("backend", "web", "admin")
 RUN_COVERAGE = "n/a, run `make coverage` first"
 
@@ -57,6 +58,10 @@ def by_window(items, releases, at=lambda item: item["merged"]):
     for item in items:
         groups[release_window(at(item), releases)].append(item)
     return groups
+
+
+def merged_since(prs, start):
+    return [pr for pr in prs if pr["merged"] >= start]
 
 
 def percentile(values, q):
@@ -145,7 +150,7 @@ def count_cell(value):
 
 
 SOURCES = {
-    "prs": "`gh pr list --state merged`, author `app/dependabot` for Dependabot",
+    "prs": "`gh pr list --state merged` from 2026-01-01, when the rebuild started, author `app/dependabot` for Dependabot",
     "wait": "`createdAt` to `mergedAt` of each merged PR, Dependabot left out, nearest-rank percentile",
     "ci": "`gh api .../actions/workflows/ci.yml/runs`, the conclusion of each run",
     "releases": "`gh release list`, drafts and prereleases left out, `publishedAt`",
@@ -160,7 +165,7 @@ SOURCES = {
 
 LIMITS = {
     "prs": "Counts PRs, not their size or worth. One maintainer opens them with coding agents, so it is not the throughput of a team. Release and hotfix PRs into `master` count as well.",
-    "wait": "Agents merged their own PRs once CI passed, with no human review, so this is how fast an agent got CI green, not the delivery speed of a team. Wall-clock time, nights included. The PRs of 2023 and 2024 were merged by their author within seconds of opening and pull the median down.",
+    "wait": "Agents merged their own PRs once CI passed, with no human review, so this is how fast an agent got CI green, not the delivery speed of a team. Wall-clock time, nights included. The PRs of the original project, merged in 2023 and 2024 within seconds of opening, are left out.",
     "ci all": "A re-run replaces the conclusion of its run, so a failure fixed by a re-run counts as a success. Cancelled runs are left out. Most runs are on pull request branches, where a red run is often work in progress, not a broken build.",
     "ci develop": "Runs on pushes to `develop`, that is after a merge. The same re-run blind spot applies.",
     "releases": "A release is a tag with published images. The count says nothing about what each release holds or whether anyone runs it.",
@@ -312,7 +317,7 @@ def main():
     data = Data(
         date=date.today().isoformat(),
         repo=repo,
-        prs=fetch_prs(),
+        prs=merged_since(fetch_prs(), REBUILD_START),
         runs=fetch_runs(repo),
         releases=fetch_releases(),
         issues=fetch_issues(),
