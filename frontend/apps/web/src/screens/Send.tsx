@@ -3,17 +3,72 @@ import { ErrorNotice } from '@jaypay/ui/ErrorNotice'
 import { readForm } from '@jaypay/ui/form'
 import { formatWon } from '@jaypay/ui/format'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
-import { requestRemittance, toBankAccount, toMembership } from '../api/remittance'
+import { useRef, useState } from 'react'
+import { type Remittance, requestRemittance, toBankAccount, toMembership } from '../api/remittance'
 import { useMember } from '../session'
+
+type Transfer = { amount: number } & (
+  | { remittanceType: typeof toMembership; toMembershipId: string }
+  | { remittanceType: typeof toBankAccount; toBankName: string; toBankAccountNumber: string }
+)
+
+function receiverOf(remittance: Remittance) {
+  return remittance.remittanceType === toMembership
+    ? `member ${remittance.toMembershipId ?? ''}`
+    : `${remittance.toBankName ?? ''} ${remittance.toBankAccountNumber ?? ''}`
+}
+
+function Outcome({ remittance }: { remittance: Remittance }) {
+  const amount = formatWon(remittance.amount)
+  switch (remittance.remittanceStatus) {
+    case 'COMPLETED':
+      return (
+        <p className="notice notice-success" role="status">
+          Sent {amount} to {receiverOf(remittance)}.
+        </p>
+      )
+    case 'FAILED':
+      return (
+        <p className="notice notice-error" role="alert">
+          The remittance was declined: your wallet holds less than {amount}.
+        </p>
+      )
+    case 'REFUNDED':
+      return (
+        <p className="notice notice-error" role="alert">
+          The money could not be delivered to {receiverOf(remittance)}. {amount} is back in your wallet.
+        </p>
+      )
+    case 'TRANSFERRING':
+      return (
+        <p className="notice" role="status">
+          {amount} left your wallet, and the bank has not confirmed the transfer yet. It will not be sent twice.
+        </p>
+      )
+    default:
+      return (
+        <p className="notice" role="status">
+          Status: {remittance.remittanceStatus}
+        </p>
+      )
+  }
+}
 
 export function Send() {
   const { membershipId } = useMember()
   const queryClient = useQueryClient()
   const [target, setTarget] = useState<typeof toMembership | typeof toBankAccount>(toMembership)
+  const pending = useRef<{ transfer: string; requestId: string } | null>(null)
   const remit = useMutation({
-    mutationFn: requestRemittance,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['balance', membershipId] }),
+    mutationFn: (transfer: Transfer) => {
+      const key = JSON.stringify(transfer)
+      if (pending.current?.transfer !== key) pending.current = { transfer: key, requestId: crypto.randomUUID() }
+      return requestRemittance({ ...transfer, requestId: pending.current.requestId, fromMembershipId: membershipId })
+    },
+    onSuccess: () => {
+      pending.current = null
+      return queryClient.invalidateQueries({ queryKey: ['balance', membershipId] })
+    },
   })
   return (
     <>
@@ -23,12 +78,12 @@ export function Send() {
           className="stack"
           onSubmit={(event) => {
             const form = readForm(event)
-            const common = { fromMembershipId: membershipId, amount: form.number('amount') }
+            const amount = form.number('amount')
             remit.mutate(
               target === toMembership
-                ? { ...common, remittanceType: toMembership, toMembershipId: form.text('toMembershipId') }
+                ? { amount, remittanceType: toMembership, toMembershipId: form.text('toMembershipId') }
                 : {
-                    ...common,
+                    amount,
                     remittanceType: toBankAccount,
                     toBankName: form.text('toBankName'),
                     toBankAccountNumber: form.text('toBankAccountNumber'),
@@ -64,17 +119,17 @@ export function Send() {
           {target === toMembership ? (
             <label>
               Recipient membership ID
-              <input name="toMembershipId" inputMode="numeric" required />
+              <input name="toMembershipId" inputMode="numeric" pattern="[0-9]+" required />
             </label>
           ) : (
             <>
               <label>
                 Bank name
-                <input name="toBankName" required />
+                <input name="toBankName" maxLength={64} required />
               </label>
               <label>
                 Account number
-                <input name="toBankAccountNumber" inputMode="numeric" required />
+                <input name="toBankAccountNumber" inputMode="numeric" maxLength={64} required />
               </label>
             </>
           )}
@@ -86,12 +141,7 @@ export function Send() {
             Send money
           </button>
         </form>
-        {remit.data ? (
-          <p className="notice notice-success" role="status">
-            Sent {formatWon(remit.data.amount)}.
-            {remit.data.remittanceStatus ? ` Status: ${remit.data.remittanceStatus}` : ''}
-          </p>
-        ) : null}
+        {remit.data ? <Outcome remittance={remit.data} /> : null}
         <ErrorNotice error={remit.error} />
       </Card>
     </>

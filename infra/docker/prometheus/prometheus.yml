@@ -8,17 +8,17 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     static_configs:
       - targets:
-          - membership-service:8080
-          - banking-service:8080
-          - money-service:8080
-          - remittance-service:8080
-          - payment-service:8080
-          - money-aggregation-service:8080
-          - money-query-service:8080
-          - settlement-service:8080
-          - auth-service:8080
-          - logging-consumer:8080
-          - task-consumer:8080
+          - membership-service:9080
+          - banking-service:9080
+          - money-service:9080
+          - remittance-service:9080
+          - payment-service:9080
+          - money-aggregation-service:9080
+          - money-query-service:9080
+          - settlement-service:9080
+          - event-flow-service:9080
+          - auth-service:9080
+          - logging-consumer:9080
     relabel_configs:
       - source_labels: [__address__]
         regex: "([^:]+):.*"

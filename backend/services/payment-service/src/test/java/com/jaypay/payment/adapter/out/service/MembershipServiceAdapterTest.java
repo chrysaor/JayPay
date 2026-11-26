@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -37,7 +38,7 @@ class MembershipServiceAdapterTest {
         });
         membershipService.start();
         adapter = new MembershipServiceAdapter(
-                new CommonHttpClient(new SimpleMeterRegistry(), ObservationRegistry.NOOP),
+                new CommonHttpClient(new SimpleMeterRegistry(), ObservationRegistry.NOOP, Duration.ofSeconds(2), Duration.ofSeconds(5)),
                 "http://127.0.0.1:" + membershipService.getAddress().getPort());
     }
 
@@ -50,7 +51,11 @@ class MembershipServiceAdapterTest {
     void readsTheMemberFromTheMembershipService() {
         MembershipStatus status = adapter.getMembership("7");
 
-        assertThat(status.getMembershipId()).isEqualTo("7");
-        assertThat(status.isValid()).isTrue();
+        assertThat(status).isEqualTo(new MembershipStatus("7", true, false));
+    }
+
+    @Test
+    void treatsAnUnknownMemberAsNeitherValidNorCorporate() {
+        assertThat(adapter.getMembership("8")).isEqualTo(new MembershipStatus("8", false, false));
     }
 }

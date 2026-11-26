@@ -14,9 +14,10 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 
 public class DummyMoneyDataSimulator {
-    private static final String DECREASE_API_ENDPOINT = "http://localhost:8083/money/decrease-eda";
+    private static final String DECREASE_API_ENDPOINT = "http://localhost:8083/money/decrease";
     private static final String INCREASE_API_ENDPOINT = "http://localhost:8083/money/increase-eda";
 
     private static final String CREATE_MONEY_API_ENDPOINT = "http://localhost:8083/money/create-member-money";
@@ -28,7 +29,7 @@ public class DummyMoneyDataSimulator {
         List<Integer> readyMemberList = new ArrayList<>();
 
         while (true) {
-            int amount = random.nextInt(20001) - 10000;
+            int amount = random.nextInt(10000) + 1;
             int targetMembershipId = random.nextInt(1000) + 1;
 
             registerAccountSimulator(REGISTER_ACCOUNT_API_ENDPOINT, targetMembershipId);
@@ -38,7 +39,7 @@ public class DummyMoneyDataSimulator {
 
             increaseMemberMoneySimulator(INCREASE_API_ENDPOINT, amount, targetMembershipId);
 
-            amount = random.nextInt(20001) - 10000;
+            amount = random.nextInt(10000) + 1;
             Integer decreaseTargetMembershipId = readyMemberList.get(random.nextInt(readyMemberList.size()));
             increaseMemberMoneySimulator(DECREASE_API_ENDPOINT, amount, decreaseTargetMembershipId);
 
@@ -59,6 +60,7 @@ public class DummyMoneyDataSimulator {
             conn.setDoOutput(true);
 
             JSONObject jsonRequestBody = new JSONObject();
+            jsonRequestBody.put("requestId", UUID.randomUUID().toString());
             jsonRequestBody.put("amount", amount);
             jsonRequestBody.put("targetMembershipId", targetMembershipId);
 

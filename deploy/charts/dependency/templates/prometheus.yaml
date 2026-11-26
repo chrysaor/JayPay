@@ -20,6 +20,7 @@
             periodSeconds: 5
             timeoutSeconds: 5
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: data
               mountPath: /prometheus
             - name: files
@@ -27,6 +28,7 @@
               subPath: prometheus.yml
               readOnly: true
       volumes:
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
         - name: files
           configMap:
             name: prometheus-files

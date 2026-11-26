@@ -34,19 +34,24 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'Makefile'
               - 'scripts/verify.sh'
+              - 'scripts/coverage.py'
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
               - 'Makefile'
               - 'scripts/verify.sh'
+              - 'scripts/coverage.py'
 
   checks:
     runs-on: ubuntu-latest
+    env:
+      CHANGELOG_BASE: ${{ github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.user.login != 'dependabot[bot]' && 'origin/develop' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - run: make verify STEPS="contract english env terraform actionlint charts"
+      - run: make verify STEPS="changelog contract english env terraform actionlint charts"
       - run: make verify-selftest
 
   backend:
@@ -64,7 +69,9 @@ jobs:
             21
             25
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - run: make dependencies
       - run: make verify STEPS=backend
+      - run: python3 scripts/coverage.py backend >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
     needs: changes
@@ -80,3 +87,4 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: make verify STEPS=frontend
+      - run: python3 scripts/coverage.py frontend >> "$GITHUB_STEP_SUMMARY"

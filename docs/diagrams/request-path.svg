@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1084 400" width="1084" height="400" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1446 400" width="1446" height="400" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
 <title id="title">JayPay request path</title>
-<desc id="desc">The customer site forwards /api/&lt;service&gt;/ to banking-service, membership-service, money-service, payment-service, remittance-service. The admin console asks auth-service before every call and then forwards to membership-service, money-aggregation-service, money-query-service, payment-service. settlement-service runs a batch against banking-service and payment-service.</desc>
+<desc id="desc">The customer site forwards /api/&lt;service&gt;/ to banking-service, membership-service, money-service, payment-service, remittance-service. The admin console signs staff in through Keycloak, asks auth-service before every call, and then forwards to event-flow-service, membership-service, money-aggregation-service, money-query-service, payment-service. auth-service checks the Keycloak token against the realm keys. settlement-service runs a batch against banking-service and payment-service.</desc>
 <style>
 .bg{fill:#ffffff}
 .box{fill:#f6f8fa;stroke:#8c959f;stroke-width:1.2}
@@ -25,20 +25,29 @@
 .green{stroke:#3fb950}.greenf{fill:#3fb950}.greenbox{fill:#04260f;stroke:#3fb950}
 .gray{stroke:#8b949e}.grayf{fill:#9198a1}}
 </style>
-<rect class="bg" x="0" y="0" width="1084" height="400" rx="12"/>
+<rect class="bg" x="0" y="0" width="1446" height="400" rx="12"/>
 <rect class="bluebox" x="290" y="24" width="200" height="52" rx="8"/>
 <text class="t" x="390" y="47">frontend-web</text>
 <text class="s" x="390" y="63">customer site, port 8090</text>
-<rect class="orangebox" x="594" y="24" width="200" height="52" rx="8"/>
-<text class="t" x="694" y="47">frontend-admin</text>
-<text class="s" x="694" y="63">admin console, port 8091</text>
-<rect class="box" x="918" y="24" width="150" height="52" rx="8"/>
-<text class="t" x="993" y="47">auth-service</text>
-<text class="s" x="993" y="63">staff, port 8089</text>
-<path class="orange" d="M794 50 H918"/>
-<path class="orangef" d="M910 45 L910 55 L918 50 Z"/>
-<text class="l orangef" text-anchor="middle" x="856" y="42">auth_request</text>
-<text class="l orangef" text-anchor="middle" x="856" y="68">staff sign-in</text>
+<rect class="orangebox" x="746" y="24" width="200" height="52" rx="8"/>
+<text class="t" x="846" y="47">frontend-admin</text>
+<text class="s" x="846" y="63">admin console, port 8091</text>
+<rect class="box" x="1070" y="24" width="150" height="52" rx="8"/>
+<text class="t" x="1145" y="47">auth-service</text>
+<text class="s" x="1145" y="63">staff gate, port 8089</text>
+<rect class="orangebox" x="1280" y="24" width="150" height="52" rx="8"/>
+<text class="t" x="1355" y="47">keycloak</text>
+<text class="s" x="1355" y="63">staff realm, port 8092</text>
+<path class="orange" d="M946 50 H1070"/>
+<path class="orangef" d="M1062 45 L1062 55 L1070 50 Z"/>
+<text class="l orangef" text-anchor="middle" x="1008" y="42">auth_request</text>
+<path class="gray dashed" d="M1220 50 H1280"/>
+<path class="grayf" d="M1272 45 L1272 55 L1280 50 Z"/>
+<text class="l s" text-anchor="middle" x="1250" y="42">keys</text>
+<path class="orange" d="M926 76 V96 H1355"/>
+<path class="orange" d="M1355 96 V76"/>
+<path class="orangef" d="M1350 84 L1360 84 L1355 76 Z"/>
+<text class="l orangef" text-anchor="end" x="1347" y="90">sign-in, /realms/staff/</text>
 <path class="blue" d="M390 76 V124"/>
 <path class="blue" d="M86 124 H680"/>
 <path class="blue" d="M86 124 V210"/>
@@ -51,9 +60,9 @@
 <path class="bluef" d="M533 202 L523 202 L528 210 Z"/>
 <path class="blue" d="M680 124 V210"/>
 <path class="bluef" d="M685 202 L675 202 L680 210 Z"/>
-<path class="orange" d="M708 76 V156"/>
+<path class="orange" d="M846 76 V156"/>
 <path class="orange" d="M556 156 H675"/>
-<path class="orange" d="M685 156 H998"/>
+<path class="orange" d="M685 156 H1150"/>
 <path class="orange" d="M556 156 V210"/>
 <path class="orangef" d="M561 202 L551 202 L556 210 Z"/>
 <path class="orange" d="M708 156 V210"/>
@@ -62,8 +71,10 @@
 <path class="orangef" d="M851 202 L841 202 L846 210 Z"/>
 <path class="orange" d="M998 156 V210"/>
 <path class="orangef" d="M1003 202 L993 202 L998 210 Z"/>
+<path class="orange" d="M1150 156 V210"/>
+<path class="orangef" d="M1155 202 L1145 202 L1150 210 Z"/>
 <text class="l bluef" text-anchor="start" x="94" y="116">/api/&lt;service&gt;/</text>
-<text class="l orangef" text-anchor="end" x="990" y="148">forwarded once auth-service allows it</text>
+<text class="l orangef" text-anchor="end" x="1142" y="148">forwarded once auth-service allows it</text>
 <rect class="box" x="16" y="210" width="140" height="48" rx="8"/>
 <text class="t" x="86" y="231">banking</text>
 <text class="s" x="86" y="247">port 8082</text>
@@ -80,11 +91,14 @@
 <text class="t" x="694" y="231">payment</text>
 <text class="s" x="694" y="247">port 8085</text>
 <rect class="box" x="776" y="210" width="140" height="48" rx="8"/>
-<text class="t" x="846" y="231">money-aggregation</text>
-<text class="s" x="846" y="247">port 8086</text>
+<text class="t" x="846" y="231">event-flow</text>
+<text class="s" x="846" y="247">port 8093</text>
 <rect class="box" x="928" y="210" width="140" height="48" rx="8"/>
-<text class="t" x="998" y="231">money-query</text>
-<text class="s" x="998" y="247">port 8087</text>
+<text class="t" x="998" y="231">money-aggregation</text>
+<text class="s" x="998" y="247">port 8086</text>
+<rect class="box" x="1080" y="210" width="140" height="48" rx="8"/>
+<text class="t" x="1150" y="231">money-query</text>
+<text class="s" x="1150" y="247">port 8087</text>
 <rect class="box" x="290" y="328" width="200" height="48" rx="8"/>
 <text class="t" x="390" y="349">settlement-service</text>
 <text class="s" x="390" y="365">batch every 30 s, port 8088</text>

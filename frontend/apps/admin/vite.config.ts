@@ -4,11 +4,11 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 const upstreams = {
-  auth: ['JAYPAY_AUTH_URL', 'http://localhost:8089'],
   membership: ['JAYPAY_MEMBERSHIP_URL', 'http://localhost:8081'],
   payment: ['JAYPAY_PAYMENT_URL', 'http://localhost:8085'],
   'money-aggregation': ['JAYPAY_MONEY_AGGREGATION_URL', 'http://localhost:8086'],
   'money-query': ['JAYPAY_MONEY_QUERY_URL', 'http://localhost:8087'],
+  'event-flow': ['JAYPAY_EVENT_FLOW_URL', 'http://localhost:8093'],
 } as const
 
 export default defineConfig(({ mode }) => {
@@ -33,6 +33,13 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./src/test/setup.ts'],
       restoreMocks: true,
       unstubGlobals: true,
+      coverage: {
+        enabled: true,
+        provider: 'v8',
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/test/**'],
+        reporter: ['json-summary'],
+      },
     },
   }
 })

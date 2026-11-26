@@ -6,7 +6,15 @@ x-logging: &logging
     max-size: 10m
     max-file: "3"
 
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
 x-service: &service
+  <<: *hardened
+  user: "10001:10001"
+  tmpfs: [/tmp]
   pull_policy: never
   restart: unless-stopped
   mem_limit: 512m
@@ -40,6 +48,8 @@ x-jpa-service-env: &jpa-service-env
 services:
   kafka:
     image: apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
+    <<: *hardened
+    user: "1000:1000"
     restart: unless-stopped
     mem_limit: 768m
     logging: *logging
@@ -66,6 +76,9 @@ services:
     tmpfs:
       - /etc/kafka/secrets
       - /mnt/shared/config
+      - /opt/kafka/config:uid=1000,gid=1000
+      - /opt/kafka/logs:uid=1000,gid=1000
+      - /tmp
     healthcheck:
       test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx64m /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
       interval: 10s
@@ -75,6 +88,9 @@ services:
 
   kafka-ui:
     image: kafbat/kafka-ui:v1.5.1@sha256:c0585fdfed6a9b8adedc3b0965113d4a84f292d61e58a2c7dcc603394defb7d1
+    <<: *hardened
+    user: "100:101"
+    tmpfs: [/tmp]
     restart: unless-stopped
     mem_limit: 384m
     logging: *logging
@@ -83,6 +99,7 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_READONLY: "true"
       JAVA_OPTS: -Xmx256m
     depends_on:
       kafka:
@@ -96,6 +113,8 @@ services:
 
   axon-server:
     image: axoniq/axonserver:2026.1.8-nonroot@sha256:9f7171b3b47b0310f897fe14fb803838c0fdd80b40f5293fab55e2356c76cf70
+    <<: *hardened
+    user: "1001:1001"
     hostname: axon-server
     restart: unless-stopped
     mem_limit: 768m
@@ -115,6 +134,7 @@ services:
       - /axonserver/exts:mode=1777
       - /axonserver/plugins:mode=1777
       - /axonserver/transformation:mode=1777
+      - /tmp
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8024/actuator/health"]
       interval: 10s
@@ -124,6 +144,11 @@ services:
 
   postgres:
     image: postgres:19.0-alpine3.24@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f
+    <<: *hardened
+    user: "70:70"
+    tmpfs:
+      - /var/run/postgresql:uid=70,gid=70
+      - /tmp
     restart: unless-stopped
     mem_limit: 256m
     logging: *logging
@@ -135,15 +160,64 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/initdb.d:/docker-entrypoint-initdb.d:ro
+      - ./postgres/create-databases.sh:/usr/local/bin/create-databases.sh:ro
+    post_start:
+      - command: ["sh", "/usr/local/bin/create-databases.sh"]
     healthcheck:
-      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "auth", "-tAc", "select 1"]
+      test: ["CMD", "psql", "-h", "127.0.0.1", "-U", "jaypay", "-d", "keycloak", "-tAc", "select 1"]
       interval: 5s
       timeout: 5s
       start_period: 30s
       retries: 12
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
+    command: ["start", "--import-realm"]
+    <<: *hardened
+    read_only: false
+    user: "1000:1000"
+    restart: unless-stopped
+    mem_limit: 768m
+    logging: *logging
+    ports:
+      - "127.0.0.1:8092:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: jaypay
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.py}
+      KC_DB_POOL_MAX_SIZE: "10"
+      JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25
+      KC_HOSTNAME: http://localhost:8091
+      KC_HOSTNAME_ADMIN: http://localhost:8092
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_CACHE: local
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?run scripts/init-env.py}
+      STAFF_ADMIN_USERNAME: ${STAFF_ADMIN_USERNAME:?run scripts/init-env.py}
+      STAFF_ADMIN_PASSWORD: ${STAFF_ADMIN_PASSWORD:?run scripts/init-env.py}
+      STAFF_OPERATOR_USERNAME: ${STAFF_OPERATOR_USERNAME:?run scripts/init-env.py}
+      STAFF_OPERATOR_PASSWORD: ${STAFF_OPERATOR_PASSWORD:?run scripts/init-env.py}
+      STAFF_VIEWER_USERNAME: ${STAFF_VIEWER_USERNAME:?run scripts/init-env.py}
+      STAFF_VIEWER_PASSWORD: ${STAFF_VIEWER_PASSWORD:?run scripts/init-env.py}
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import:ro
+      - ./keycloak/password-blacklists:/opt/keycloak/data/password-blacklists:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 12
+
   vault:
     image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
+    <<: *hardened
+    user: "100:1000"
     restart: unless-stopped
     mem_limit: 128m
     logging: *logging
@@ -153,15 +227,15 @@ services:
       VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:?run scripts/init-env.py}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
       VAULT_TOKEN: ${VAULT_TOKEN:?run scripts/init-env.py}
+      VAULT_MEMBERSHIP_TOKEN: ${VAULT_MEMBERSHIP_TOKEN:?run scripts/init-env.py}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run scripts/init-env.py}
     volumes:
       - ./vault:/scripts:ro
     tmpfs:
       - /vault/file
       - /vault/logs
-    post_start:
-      - command: ["sh", "/scripts/encryption-key.sh", "write"]
-        environment:
-          ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run scripts/init-env.py}
+      - /home/vault:uid=100,gid=1000
+    entrypoint: ["sh", "-c", "sh /scripts/encryption-key.sh write & exec docker-entrypoint.sh server -dev"]
     healthcheck:
       test: ["CMD", "sh", "/scripts/encryption-key.sh", "check"]
       interval: 5s
@@ -169,9 +243,24 @@ services:
       start_period: 10s
       retries: 12
 
+  dynamodb-data-owner:
+    image: amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+    <<: *hardened
+    user: "0:0"
+    cap_add: [CHOWN]
+    network_mode: none
+    restart: "no"
+    mem_limit: 32m
+    logging: *logging
+    entrypoint: ["chown", "-R", "1000:1000", "/data"]
+    volumes:
+      - dynamodb-data:/data
+
   dynamodb:
     image: amazon/dynamodb-local:3.3.2@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
-    user: root
+    <<: *hardened
+    user: "1000:1000"
+    tmpfs: ["/tmp:exec"]
     restart: unless-stopped
     mem_limit: 256m
     logging: *logging
@@ -184,6 +273,9 @@ services:
       - dynamodb-data:/home/dynamodblocal/data
       - ./dynamodb:/scripts:ro
       - ../terraform/modules/dynamodb-money-sum/table.json:/schema/table.json:ro
+    depends_on:
+      dynamodb-data-owner:
+        condition: service_completed_successfully
     post_start:
       - command: ["bash", "/scripts/table.sh", "create"]
     healthcheck:
@@ -195,15 +287,18 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:26.10.12.13-alpine@sha256:f3b3c02741a77758052d300a167c75324ef4d53f1c0ee7270ac2c7829fe743cd
+    <<: *hardened
+    user: "101:101"
+    tmpfs: [/tmp]
     restart: unless-stopped
     mem_limit: 1g
     logging: *logging
     ports:
       - "127.0.0.1:8123:8123"
     environment:
-      CLICKHOUSE_DB: otel
-      CLICKHOUSE_USER: otel
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run scripts/init-env.py}
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:?run scripts/init-env.py}
     ulimits:
       nofile:
         soft: 262144
@@ -221,6 +316,8 @@ services:
 
   otel-collector:
     build: ./otel-collector
+    <<: *hardened
+    user: "10001:10001"
     restart: unless-stopped
     mem_limit: 256m
     logging: *logging
@@ -235,6 +332,8 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    <<: *hardened
+    user: "65534:65534"
     restart: unless-stopped
     mem_limit: 256m
     logging: *logging
@@ -256,6 +355,9 @@ services:
 
   grafana:
     image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
+    <<: *hardened
+    user: "472:472"
+    tmpfs: [/tmp]
     restart: unless-stopped
     mem_limit: 512m
     logging: *logging
@@ -264,14 +366,13 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run scripts/init-env.py}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
-      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_PLUGINS_PREINSTALL_SYNC: grafana-clickhouse-datasource@4.23.5
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/service-overview.json
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run scripts/init-env.py}
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:?run scripts/init-env.py}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -297,10 +398,9 @@ services:
       <<: *service-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/membership
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-env.py}
-      SPRING_CLOUD_VAULT_TOKEN: ${VAULT_TOKEN:?run scripts/init-env.py}
+      SPRING_CLOUD_VAULT_TOKEN: ${VAULT_MEMBERSHIP_TOKEN:?run scripts/init-env.py}
       SPRING_CLOUD_VAULT_HOST: vault
       JWT_SECRET: ${JWT_SECRET:?run scripts/init-env.py}
-      ENCRYPTION_FALLBACK_KEY: ${ENCRYPTION_FALLBACK_KEY:?run scripts/init-env.py}
     depends_on:
       <<: *jpa-service-depends-on
       vault:
@@ -351,6 +451,7 @@ services:
       <<: *jpa-service-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment
       SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+      SERVICE_MONEY_URL: http://money-service:8080
     depends_on: *jpa-service-depends-on
 
   money-aggregation-service:
@@ -395,28 +496,29 @@ services:
       SERVICE_PAYMENT_URL: http://payment-service:8080
     depends_on: *jpa-service-depends-on
 
+  event-flow-service:
+    <<: *service
+    image: jaypay/event-flow-service
+    ports:
+      - "127.0.0.1:8093:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_flow
+    depends_on: *jpa-service-depends-on
+
   auth-service:
     <<: *service
     image: jaypay/auth-service
     ports:
       - "127.0.0.1:8089:8080"
     environment:
-      <<: *jpa-service-env
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
-      STAFF_JWT_SECRET: ${STAFF_JWT_SECRET:?run scripts/init-env.py}
-      STAFF_ADMIN_USERNAME: ${STAFF_ADMIN_USERNAME:?run scripts/init-env.py}
-      STAFF_ADMIN_PASSWORD: ${STAFF_ADMIN_PASSWORD:?run scripts/init-env.py}
-      STAFF_OPERATOR_USERNAME: ${STAFF_OPERATOR_USERNAME:?run scripts/init-env.py}
-      STAFF_OPERATOR_PASSWORD: ${STAFF_OPERATOR_PASSWORD:?run scripts/init-env.py}
-      STAFF_VIEWER_USERNAME: ${STAFF_VIEWER_USERNAME:?run scripts/init-env.py}
-      STAFF_VIEWER_PASSWORD: ${STAFF_VIEWER_PASSWORD:?run scripts/init-env.py}
-    depends_on: *jpa-service-depends-on
-
-  task-consumer:
-    <<: *service
-    image: jaypay/task-consumer
-    mem_limit: 384m
-    environment: *service-env
+      <<: *service-env
+      STAFF_ISSUER_URI: http://localhost:8091/realms/staff
+      STAFF_JWK_SET_URI: http://keycloak:8080/realms/staff/protocol/openid-connect/certs
+    depends_on:
+      <<: *service-depends-on
+      keycloak:
+        condition: service_healthy
 
   logging-consumer:
     <<: *service
@@ -426,6 +528,11 @@ services:
 
   frontend-web:
     image: jaypay/frontend-web
+    <<: *hardened
+    user: "101:101"
+    tmpfs:
+      - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101
     build:
       context: ../../frontend
       args:
@@ -439,6 +546,11 @@ services:
 
   frontend-admin:
     image: jaypay/frontend-admin
+    <<: *hardened
+    user: "101:101"
+    tmpfs:
+      - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101
     build:
       context: ../../frontend
       args:

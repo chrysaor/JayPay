@@ -10,6 +10,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+payment:
+  amount:
+    max: 10000000
+  fee-rate-basis-points: 300
 service:
   membership:
     url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}
+  money:
+    url: ${SERVICE_MONEY_URL:http://localhost:8083}

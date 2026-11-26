@@ -13,10 +13,12 @@ import org.testcontainers.kafka.KafkaContainer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 public final class KafkaTestBroker {
 
@@ -69,6 +71,31 @@ public final class KafkaTestBroker {
             }
         }
         throw new AssertionError("no record with key " + key + " on " + topic + " within " + timeout);
+    }
+
+    public static List<String> awaitValues(String topic, String key, Predicate<List<String>> complete, Duration timeout) {
+        Map<String, Object> config = Map.of(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers(),
+                ConsumerConfig.GROUP_ID_CONFIG, "test-" + UUID.randomUUID(),
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        List<String> values = new ArrayList<>();
+        Instant deadline = Instant.now().plus(timeout);
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(config)) {
+            consumer.subscribe(List.of(topic));
+            while (Instant.now().isBefore(deadline)) {
+                for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
+                    if (key.equals(record.key())) {
+                        values.add(record.value());
+                    }
+                }
+                if (complete.test(values)) {
+                    return values;
+                }
+            }
+        }
+        throw new AssertionError("the records with key " + key + " on " + topic + " were still " + values + " after " + timeout);
     }
 
     public static String header(ConsumerRecord<String, String> record, String name) {

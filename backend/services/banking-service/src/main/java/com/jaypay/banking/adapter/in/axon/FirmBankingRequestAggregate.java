@@ -1,29 +1,30 @@
 package com.jaypay.banking.adapter.in.axon;
 
-import com.jaypay.banking.adapter.axon.command.CreateFirmBankingRequestCommand;
-import com.jaypay.banking.adapter.axon.command.UpdateFirmBankingRequestCommand;
-import com.jaypay.banking.adapter.axon.event.FirmBankingRequestCreatedEvent;
-import com.jaypay.banking.adapter.axon.event.FirmBankingRequestUpdatedEvent;
-import com.jaypay.banking.application.port.in.ExecuteFirmBankingCommand;
-import com.jaypay.banking.application.port.in.ExecuteFirmBankingUseCase;
-import com.jaypay.banking.domain.FirmBankingTransfer;
+import com.jaypay.banking.application.port.in.TransferMoneyUseCase;
+import com.jaypay.banking.domain.BankTransfer;
+import com.jaypay.banking.domain.RecordedTransfer;
+import com.jaypay.banking.domain.TransferStatus;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
-import lombok.Data;
+import com.jaypay.common.flow.FlowEventPublisher;
+import com.jaypay.common.flow.FlowOutcome;
+import com.jaypay.common.flow.FlowStep;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 
-@Aggregate()
-@Data
+@Aggregate
+@NoArgsConstructor
 @Slf4j
 public class FirmBankingRequestAggregate {
 
@@ -32,45 +33,18 @@ public class FirmBankingRequestAggregate {
 
     @AggregateIdentifier
     private String id;
-    private String fromBankName;
-    private String fromBankAccountNumber;
-    private String toBankName;
-    private String toBankAccountNumber;
-    private int moneyAmount;
-    private int firmbankingStatus;
-
-    public FirmBankingRequestAggregate() {
-
-    }
 
     @CommandHandler
-    public FirmBankingRequestAggregate(CreateFirmBankingRequestCommand command) {
-        log.info("CreateFirmBankingRequestCommand Handler");
-
-        apply(new FirmBankingRequestCreatedEvent(command.fromBankName(), command.fromBankAccountNumber(), command.toBankName(), command.toBankAccountNumber(), command.moneyAmount()));
-    }
-
-    @CommandHandler
-    public FirmBankingRequestAggregate(RequestFirmBankingCommand command, ExecuteFirmBankingUseCase executeFirmBankingUseCase) {
-        log.info("FirmbankingRequestAggregate Handler");
+    public FirmBankingRequestAggregate(RequestFirmBankingCommand command, TransferMoneyUseCase transferMoneyUseCase,
+                                       FlowEventPublisher flowEvents) {
         id = command.getAggregateIdentifier();
-
-        int resultCode = executeFirmBankingUseCase.executeFirmBanking(new ExecuteFirmBankingCommand(
-                id,
-                new FirmBankingTransfer(
-                        command.getToBankName(),
-                        command.getToBankAccountNumber(),
-                        COMPANY_BANK_NAME,
-                        COMPANY_BANK_ACCOUNT_NUMBER,
-                        command.getMoneyAmount()),
-                new FirmBankingTransfer(
-                        command.getFromBankName(),
-                        command.getFromBankAccountNumber(),
-                        command.getToBankName(),
-                        command.getToBankAccountNumber(),
-                        command.getMoneyAmount())
-        ));
-
+        RecordedTransfer charge = transferMoneyUseCase.transfer(new BankTransfer(
+                chargeRequestId(command.getRechargeRequestId()),
+                command.getFromBankName(),
+                command.getFromBankAccountNumber(),
+                COMPANY_BANK_NAME,
+                COMPANY_BANK_ACCOUNT_NUMBER,
+                command.getMoneyAmount()));
         apply(new RequestFirmBankingFinishedEvent(
                 command.getRequestFirmBankingId(),
                 command.getRechargeRequestId(),
@@ -78,64 +52,76 @@ public class FirmBankingRequestAggregate {
                 command.getToBankName(),
                 command.getToBankAccountNumber(),
                 command.getMoneyAmount(),
-                resultCode,
-                id
-        ));
+                finishedStatus(charge.status()),
+                id));
+        flowEvents.publish(command.getRechargeRequestId(), FlowStep.BANK_CHARGED, outcome(charge.status()), chargeReason(charge.status()),
+                command.getMembershipId(), command.getMoneyAmount());
     }
 
     @CommandHandler
-    public FirmBankingRequestAggregate(RollbackFirmBankingRequestCommand command, ExecuteFirmBankingUseCase executeFirmBankingUseCase) {
-        log.info("RollbackFirmbankingRequestCommand Handler");
+    public FirmBankingRequestAggregate(RollbackFirmBankingRequestCommand command, TransferMoneyUseCase transferMoneyUseCase,
+                                       FlowEventPublisher flowEvents) {
         id = UUID.randomUUID().toString();
-
-        FirmBankingTransfer refund = new FirmBankingTransfer(
-                COMPANY_BANK_NAME,
-                COMPANY_BANK_ACCOUNT_NUMBER,
-                command.getBankName(),
-                command.getBankAccountNumber(),
-                command.getMoneyAmount());
-
-        int resultCode = executeFirmBankingUseCase.executeFirmBanking(new ExecuteFirmBankingCommand(id, refund, refund));
-
-        if (resultCode == 0) {
-            log.info("ExternalFirmBankingRequest success");
-        } else {
-            log.warn("ExternalFirmBankingRequest failed");
-        }
-
-        apply(new RollbackFirmBankingFinishedEvent(
-                command.getRollbackFirmbankingId(),
-                command.getMembershipId(),
-                id)
-        );
-    }
-
-    @CommandHandler
-    public String handle(UpdateFirmBankingRequestCommand command) {
-        log.info("UpdateFirmBankingRequestCommand Handler");
-
-        id = command.aggregateIdentifier();
-        apply(new FirmBankingRequestUpdatedEvent(command.firmbankingStatus()));
-
-        return id;
+        String chargeRequestId = chargeRequestId(command.getRechargeRequestId());
+        Optional<RecordedTransfer> refund = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
+        TransferStatus refundStatus = refund.map(RecordedTransfer::status).orElse(TransferStatus.CANCELLED);
+        log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
+        apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id));
+        flowEvents.publish(command.getRechargeRequestId(), FlowStep.CHARGE_ROLLED_BACK, rollbackOutcome(refundStatus), rollbackReason(refundStatus),
+                command.getMembershipId(), command.getMoneyAmount());
     }
 
     @EventSourcingHandler
-    public void on(FirmBankingRequestCreatedEvent event) {
-        log.info("FirmBankingRequestCreatedEvent Sourcing Handler");
-
-        id = UUID.randomUUID().toString();
-        fromBankName = event.fromBankName();
-        fromBankAccountNumber = event.toBankAccountNumber();
-        toBankName = event.toBankName();
-        toBankAccountNumber = event.toBankAccountNumber();
+    public void on(RequestFirmBankingFinishedEvent event) {
+        id = event.getRequestFirmbankingAggregateIdentifier();
     }
 
     @EventSourcingHandler
-    public void on(FirmBankingRequestUpdatedEvent event) {
-        log.info("FirmBankingRequestUpdatedEvent Sourcing Handler");
-
-        firmbankingStatus = event.firmBankingStatus();
+    public void on(RollbackFirmBankingFinishedEvent event) {
+        id = event.getRollbackFirmbankingAggregateIdentifier();
     }
 
+    private static String chargeRequestId(String rechargeRequestId) {
+        return "recharge-" + rechargeRequestId;
+    }
+
+    private static FlowOutcome outcome(TransferStatus status) {
+        return switch (status) {
+            case SUCCEEDED -> FlowOutcome.SUCCEEDED;
+            case PENDING -> FlowOutcome.IN_PROGRESS;
+            case FAILED, CANCELLED -> FlowOutcome.FAILED;
+        };
+    }
+
+    private static String chargeReason(TransferStatus status) {
+        return switch (status) {
+            case SUCCEEDED -> null;
+            case PENDING -> "The bank has not confirmed the charge yet";
+            case FAILED, CANCELLED -> "The bank refused the charge";
+        };
+    }
+
+    private static FlowOutcome rollbackOutcome(TransferStatus refund) {
+        return switch (refund) {
+            case SUCCEEDED, CANCELLED -> FlowOutcome.SUCCEEDED;
+            case PENDING -> FlowOutcome.IN_PROGRESS;
+            case FAILED -> FlowOutcome.FAILED;
+        };
+    }
+
+    private static String rollbackReason(TransferStatus refund) {
+        return switch (refund) {
+            case SUCCEEDED, CANCELLED -> null;
+            case PENDING -> "The bank has not confirmed the refund yet";
+            case FAILED -> "The bank refused the refund";
+        };
+    }
+
+    private static int finishedStatus(TransferStatus status) {
+        return switch (status) {
+            case SUCCEEDED -> RequestFirmBankingFinishedEvent.SUCCEEDED;
+            case PENDING -> RequestFirmBankingFinishedEvent.UNCONFIRMED;
+            case FAILED, CANCELLED -> RequestFirmBankingFinishedEvent.REFUSED;
+        };
+    }
 }

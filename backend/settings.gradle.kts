@@ -19,6 +19,7 @@ include(
     ":libs:common",
     ":services:auth-service",
     ":services:banking-service",
+    ":services:event-flow-service",
     ":services:logging-consumer",
     ":services:membership-service",
     ":services:money-aggregation-service",
@@ -27,6 +28,5 @@ include(
     ":services:payment-service",
     ":services:remittance-service",
     ":services:settlement-service",
-    ":services:task-consumer",
     ":tools:utility",
 )

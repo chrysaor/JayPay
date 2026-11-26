@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -20,8 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PaymentServiceAdapterTest {
 
     private static final String NORMAL_STATUS_PAYMENTS =
-            "[{\"paymentId\":5,\"requestMembershipId\":\"7\",\"requestPrice\":1000,\"franchiseId\":\"franchise-9\","
-                    + "\"franchiseFeeRate\":\"10\",\"paymentStatus\":0,\"approvedAt\":null}]";
+            "[{\"paymentId\":5,\"requestId\":\"r-5\",\"requestMembershipId\":\"7\",\"franchiseId\":\"9\","
+                    + "\"requestPrice\":10000,\"feeRateBasisPoints\":300,\"fee\":300,\"payout\":9700,"
+                    + "\"paymentStatus\":\"PAID\",\"approvedAt\":\"2026-11-26T01:00:00Z\"}]";
 
     private final List<String> finishedSettlements = new ArrayList<>();
     private HttpServer paymentService;
@@ -38,9 +40,15 @@ class PaymentServiceAdapterTest {
                 response = NORMAL_STATUS_PAYMENTS;
                 status = 200;
             } else if (path.equals("/payment/finish-settlement") && exchange.getRequestMethod().equals("POST")) {
-                finishedSettlements.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                response = "";
-                status = 200;
+                String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                if (request.contains("\"5\"")) {
+                    response = "{\"paymentId\":5,\"paymentStatus\":\"SETTLED\",\"alreadySettled\":" + !finishedSettlements.isEmpty() + "}";
+                    finishedSettlements.add(request);
+                    status = 200;
+                } else {
+                    response = "{\"error\":\"PAYMENT_NOT_PAID\",\"message\":\"Only a paid payment can be settled.\"}";
+                    status = 409;
+                }
             }
             byte[] body = response.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -52,7 +60,7 @@ class PaymentServiceAdapterTest {
         });
         paymentService.start();
         adapter = new PaymentServiceAdapter(
-                new CommonHttpClient(new SimpleMeterRegistry(), ObservationRegistry.NOOP),
+                new CommonHttpClient(new SimpleMeterRegistry(), ObservationRegistry.NOOP, Duration.ofSeconds(2), Duration.ofSeconds(5)),
                 "http://127.0.0.1:" + paymentService.getAddress().getPort());
     }
 
@@ -62,15 +70,21 @@ class PaymentServiceAdapterTest {
     }
 
     @Test
-    void readsTheNormalStatusPaymentsFromThePaymentService() {
-        assertThat(adapter.getNormalStatusPayments())
-                .containsExactly(new Payment(5, "franchise-9", 1000, "10"));
+    void readsThePaidPaymentsFromThePaymentService() {
+        assertThat(adapter.getPaidPayments())
+                .containsExactly(new Payment(5, "9", 9700));
     }
 
     @Test
-    void finishesTheSettlementOfAPayment() {
-        adapter.finishSettlement(5);
+    void settlesAPaymentAndTellsWhetherThisCallSettledIt() {
+        assertThat(adapter.finishSettlement(5)).isTrue();
+        assertThat(adapter.finishSettlement(5)).isFalse();
 
-        assertThat(finishedSettlements).containsExactly("{\"paymentId\":\"5\"}");
+        assertThat(finishedSettlements).containsExactly("{\"paymentId\":\"5\"}", "{\"paymentId\":\"5\"}");
+    }
+
+    @Test
+    void doesNotTreatAnErrorAnswerAsASettlement() {
+        assertThat(adapter.finishSettlement(6)).isFalse();
     }
 }

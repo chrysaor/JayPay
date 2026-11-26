@@ -16,15 +16,20 @@ CALL_PURPOSES = {
     ("banking-service", "membership-service"): "member check",
     ("money-service", "membership-service"): "member check",
     ("money-service", "banking-service"): "registered account",
-    ("remittance-service", "membership-service"): "member check",
+    ("remittance-service", "membership-service"): "sender and receiver check",
     ("remittance-service", "banking-service"): "account check, firm banking",
-    ("remittance-service", "money-service"): "balance, money change",
-    ("payment-service", "membership-service"): "member check",
+    ("remittance-service", "money-service"): "wallet debit, credit, refund",
+    ("payment-service", "membership-service"): "payer and merchant check",
+    ("payment-service", "money-service"): "wallet debit",
     ("money-aggregation-service", "membership-service"): "members by address",
     ("money-aggregation-service", "money-service"): "balances",
     ("money-query-service", "membership-service"): "member address",
-    ("settlement-service", "payment-service"): "unsettled payments, finish settlement",
+    ("settlement-service", "payment-service"): "paid payments, finish settlement",
     ("settlement-service", "banking-service"): "merchant account, firm banking",
+}
+TOPIC_PURPOSES = {
+    "jaypay.flow.events": "one record for each flow step",
+    "jaypay.logging.out.stdout": "one record for each web request",
 }
 SITE_ROLES = {"frontend-web": "customer site", "frontend-admin": "admin console"}
 STORE_PURPOSES = {"vault": "email encryption key"}
@@ -202,6 +207,8 @@ def kafka_topics(root, service):
     has_web = any(f"{os.sep}adapter{os.sep}in{os.sep}web{os.sep}" in path for path, _ in sources)
     if has_web and any('@ComponentScan("com.jaypay.common")' in text for _, text in sources):
         sources += [(path, text) for path, text in java_sources(os.path.join(root, COMMON_LIB)) if path.endswith("LoggingProducer.java")]
+    if any("FlowEventPublisher" in text for _, text in sources):
+        sources += [(path, text) for path, text in java_sources(os.path.join(root, COMMON_LIB)) if path.endswith("FlowEventPublisher.java")]
     produces, consumes = set(), set()
     for _, text in sources:
         consumes.update(re.findall(r'@KafkaListener\(topics = "\$\{([\w.]+)\}"', text))
@@ -218,9 +225,10 @@ def axon_roles(root, service):
         elif "@Saga" in text:
             roles.append("saga")
         else:
-            roles += ["event handler"] * ("@EventHandler" in text) + ["query handler"] * ("@QueryHandler" in text)
+            roles += (["command handler"] * ("@CommandHandler" in text) + ["event handler"] * ("@EventHandler" in text)
+                      + ["query handler"] * ("@QueryHandler" in text))
     counted = []
-    for role in ("aggregate", "saga", "event handler", "query handler"):
+    for role in ("aggregate", "saga", "command handler", "event handler", "query handler"):
         count = roles.count(role)
         if count:
             counted.append(role if count == 1 else f"{count} {role}s")
@@ -268,7 +276,11 @@ def model(root):
     stale = sorted(set(CALL_PURPOSES) - http)
     problems += [f"scripts/check-docs.py: {a} calls {b} in {CALLS_FILE}, add its purpose to CALL_PURPOSES" for a, b in missing]
     problems += [f"scripts/check-docs.py: CALL_PURPOSES lists {a} calling {b}, which {CALLS_FILE} does not" for a, b in stale]
-    return {"services": services, "sites": sites, "info": info, "http": http, "dynamodb_table": table}, problems
+    keycloak = compose.get("keycloak", {}).get("ports") or []
+    if not keycloak:
+        problems.append("compose.yaml: keycloak publishes no port")
+    return {"services": services, "sites": sites, "info": info, "http": http, "dynamodb_table": table,
+            "keycloak_port": keycloak[0]["published"] if keycloak else None}, problems
 
 
 def short(name):
@@ -282,26 +294,35 @@ def request_path(m):
     admin_targets = set(info[admin]["calls"]) - {"auth-service"}
     row = request_order(m)
     batches = [s for s in m["services"] if info[s]["batch"] and not info[s]["called_by"]]
-    box_w, gap, x0 = 140, 12, 16
-    width, height = x0 * 2 + len(row) * box_w + (len(row) - 1) * gap, 400
+    box_w, gap, x0, side_w = 140, 12, 16, 150
+    row_width = x0 * 2 + len(row) * box_w + (len(row) - 1) * gap
+    width, height = row_width + side_w + 60, 400
     cx = {name: x0 + i * (box_w + gap) + box_w / 2 for i, name in enumerate(row)}
     sy, sh, web_bus, admin_bus = 210, 48, 124, 156
     svg = Svg(width, height, "JayPay request path",
               f"The customer site forwards /api/<service>/ to {', '.join(sorted(web_targets))}. "
-              f"The admin console asks auth-service before every call and then forwards to {', '.join(sorted(admin_targets))}. "
+              f"The admin console signs staff in through Keycloak, asks auth-service before every call, "
+              f"and then forwards to {', '.join(sorted(admin_targets))}. auth-service checks the Keycloak token against the realm keys. "
               + " ".join(f"{b} runs a batch against {' and '.join(info[b]['calls'])}." for b in batches))
 
     def site_center(targets):
         return cx[row[round(sum(row.index(t) for t in targets) / len(targets) - 0.01)]]
 
     web_c, admin_c = site_center(web_targets), site_center(admin_targets)
-    auth_x = width - 16 - 150
+    auth_x = row_width - 16 - side_w
+    keycloak_x = width - 16 - side_w
     svg.box(web_c - 100, 24, 200, 52, web, f"{SITE_ROLES[web]}, port {info[web]['port']}", "bluebox")
     svg.box(admin_c - 100, 24, 200, 52, admin, f"{SITE_ROLES[admin]}, port {info[admin]['port']}", "orangebox")
-    svg.box(auth_x, 24, 150, 52, "auth-service", f"staff, port {info['auth-service']['port']}")
+    svg.box(auth_x, 24, side_w, 52, "auth-service", f"staff gate, port {info['auth-service']['port']}")
+    svg.box(keycloak_x, 24, side_w, 52, "keycloak", f"staff realm, port {m['keycloak_port']}", "orangebox")
     svg.arrow([(admin_c + 100, 50), (auth_x, 50)], "orange", "orangef")
     svg.label((admin_c + 100 + auth_x) / 2, 42, "auth_request", "orangef", "middle")
-    svg.label((admin_c + 100 + auth_x) / 2, 68, "staff sign-in", "orangef", "middle")
+    svg.arrow([(auth_x + side_w, 50), (keycloak_x, 50)], "gray dashed", "grayf")
+    svg.label((auth_x + side_w + keycloak_x) / 2, 42, "keys", "s", "middle")
+    sign_in_y = 96
+    svg.path([(admin_c + 80, 76), (admin_c + 80, sign_in_y), (keycloak_x + side_w / 2, sign_in_y)], "orange")
+    svg.arrow([(keycloak_x + side_w / 2, sign_in_y), (keycloak_x + side_w / 2, 76)], "orange", "orangef")
+    svg.label(keycloak_x + side_w / 2 - 8, sign_in_y - 6, "sign-in, /realms/staff/", "orangef", "end")
 
     def drop_x(name, site):
         both = name in web_targets and name in admin_targets
@@ -390,55 +411,41 @@ def kafka(m):
             topics.setdefault(topic, (set(), set()))[0].add(service)
         for topic in info[service]["consumes"]:
             topics.setdefault(topic, (set(), set()))[1].add(service)
-    requests = [t for t, (writers, readers) in topics.items()
-                if len(writers) == 1 and len(readers) == 1 and info[next(iter(writers))]["port"]
-                and any(topics[u] == (readers, writers) for u in topics)]
-    fan_in = [t for t in topics if t not in requests and not any(topics[r] == (topics[t][1], topics[t][0]) for r in requests)]
-    if len(requests) != 1 or len(fan_in) != 1 or len(topics[fan_in[0]][1]) != 1:
-        return None, [f"scripts/check-docs.py: the Kafka diagram expects one request and result topic pair and one topic that many services write to, found {sorted(topics)}"]
-    request = requests[0]
-    requester, worker = next(iter(topics[request][0])), next(iter(topics[request][1]))
-    result = next(t for t in topics if topics[t] == ({worker}, {requester}))
-    log_topic = fan_in[0]
-    log_consumer = next(iter(topics[log_topic][1]))
-    producers = [s for s in m["services"] if s in topics[log_topic][0]]
-    if requester not in producers:
-        return None, [f"scripts/check-docs.py: the Kafka diagram expects {requester} to write to {log_topic} too"]
-    others = [s for s in m["services"] if s in producers and s != requester]
+    problems = [f"scripts/check-docs.py: {t} is a Kafka topic, add its purpose to TOPIC_PURPOSES" for t in sorted(set(topics) - set(TOPIC_PURPOSES))]
+    problems += [f"scripts/check-docs.py: TOPIC_PURPOSES lists {t}, which no service writes and reads" for t in sorted(set(TOPIC_PURPOSES) - set(topics))]
+    problems += [f"scripts/check-docs.py: the Kafka diagram expects one service to read {t}, found {sorted(readers) or 'none'}"
+                 for t, (writers, readers) in sorted(topics.items()) if len(readers) != 1 or not writers]
+    if problems:
+        return None, problems
     pitch, box_h, top = 48, 36, 24
     left_x, left_w, topic_x, topic_w, right_x, right_w = 16, 210, 300, 250, 640, 180
     width = right_x + right_w + 16
-    rows = 3 + len(others)
+    sections = [(t, [s for s in m["services"] if s in topics[t][0]], next(iter(topics[t][1]))) for t in sorted(topics)]
+    rows = sum(len(producers) for _, producers, _ in sections) + len(sections) - 1
     height = top * 2 + pitch * (rows - 1) + box_h
 
     def y(row):
         return top + row * pitch + box_h / 2
 
-    svg = Svg(width, height, "JayPay Kafka topics",
-              f"{requester} writes {request}, {worker} reads it and writes {result}, which {requester} reads. "
-              f"{', '.join(producers)} write one record for each web request to {log_topic}, which {log_consumer} reads.")
-    svg.box(left_x, top, left_w, pitch * 2 + box_h, requester)
-    svg.box(right_x, top, right_w, pitch + box_h, worker)
-    svg.box(topic_x, top, topic_w, box_h, request, cls="purplebox", rx=18)
-    svg.box(topic_x, top + pitch, topic_w, box_h, result, cls="purplebox", rx=18)
-    svg.arrow([(left_x + left_w, y(0)), (topic_x, y(0))], "purple", "purplef")
-    svg.arrow([(topic_x + topic_w, y(0)), (right_x, y(0))], "purple", "purplef")
-    svg.arrow([(right_x, y(1)), (topic_x + topic_w, y(1))], "purple", "purplef")
-    svg.arrow([(topic_x, y(1)), (left_x + left_w, y(1))], "purple", "purplef")
+    svg = Svg(width, height, "JayPay Kafka topics", " ".join(
+        f"{', '.join(producers)} write {TOPIC_PURPOSES[topic]} to {topic}, which {reader} reads." for topic, producers, reader in sections))
     bus = (left_x + left_w + topic_x) / 2
-    for i, name in enumerate(others):
-        svg.box(left_x, top + (3 + i) * pitch, left_w, box_h, name)
-    last = 2 + len(others)
-    middle = (2 + last) // 2
-    for row in range(2, last + 1):
-        if row != middle:
-            svg.path([(left_x + left_w, y(row)), (bus, y(row))], "purple")
-    svg.path([(bus, y(2)), (bus, y(last))], "purple")
-    svg.arrow([(left_x + left_w, y(middle)), (topic_x, y(middle))], "purple", "purplef")
-    svg.box(topic_x, top + middle * pitch, topic_w, box_h, log_topic, cls="purplebox", rx=18)
-    svg.arrow([(topic_x + topic_w, y(middle)), (right_x, y(middle))], "purple", "purplef")
-    svg.box(right_x, top + middle * pitch, right_w, box_h, log_consumer)
-    svg.label(topic_x + topic_w / 2, top + middle * pitch - 6, "one record per web request", "purplef", "middle")
+    first = 0
+    for topic, producers, reader in sections:
+        last = first + len(producers) - 1
+        middle = (first + last) // 2
+        for row, name in enumerate(producers, start=first):
+            svg.box(left_x, top + row * pitch, left_w, box_h, name)
+            if row != middle:
+                svg.path([(left_x + left_w, y(row)), (bus, y(row))], "purple")
+        if last > first:
+            svg.path([(bus, y(first)), (bus, y(last))], "purple")
+        svg.arrow([(left_x + left_w, y(middle)), (topic_x, y(middle))], "purple", "purplef")
+        svg.box(topic_x, top + middle * pitch, topic_w, box_h, topic, cls="purplebox", rx=18)
+        svg.arrow([(topic_x + topic_w, y(middle)), (right_x, y(middle))], "purple", "purplef")
+        svg.box(right_x, top + middle * pitch, right_w, box_h, reader)
+        svg.label(topic_x + topic_w / 2, top + middle * pitch - 6, TOPIC_PURPOSES[topic], "purplef", "middle")
+        first = last + 2
     return svg, []
 
 
@@ -448,15 +455,19 @@ def storage(m):
     vault_users = [s for s in with_db if "vault" in info[s]["stores"]]
     axon_users = [s for s in with_db if info[s]["axon"]]
     dynamo_users = [s for s in axon_users if "dynamodb" in info[s]["stores"]]
-    axon_users = [s for s in axon_users if s not in dynamo_users] + dynamo_users
+    vault_axon_users = [s for s in vault_users if s in axon_users]
+    axon_users = vault_axon_users + [s for s in axon_users if s not in dynamo_users + vault_axon_users] + dynamo_users
     rest = [s for s in with_db if s not in vault_users + axon_users]
     problems = []
-    if any("dynamodb" in info[s]["stores"] for s in with_db if s not in axon_users) or set(vault_users) & set(axon_users):
-        problems.append("scripts/check-docs.py: the storage diagram expects DynamoDB users to use Axon and Vault users not to")
+    if any("dynamodb" in info[s]["stores"] for s in with_db if s not in axon_users) or set(vault_users) & set(dynamo_users):
+        problems.append("scripts/check-docs.py: the storage diagram expects DynamoDB users to use Axon and not Vault")
     order, spans = [], {}
-    for name in vault_users + axon_users + rest:
-        spans[name] = (len(order), 2 if name in dynamo_users else 1)
+    for name in [s for s in vault_users if s not in axon_users] + axon_users + rest:
+        spans[name] = (len(order), 2 if name in dynamo_users + vault_axon_users else 1)
         order += [name] * spans[name][1]
+
+    def axon_row(name):
+        return spans[name][0] + (name in vault_axon_users)
     pitch, box_h, top = 48, 36, 24
     store_x, store_w, service_x, service_w, pg_x, pg_w = 16, 196, 416, 210, 786, 170
     width, height = pg_x + pg_w + 16, top * 2 + pitch * (len(order) - 1) + box_h
@@ -475,11 +486,11 @@ def storage(m):
         svg.arrow([(service_x + service_w, center), (pg_x, center)], "gray", "grayf")
         svg.label((service_x + service_w + pg_x) / 2, center - 6, info[name]["database"], "grayf", "middle")
     svg.box(pg_x, top, pg_w, height - top * 2, "PostgreSQL", "one database per service")
-    first, last = spans[axon_users[0]][0], spans[axon_users[-1]][0]
+    first, last = axon_row(axon_users[0]), axon_row(axon_users[-1])
     kinds = "commands, events, queries" if any("query" in info[s]["axon"] for s in axon_users) else "commands and events"
     svg.box(store_x, top + first * pitch, store_w, pitch * (last - first) + box_h, "Axon Server", kinds, "greenbox")
     for name in axon_users:
-        row = spans[name][0]
+        row = axon_row(name)
         svg.arrow([(store_x + store_w, y(row)), (service_x, y(row))], "green", "greenf", both=True)
         svg.label((store_x + store_w + service_x) / 2, y(row) - 6, info[name]["axon"], "greenf", "middle")
     for name in vault_users:

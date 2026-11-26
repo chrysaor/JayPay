@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class GetMoneySumController {
     private final GetMoneySumByAddressUseCase getMoneySumByAddressUseCase;
     @PostMapping(path = "/money/aggregation/get-money-sum-by-address")
-    int getMoneySumByAddress(@RequestBody GetMoneySumByAddressRequest request) {
+    long getMoneySumByAddress(@RequestBody GetMoneySumByAddressRequest request) {
 
         return getMoneySumByAddressUseCase.getMoneySumByAddress(
                 new GetMoneySumByAddressCommand(request.getAddress())

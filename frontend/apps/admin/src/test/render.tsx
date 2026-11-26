@@ -16,26 +16,56 @@ export const member = {
 
 export type TestRole = 'ADMIN' | 'OPERATOR' | 'VIEWER'
 
-export const storageKey = 'jaypay.admin.session'
-export const staffToken = 'staff-token-1'
-export const meRoute = 'GET /api/auth/staff/me'
+export const pendingKey = 'jaypay.admin.sign-in'
+export const tokenRoute = 'POST /realms/staff/protocol/openid-connect/token'
+export const testState = 'state-from-this-tab'
+export const testVerifier = 'verifier-from-this-tab'
+export const testCode = 'code-from-keycloak'
 
-export function staffAccount(role: TestRole = 'OPERATOR', username = 'jay') {
-  return { username, role, active: true, mfaEnabled: false }
+function base64url(value: unknown) {
+  return btoa(JSON.stringify(value)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 }
 
-export function hoursFromNow(hours: number) {
-  return new Date(Date.now() + hours * 3_600_000).toISOString()
+export function accessToken(realmRoles: string[], username = 'jay') {
+  return [
+    base64url({ alg: 'RS256' }),
+    base64url({ preferred_username: username, realm_access: { roles: realmRoles } }),
+    'signature',
+  ].join('.')
 }
 
-export function signedInAs(role: TestRole = 'OPERATOR', expiresAt = hoursFromNow(8)) {
-  const account = staffAccount(role)
-  localStorage.setItem(storageKey, JSON.stringify({ token: staffToken, expiresAt, account }))
-  return { [meRoute]: { body: account } }
+export function tokenReply(realmRoles: string[], expiresIn = 120, username = 'jay') {
+  return {
+    body: {
+      access_token: accessToken(realmRoles, username),
+      refresh_token: `refresh-${realmRoles.join('-')}`,
+      id_token: 'id-token-1',
+      expires_in: expiresIn,
+      token_type: 'Bearer',
+    },
+  }
 }
 
-export function storedSession(): unknown {
-  return JSON.parse(localStorage.getItem(storageKey) ?? 'null')
+function realmRolesOf(role: TestRole) {
+  return role === 'OPERATOR' ? ['operator', 'offline_access'] : [role.toLowerCase()]
+}
+
+export const staffToken = accessToken(realmRolesOf('OPERATOR'))
+
+export function pendingSignIn(returnTo = '/members', state = testState) {
+  sessionStorage.setItem(pendingKey, JSON.stringify({ state, verifier: testVerifier, returnTo }))
+}
+
+export function signedInAs(role: TestRole = 'OPERATOR', expiresIn = 120) {
+  pendingSignIn()
+  return { [tokenRoute]: tokenReply(realmRolesOf(role), expiresIn) }
+}
+
+function startOf(path: string) {
+  const pending = sessionStorage.getItem(pendingKey)
+  if (!pending || path.startsWith('/callback')) return path
+  sessionStorage.setItem(pendingKey, JSON.stringify({ ...(JSON.parse(pending) as object), returnTo: path }))
+  return `/callback?code=${testCode}&state=${testState}`
 }
 
 export function renderApp(path: string) {
@@ -43,7 +73,7 @@ export function renderApp(path: string) {
   const user = userEvent.setup()
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter initialEntries={[startOf(path)]}>
         <App />
       </MemoryRouter>
     </QueryClientProvider>,

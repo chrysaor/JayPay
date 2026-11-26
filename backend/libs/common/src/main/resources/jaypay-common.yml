@@ -7,6 +7,9 @@ spring:
       observation-enabled: true
     listener:
       observation-enabled: true
+    producer:
+      properties:
+        "[max.block.ms]": 2000
 axon:
   axonserver:
     servers: ${AXON_AXONSERVER_SERVERS:localhost:8124}
@@ -14,14 +17,24 @@ axon:
     general: xstream
     events: jackson
     messages: jackson
+jaypay:
+  http:
+    connect-timeout: 2s
+    request-timeout: 10s
+flow:
+  topic: jaypay.flow.events
 logging:
   topic: jaypay.logging.out.stdout
   structured:
     format:
       console: ${LOG_FORMAT:}
 management:
+  server:
+    port: 9080
   endpoints:
     web:
+      discovery:
+        enabled: false
       exposure:
         include: health,prometheus
   tracing:
@@ -31,3 +44,18 @@ management:
     metrics:
       export:
         enabled: false
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

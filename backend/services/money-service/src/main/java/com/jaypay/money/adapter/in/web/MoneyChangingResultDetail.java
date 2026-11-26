@@ -1,15 +1,20 @@
 package com.jaypay.money.adapter.in.web;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.jaypay.money.domain.MoneyChangingRequest;
 
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-public class MoneyChangingResultDetail {
-    private String moneyChangingRequestId;
-    private int moneyChangingType;
-    private int moneyChangingResultStatus;
-    private int amount;
+public record MoneyChangingResultDetail(
+        String moneyChangingRequestId,
+        int moneyChangingType,
+        int moneyChangingResultStatus,
+        long amount
+) {
+
+    static MoneyChangingResultDetail of(MoneyChangingRequest request) {
+        return new MoneyChangingResultDetail(
+                request.requestId().value(),
+                request.type().code(),
+                request.status().code(),
+                request.amount().value()
+        );
+    }
 }

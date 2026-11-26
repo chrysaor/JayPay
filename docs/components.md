@@ -8,15 +8,17 @@ A new component is added to this page in the PR that introduces it.
 
 | Component | Role | Version pinned in |
 | --- | --- | --- |
-| Java | Language and runtime of the eleven services | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
+| Java | Language of the eleven services. The images run a `jlink` runtime cut from the Temurin JDK with only the modules the services load | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
+| Distroless base, glibc without OpenSSL | Base of the service images: glibc, CA certificates, time zones and `/etc/passwd`, no shell or package manager | `backend/Dockerfile` |
+| Debian | Source of the `C.UTF-8` locale the service images copy, the same glibc as the distroless base | `backend/Dockerfile` |
 | Gradle | Backend build | `backend/gradle/wrapper/gradle-wrapper.properties` |
 | Spring Boot | Web, data access, Kafka, Actuator | `backend/gradle/libs.versions.toml` |
-| Spring Security | Staff sign-in, roles and the admin gate in auth-service | Spring Boot BOM |
+| Spring Security | Resource server in auth-service that checks Keycloak tokens, the roles and the admin gate | Spring Boot BOM |
 | Spring Vault | Reads the encryption key of membership-service | `backend/gradle/libs.versions.toml` |
 | Axon Framework | Event sourcing and the money top-up saga | `backend/gradle/libs.versions.toml` |
 | AWS SDK for Java | DynamoDB access of money-query-service | `backend/gradle/libs.versions.toml` |
-| JJWT | Customer and staff tokens | `backend/gradle/libs.versions.toml` |
-| springdoc | OpenAPI documents of the services | `backend/gradle/libs.versions.toml` |
+| JJWT | Customer tokens | `backend/gradle/libs.versions.toml` |
+| springdoc | OpenAPI documents of the services, under the Spring profile `local` only | `backend/gradle/libs.versions.toml` |
 | Micrometer and the OpenTelemetry Logback appender | Metrics, traces and logs out of every service | Spring Boot BOM, `backend/gradle/libs.versions.toml` |
 | ArchUnit, Testcontainers | Hexagonal layer rules and tests against real PostgreSQL and Kafka | `backend/gradle/libs.versions.toml`, Spring Boot BOM |
 | React, TypeScript, Vite, Vitest | The customer site and the admin console | `frontend/package.json` and the `package.json` of each app |
@@ -30,10 +32,11 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 
 | Component | Role | Version pinned in |
 | --- | --- | --- |
-| PostgreSQL | One database per service | `infra/docker/compose.yaml` |
-| Apache Kafka | Tasks and logging events between services | `infra/docker/compose.yaml` |
+| PostgreSQL | One database per service with data, and one for Keycloak | `infra/docker/compose.yaml` |
+| Keycloak | Staff accounts and sign-in of the admin console: the realm `staff` with the Authorization Code flow and PKCE, brute force protection, the password policy and optional authenticator apps. Keeps its data in the `keycloak` database of PostgreSQL | `infra/docker/compose.yaml` |
+| Apache Kafka | Logging events and the flow events of saga top-ups between services | `infra/docker/compose.yaml` |
 | Axon Server | Event store and command and event routing | `infra/docker/compose.yaml` |
-| HashiCorp Vault | Holds the encryption key of membership-service, dev mode | `infra/docker/compose.yaml` |
+| HashiCorp Vault | Holds the encryption key of membership-service, which reads it with a token that may read nothing else, dev mode | `infra/docker/compose.yaml` |
 | DynamoDB Local | Regional money totals, stands in for the AWS table | `infra/docker/compose.yaml` |
 | ClickHouse | Stores logs and traces | `infra/docker/compose.yaml` |
 | Kafbat UI | Kafka console, compose only | `infra/docker/compose.yaml` |
@@ -45,8 +48,8 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | Component | Role | Runs in | Version pinned in |
 | --- | --- | --- | --- |
 | OpenTelemetry Collector | Receives logs and traces over OTLP and writes them to ClickHouse | compose, local cluster | `infra/docker/otel-collector/Dockerfile`, `deploy/envs/local/dependency/otel-collector.yaml` |
-| Prometheus | Scrapes `/actuator/prometheus` | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/prometheus.yaml` |
-| Grafana | Dashboards over ClickHouse and Prometheus | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/grafana.yaml` |
+| Prometheus | Scrapes `/actuator/prometheus` on the management port 9080 | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/prometheus.yaml` |
+| Grafana | Dashboards over ClickHouse, read as the read-only user `grafana`, and Prometheus. Anonymous visitors are viewers | compose, local cluster | `infra/docker/compose.yaml`, `deploy/envs/local/dependency/grafana.yaml` |
 
 ## Kubernetes and GitOps
 
@@ -59,7 +62,7 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
 | kubectl | Applies the bootstrap manifests and builds the Argo CD overlay | developer machine, gate | installed by the developer, `scripts/verify.sh` |
 | kubeconform | Validates rendered manifests against the Kubernetes and Argo CD schemas | gate | `scripts/verify.sh` |
-| BusyBox | Probe pods of `make k8s-policy-check` | local cluster | `infra/docker/otel-collector/Dockerfile` |
+| BusyBox | Probe pods of `make k8s-policy-check`, and the `wget` of the health checks in the service and Collector images | local cluster, compose | `infra/docker/otel-collector/Dockerfile`, `backend/Dockerfile` |
 
 Approved for the cloud phases and not in the repository yet: External Secrets with AWS Secrets Manager, CloudNativePG, Strimzi, Amazon EKS.
 

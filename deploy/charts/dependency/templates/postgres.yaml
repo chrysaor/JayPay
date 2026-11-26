@@ -1,5 +1,5 @@
 {{- if eq .Release.Name "postgres" }}
-{{ include "dependency.files" (dict "root" . "files" (dict "01-databases.sql" "files/postgres-initdb/01-databases.sql")) }}
+{{ include "dependency.files" (dict "root" . "files" (dict "01-databases.sql" "files/postgres/initdb.d/01-databases.sql" "create-databases.sh" "files/postgres/create-databases.sh")) }}
 ---
 {{ include "dependency.service" . }}
     - name: postgres
@@ -12,20 +12,38 @@
           ports:
             - name: postgres
               containerPort: 5432
+          lifecycle:
+            postStart:
+              exec:
+                command: [sh, /scripts/create-databases.sh]
           readinessProbe:
             exec:
-              command: [psql, -h, 127.0.0.1, -U, jaypay, -d, auth, -tAc, select 1]
+              command: [psql, -h, 127.0.0.1, -U, jaypay, -d, keycloak, -tAc, select 1]
             periodSeconds: 5
             timeoutSeconds: 5
           volumeMounts:
+            {{- include "dependency.scratchMounts" . | nindent 12 }}
             - name: data
               mountPath: /var/lib/postgresql
-            - name: files
+            - name: initdb
               mountPath: /docker-entrypoint-initdb.d
               readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
       volumes:
-        - name: files
+        {{- include "dependency.scratchVolumes" . | nindent 8 }}
+        - name: initdb
           configMap:
             name: postgres-files
+            items:
+              - key: 01-databases.sql
+                path: 01-databases.sql
+        - name: scripts
+          configMap:
+            name: postgres-files
+            items:
+              - key: create-databases.sh
+                path: create-databases.sh
   {{- include "dependency.dataClaim" . | nindent 2 }}
 {{- end }}

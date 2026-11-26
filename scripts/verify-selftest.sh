@@ -11,7 +11,7 @@ export ARGOCD_CACHE=$root/build/argocd
 copy_repo() {
   local dest="$work/$1"
   mkdir -p "$dest"
-  git -C "$root" ls-files -co --exclude-standard -- scripts README.md docs backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
+  git -C "$root" ls-files -co --exclude-standard -- scripts README.md CHANGELOG.md docs backend deploy infra/terraform infra/docker frontend/Dockerfile frontend/apps .github |
     while IFS= read -r path; do
       [ -e "$root/$path" ] || continue
       mkdir -p "$dest/$(dirname "$path")"
@@ -35,7 +35,27 @@ expect() {
   fi
 }
 
+expect_run() {
+  local name=$1 want=$2 planted=$3 out status=0
+  shift 3
+  out=$("$@" 2>&1) || status=$?
+  if { [ "$want" = pass ] && [ "$status" -eq 0 ]; } || { [ "$want" = fail ] && [ "$status" -ne 0 ]; }; then
+    if grep -q -- "$planted" <<<"$out"; then
+      echo "ok   $name $([ "$want" = pass ] && echo passes || echo fails)${planted:+ with $planted}"
+      return
+    fi
+  fi
+  echo "FAIL $name (exit $status, wanted $want)"
+  echo "$out" | tail -20
+  failures=$((failures + 1))
+}
+
+changelog() {
+  python3 "$root/scripts/changelog.py" "$@"
+}
+
 clean=$(copy_repo clean)
+expect changelog pass "$clean"
 expect contract pass "$clean"
 expect docs pass "$clean"
 expect actionlint pass "$clean"
@@ -66,6 +86,53 @@ expect docs fail "$dir" "logging-consumer: Memory limit says"
 dir=$(copy_repo english)
 printf '\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-hangul.md"
 expect english fail "$dir" planted-hangul.md
+
+dir=$(copy_repo changelog-order)
+perl -pi -e 's/^## \[0\.2\.0\]/## [0.0.9]/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "\[0.0.9\] must be newer than \[0.1.0\]"
+
+dir=$(copy_repo changelog-heading)
+perl -pi -e 's/^## \[0\.1\.0\] - (\d+)-(\d+)-(\d+)$/## [0.1.0] - $3.$2.$1/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "is not a version heading"
+
+dir=$(copy_repo changelog-empty-group)
+perl -pi -e 's/^(## \[0\.1\.0\])/### Fixed\n\n$1/' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "### Fixed has no entries in \[0.2.0\]"
+
+dir=$(copy_repo changelog-link)
+perl -0pi -e 's/ \(\[#\d+\]\([^)]*\)\)$//m' "$dir/CHANGELOG.md"
+expect changelog fail "$dir" "does not end with a PR or issue link"
+
+plant_unreleased_entry() {
+  perl -0pi -e 's/(## \[Unreleased\]\n\n### \w+\n\n)/$1- Planted release entry ([#1](https:\/\/github.com\/chrysaor\/JayPay\/pull\/1))\n/ or s/(## \[Unreleased\]\n)/$1\n### Added\n\n- Planted release entry ([#1](https:\/\/github.com\/chrysaor\/JayPay\/pull\/1))\n/' "$1"
+}
+
+dir=$(copy_repo changelog-release)
+plant_unreleased_entry "$dir/CHANGELOG.md"
+expect_run "changelog release" pass "" changelog release "$dir/CHANGELOG.md" 9.0.0 2099-01-01
+expect changelog pass "$dir"
+expect_run "changelog notes" pass "pull/1" changelog notes "$dir/CHANGELOG.md" 9.0.0
+expect_run "changelog release of an empty Unreleased" fail "Unreleased has no entries" changelog release "$dir/CHANGELOG.md" 9.0.1 2099-01-02
+expect_run "changelog notes of a missing version" fail "no section for 8.8.8" changelog notes "$root/CHANGELOG.md" 8.8.8
+
+repo="$work/changelog-entry"
+git init --quiet --initial-branch develop "$repo"
+cp "$root/CHANGELOG.md" "$repo/"
+in_repo() { git -C "$repo" -c user.name=selftest -c user.email=selftest@example.invalid "$@"; }
+entry() { (cd "$repo" && changelog entry CHANGELOG.md base); }
+in_repo add CHANGELOG.md && in_repo commit --quiet -m base && in_repo branch base
+echo change >"$repo/change" && in_repo add change && in_repo commit --quiet -m "feat: change behaviour"
+expect_run "changelog entry missing" fail "adds no line to Unreleased" entry
+in_repo commit --quiet --allow-empty -m "docs: fix a typo" -m "Changelog: none"
+expect_run "changelog entry waived by a Changelog: none trailer" pass "" entry
+in_repo reset --quiet --hard HEAD~1
+plant_unreleased_entry "$repo/CHANGELOG.md"
+in_repo commit --quiet -am "feat: change behaviour with an entry"
+expect_run "changelog entry added" pass "" entry
+in_repo reset --quiet --hard base
+plant_unreleased_entry "$repo/CHANGELOG.md"
+changelog release "$repo/CHANGELOG.md" 9.0.0 2099-01-01 && in_repo commit --quiet -am "chore: release 9.0.0"
+expect_run "changelog entry of a back-merge" pass "" entry
 
 dir=$(copy_repo env-example)
 echo 'DOCKER_HOST_IP=127.0.0.1' >>"$dir/infra/docker/.env.example"
@@ -116,8 +183,8 @@ rm "$dir/infra/docker/vault/encryption-key.sh"
 expect charts fail "$dir" "files/vault/encryption-key.sh is empty or missing"
 
 dir=$(copy_repo charts-workload)
-rm "$dir/deploy/envs/local/spring-service/task-consumer.yaml"
-expect charts fail "$dir" "no workload task-consumer"
+rm "$dir/deploy/envs/local/spring-service/logging-consumer.yaml"
+expect charts fail "$dir" "no workload logging-consumer"
 
 dir=$(copy_repo charts-env)
 perl -ni -e 'print unless /SERVICE_PAYMENT_URL/' "$dir/deploy/envs/local/spring-service/settlement-service.yaml"
@@ -132,8 +199,12 @@ perl -0pi -e 's/(\n  auth-service:\n    http: \[)/$1frontend-web, /' "$dir/deplo
 expect charts fail "$dir" "lets frontend-web reach auth-service on port http, but nothing"
 
 dir=$(copy_repo charts-policy-missing)
-perl -0pi -e 's/(\n  auth-service:\n    http: \[)frontend-admin, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
-expect charts fail "$dir" "frontend-admin calls auth-service on port http, but no NetworkPolicy allows it"
+perl -0pi -e 's/(\n  membership-service:\n    http: \[[^\]]*)frontend-admin, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "frontend-admin calls membership-service on port http, but no NetworkPolicy allows it"
+
+dir=$(copy_repo charts-policy-management)
+perl -0pi -e 's/(\n  auth-service:\n(?:    .*\n)*?    management: \[)prometheus/$1frontend-admin, prometheus/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets frontend-admin reach the management port of auth-service, which only prometheus may reach"
 
 dir=$(copy_repo charts-policy-default)
 perl -pi -e 's/^  podSelector: \{\}$/  podSelector: {matchLabels: {app.kubernetes.io\/name: nothing}}/' "$dir/deploy/charts/network-policy/templates/network-policy.yaml"
@@ -142,6 +213,22 @@ expect charts fail "$dir" "no NetworkPolicy denies ingress to every pod by defau
 dir=$(copy_repo charts-policy-port)
 perl -pi -e 's/(SERVICE_MEMBERSHIP_URL: http:\/\/membership-service):8080/$1:9999/' "$dir/deploy/envs/local/spring-service/banking-service.yaml"
 expect charts fail "$dir" "points at membership-service:9999, a port that the Service membership-service does not expose"
+
+dir=$(copy_repo charts-port-address)
+perl -pi -e 's/"127\.0\.0\.1:3030:3000"/"3030:3000"/' "$dir/infra/docker/compose.yaml"
+expect charts fail "$dir" "grafana: compose.yaml publishes port 3030 on every address"
+
+dir=$(copy_repo charts-root-user)
+perl -0pi -e 's/(\n  prometheus:\n(?:    .*\n)*?    user: )"65534:65534"/$1"0:0"/' "$dir/infra/docker/compose.yaml"
+expect charts fail "$dir" "prometheus: compose.yaml runs it as 0:0"
+
+dir=$(copy_repo charts-dependency-user)
+perl -pi -e 's/^user: 65534$/user: 1/' "$dir/deploy/envs/local/dependency/prometheus.yaml"
+expect charts fail "$dir" "prometheus: deploy/envs/local runs it as 1:65534, compose.yaml as 65534:65534"
+
+dir=$(copy_repo charts-scratch)
+perl -ni -e 'print unless m{^  - /home/vault$}' "$dir/deploy/envs/local/dependency/vault.yaml"
+expect charts fail "$dir" "vault: deploy/envs/local mounts emptyDir volumes at"
 
 dir=$(copy_repo charts-secret)
 printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: {{ .Release.Name }}\nstringData:\n  planted: "1"\n' >"$dir/deploy/charts/frontend/templates/secret.yaml"

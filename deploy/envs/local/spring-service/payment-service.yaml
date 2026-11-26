@@ -1,5 +1,6 @@
 env:
   SERVICE_MEMBERSHIP_URL: http://membership-service:8080
+  SERVICE_MONEY_URL: http://money-service:8080
   SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment
   SPRING_JPA_HIBERNATE_DDL_AUTO: update
 secretEnv:

@@ -1,92 +1,54 @@
 package com.jaypay.money.domain;
 
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Value;
+public record MoneyChangingRequest(
+        RequestId requestId,
+        String targetMembershipId,
+        MoneyChangingType type,
+        MoneyAmount amount,
+        MoneyChangingStatus status
+) {
 
-import java.util.Date;
-
-@Getter
-@AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class MoneyChangingRequest {
-
-    private final String moneyChangingRequestId;
-    private final String targetMembershipId;
-    private final int changingType;
-    private final int changingMoneyAmount;
-    private final int moneyChangingStatus;
-    private final String uuid;
-    private final Date created_at;
-
-    public static MoneyChangingRequest generateMoneyChangingRequest (
-            MoneyChangingRequestId moneyChangingRequestId,
-            TargetMembershipId targetMembershipId,
-            MoneyChangingType moneyChangingType,
-            ChangingMoneyAmount changingMoneyAmount,
-            MoneyChangingStatus moneyChangingStatus,
-            String uuid
-    ){
-        return new MoneyChangingRequest(
-                moneyChangingRequestId.getMoneyChangingRequestId(),
-                targetMembershipId.getTargetMembershipId(),
-                moneyChangingType.getMoneyChangingType(),
-                changingMoneyAmount.getChangingMoneyAmount(),
-                moneyChangingStatus.getChangingMoneyStatus(),
-                uuid,
-                new Date()
-        );
+    public static MoneyChangingRequest pending(RequestId requestId, String targetMembershipId, MoneyChangingType type, MoneyAmount amount) {
+        return new MoneyChangingRequest(requestId, targetMembershipId, type, amount, MoneyChangingStatus.PENDING);
     }
 
-    @Value
-    public static class MoneyChangingRequestId {
-        public MoneyChangingRequestId(String value) {
-            this.moneyChangingRequestId = value;
+    public MoneyChangingRequest settled(boolean applied) {
+        return new MoneyChangingRequest(requestId, targetMembershipId, type, amount,
+                applied ? MoneyChangingStatus.SUCCEEDED : MoneyChangingStatus.FAILED);
+    }
+
+    public boolean sameChangeAs(MoneyChangingRequest other) {
+        return targetMembershipId.equals(other.targetMembershipId) && type == other.type && amount.equals(other.amount);
+    }
+
+    public enum MoneyChangingType {
+        INCREASE(1),
+        DECREASE(2);
+
+        private final int code;
+
+        MoneyChangingType(int code) {
+            this.code = code;
         }
-        String moneyChangingRequestId;
-    }
 
-    @Value
-    public static class TargetMembershipId {
-        public TargetMembershipId(String value) {
-            this.targetMembershipId = value;
+        public int code() {
+            return code;
         }
-        String targetMembershipId;
     }
 
-    @Value
-    public static class MoneyChangingType {
-        public MoneyChangingType(int value) {
-            this.moneyChangingType = value;
+    public enum MoneyChangingStatus {
+        PENDING(0),
+        SUCCEEDED(1),
+        FAILED(2);
+
+        private final int code;
+
+        MoneyChangingStatus(int code) {
+            this.code = code;
         }
-        int moneyChangingType;
-    }
 
-    @Value
-    public static class ChangingMoneyAmount {
-        public ChangingMoneyAmount(int value) {
-            this.changingMoneyAmount = value;
+        public int code() {
+            return code;
         }
-        int changingMoneyAmount;
     }
-
-    @Value
-    public static class MoneyChangingStatus {
-        public static final MoneyChangingStatus SUCCEEDED = new MoneyChangingStatus(1);
-        public static final MoneyChangingStatus FAILED = new MoneyChangingStatus(2);
-
-        public MoneyChangingStatus(int value) {
-            this.changingMoneyStatus = value;
-        }
-        int changingMoneyStatus;
-    }
-
-    @Value
-    public static class Uuid {
-        public Uuid(String uuid) {
-            this.uuid = uuid;
-        }
-        String uuid;
-    }
-
 }

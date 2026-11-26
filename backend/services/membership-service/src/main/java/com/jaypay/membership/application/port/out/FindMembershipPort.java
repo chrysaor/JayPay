@@ -7,5 +7,7 @@ import java.util.List;
 public interface FindMembershipPort {
     Membership findMembership(Membership.MembershipId membershipId);
 
+    boolean isValidMembership(Membership.MembershipId membershipId);
+
     List<Membership> findMembershipListByAddress(Membership.MembershipAddress membershipAddress);
 }

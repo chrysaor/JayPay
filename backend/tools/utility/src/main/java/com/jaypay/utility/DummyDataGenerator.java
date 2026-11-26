@@ -4,9 +4,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.Date;
 import java.util.Objects;
 import java.util.Random;
+import java.util.UUID;
 
 public class DummyDataGenerator {
 
@@ -54,26 +54,27 @@ public class DummyDataGenerator {
         Random random = new Random();
 
         try (conn) {
-            String query = "INSERT INTO payment_request (payment_id, request_membership_id, request_price, franchise_id, franchise_fee_rate, payment_status, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            String query = "INSERT INTO payment (request_id, request_membership_id, franchise_id, request_price, fee_rate_basis_points, fee, payout, payment_status, requested_at, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PAID', ?, ?)";
             PreparedStatement preparedStatement = conn.prepareStatement(query);
 
             int numberOfTestData = 10;
+            int feeRateBasisPoints = 300;
             for (int i = 0; i < numberOfTestData; i++) {
-                long paymentId = (random.nextInt(900) + 100L);
-                String membershipId = "" + (random.nextInt(900) + 100);
-                int price = (random.nextInt(9) + 1) * 1000;
-                String franchiseId = "" + (random.nextInt(10) + 1L);
-                String franchiseFeeRate = String.format("%.2f", random.nextDouble() * 5.0);
-                int paymentStatus = 0;
-                Date approvedAt = new Date(System.currentTimeMillis() - random.nextInt(10000000));
+                long membershipId = random.nextInt(900) + 100L;
+                long franchiseId = random.nextInt(10) + 1L;
+                long price = (random.nextInt(9) + 1) * 1000L;
+                long fee = price * feeRateBasisPoints / 10000;
+                java.sql.Timestamp approvedAt = new java.sql.Timestamp(System.currentTimeMillis() - random.nextInt(10000000));
 
-                preparedStatement.setLong(1, paymentId);
-                preparedStatement.setString(2, membershipId);
-                preparedStatement.setInt(3, price);
-                preparedStatement.setString(4, franchiseId);
-                preparedStatement.setString(5, franchiseFeeRate);
-                preparedStatement.setInt(6, paymentStatus);
-                preparedStatement.setDate(7, new java.sql.Date(approvedAt.getTime()));
+                preparedStatement.setString(1, "dummy-" + UUID.randomUUID());
+                preparedStatement.setLong(2, membershipId);
+                preparedStatement.setLong(3, franchiseId);
+                preparedStatement.setLong(4, price);
+                preparedStatement.setInt(5, feeRateBasisPoints);
+                preparedStatement.setLong(6, fee);
+                preparedStatement.setLong(7, price - fee);
+                preparedStatement.setTimestamp(8, approvedAt);
+                preparedStatement.setTimestamp(9, approvedAt);
                 preparedStatement.executeUpdate();
 
             }

@@ -6,5 +6,31 @@
             <max_bytes_before_external_group_by>134217728</max_bytes_before_external_group_by>
             <max_bytes_before_external_sort>134217728</max_bytes_before_external_sort>
         </default>
+        <read_only>
+            <profile>default</profile>
+            <readonly>2</readonly>
+        </read_only>
     </profiles>
+    <users>
+        <default remove="remove"/>
+        <otel>
+            <password from_env="CLICKHOUSE_PASSWORD"/>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+        </otel>
+        <grafana>
+            <password from_env="CLICKHOUSE_GRAFANA_PASSWORD"/>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>read_only</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SELECT ON otel.*</query>
+            </grants>
+        </grafana>
+    </users>
 </clickhouse>

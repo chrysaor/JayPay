@@ -13,7 +13,7 @@ public class CheckedRegisteredBankAccountEvent {
     private String checkRegisteredBankAccountId;
     private String membershipId;
     private boolean isChecked;
-    private int amount;
+    private long amount;
     private String firmbankingRequestAggregateIdentifier;
     private String fromBankName;
     private String fromBankAccountNumber;

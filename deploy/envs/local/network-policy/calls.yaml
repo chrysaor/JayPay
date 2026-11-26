@@ -3,41 +3,52 @@ ingress:
   frontend-web: [http]
 calls:
   auth-service:
-    http: [frontend-admin, prometheus]
+    http: [frontend-admin]
+    management: [prometheus]
   axon-server:
-    grpc: [auth-service, axon-server, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    grpc: [auth-service, axon-server, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
     http: [axon-server]
   banking-service:
-    http: [frontend-web, money-service, prometheus, remittance-service, settlement-service]
+    http: [frontend-web, money-service, remittance-service, settlement-service]
+    management: [prometheus]
   clickhouse:
     native: [grafana, otel-collector]
   dynamodb:
     http: [money-query-service]
+  event-flow-service:
+    http: [frontend-admin]
+    management: [prometheus]
   kafka:
-    kafka: [auth-service, banking-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    kafka: [auth-service, banking-service, event-flow-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+  keycloak:
+    http: [auth-service, frontend-admin]
   logging-consumer:
-    http: [prometheus]
+    management: [prometheus]
   membership-service:
-    http: [banking-service, frontend-admin, frontend-web, money-aggregation-service, money-query-service, money-service, payment-service, prometheus, remittance-service]
+    http: [banking-service, frontend-admin, frontend-web, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service]
+    management: [prometheus]
   money-aggregation-service:
-    http: [frontend-admin, prometheus]
+    http: [frontend-admin]
+    management: [prometheus]
   money-query-service:
-    http: [frontend-admin, prometheus]
+    http: [frontend-admin]
+    management: [prometheus]
   money-service:
-    http: [frontend-web, money-aggregation-service, prometheus, remittance-service]
+    http: [frontend-web, money-aggregation-service, payment-service, remittance-service]
+    management: [prometheus]
   otel-collector:
-    otlp-http: [auth-service, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    otlp-http: [auth-service, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   payment-service:
-    http: [frontend-admin, frontend-web, prometheus, settlement-service]
+    http: [frontend-admin, frontend-web, settlement-service]
+    management: [prometheus]
   postgres:
-    postgres: [auth-service, banking-service, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    postgres: [banking-service, event-flow-service, keycloak, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   prometheus:
     http: [grafana]
   remittance-service:
-    http: [frontend-web, prometheus]
+    http: [frontend-web]
+    management: [prometheus]
   settlement-service:
-    http: [prometheus]
-  task-consumer:
-    http: [prometheus]
+    management: [prometheus]
   vault:
     http: [membership-service]

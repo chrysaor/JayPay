@@ -1,9 +1,9 @@
-map $request_uri $jaypay_upstream {
-    ~^/api/membership/         ${JAYPAY_MEMBERSHIP_URL};
-    ~^/api/payment/            ${JAYPAY_PAYMENT_URL};
-    ~^/api/money-aggregation/  ${JAYPAY_MONEY_AGGREGATION_URL};
-    ~^/api/money-query/        ${JAYPAY_MONEY_QUERY_URL};
-    ~^/api/auth/staff/         ${JAYPAY_AUTH_URL};
+map $jaypay_service $jaypay_upstream {
+    membership         ${JAYPAY_MEMBERSHIP_URL};
+    payment            ${JAYPAY_PAYMENT_URL};
+    money-aggregation  ${JAYPAY_MONEY_AGGREGATION_URL};
+    money-query        ${JAYPAY_MONEY_QUERY_URL};
+    event-flow         ${JAYPAY_EVENT_FLOW_URL};
 }
 
 server {
@@ -12,7 +12,7 @@ server {
 
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
-    location ~ ^/api/(membership|payment|money-aggregation|money-query)/ {
+    location ~ ^/api/(?<jaypay_service>membership|payment|money-aggregation|money-query|event-flow)/ {
         auth_request /_authorize;
         error_page 401 @unauthenticated;
         error_page 403 @forbidden;
@@ -21,10 +21,22 @@ server {
         proxy_connect_timeout 5s;
     }
 
-    location /api/auth/staff/ {
-        rewrite ^/api/auth(/.*)$ $1 break;
-        proxy_pass $jaypay_upstream;
+    location /realms/staff/ {
+        set $jaypay_keycloak ${JAYPAY_KEYCLOAK_URL};
+        proxy_pass $jaypay_keycloak;
+        proxy_buffer_size 32k;
+        proxy_buffers 8 32k;
         proxy_connect_timeout 5s;
+    }
+
+    location /resources/ {
+        set $jaypay_keycloak ${JAYPAY_KEYCLOAK_URL};
+        proxy_pass $jaypay_keycloak;
+        proxy_connect_timeout 5s;
+    }
+
+    location /realms/ {
+        return 404;
     }
 
     location /api/ {

@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:19.0-alpine:///jaypay
+    username: test
+    password: test
+  kafka:
+    producer:
+      properties:
+        "[max.block.ms]": 1000
+axon:
+  axonserver:
+    enabled: false
+flow:
+  retention:
+    period: 1000d
+    schedule:
+      enabled: false

@@ -1,0 +1,144 @@
+{
+  "realm": "staff",
+  "displayName": "JayPay Admin",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
+  "passwordPolicy": "length(12) and maxLength(128) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1) and notUsername(undefined) and notEmail(undefined) and passwordBlacklist(common-passwords.txt) and passwordHistory(5)",
+  "accessTokenLifespan": 120,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "roles": {
+    "realm": [
+      {
+        "name": "viewer",
+        "description": "Reads every screen of the admin console"
+      },
+      {
+        "name": "operator",
+        "description": "Also edits members and marks payments settled"
+      },
+      {
+        "name": "admin",
+        "description": "Everything an operator can do"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "jaypay-admin-console",
+      "name": "JayPay admin console",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "/callback"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "/signed-out",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "roles"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "admin console audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "jaypay-admin-console",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "${STAFF_ADMIN_USERNAME}",
+      "enabled": true,
+      "firstName": "Default",
+      "lastName": "Admin",
+      "email": "${STAFF_ADMIN_USERNAME}@staff.jaypay.localhost",
+      "emailVerified": true,
+      "realmRoles": [
+        "admin"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${STAFF_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "${STAFF_OPERATOR_USERNAME}",
+      "enabled": true,
+      "firstName": "Default",
+      "lastName": "Operator",
+      "email": "${STAFF_OPERATOR_USERNAME}@staff.jaypay.localhost",
+      "emailVerified": true,
+      "realmRoles": [
+        "operator"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${STAFF_OPERATOR_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "${STAFF_VIEWER_USERNAME}",
+      "enabled": true,
+      "firstName": "Default",
+      "lastName": "Viewer",
+      "email": "${STAFF_VIEWER_USERNAME}@staff.jaypay.localhost",
+      "emailVerified": true,
+      "realmRoles": [
+        "viewer"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${STAFF_VIEWER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

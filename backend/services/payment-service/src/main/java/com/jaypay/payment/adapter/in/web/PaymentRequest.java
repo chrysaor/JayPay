@@ -1,15 +1,6 @@
 package com.jaypay.payment.adapter.in.web;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.math.BigDecimal;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class PaymentRequest {
-    private String requestMembershipId;
-    private String requestPrice;
-    private String franchiseId;
-    private String franchiseFeeRate;
+public record PaymentRequest(String requestId, String requestMembershipId, String franchiseId, BigDecimal requestPrice) {
 }

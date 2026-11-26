@@ -64,7 +64,9 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: terraform
-    directory: /infra/terraform
+    directories:
+      - /infra/terraform/envs/*
+      - /infra/terraform/modules/*
     target-branch: develop
     schedule:
       interval: weekly

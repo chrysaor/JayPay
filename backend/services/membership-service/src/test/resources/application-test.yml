@@ -15,5 +15,3 @@ axon:
     enabled: false
 jwt:
   secret: test-only-jwt-secret-test-only-jwt-secret-test-only-jwt-secret-test
-encryption:
-  fallback-key: test-only-key-16

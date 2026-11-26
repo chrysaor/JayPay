@@ -214,7 +214,7 @@ forward() {
 }
 
 smoke() {
-  local web admin clickhouse
+  local web admin clickhouse prometheus banking money
   web=$(kube get ingress frontend-web --output jsonpath='{.spec.rules[0].host}')
   admin=$(kube get ingress frontend-admin --output jsonpath='{.spec.rules[0].host}')
   trap stop_forwards EXIT
@@ -222,9 +222,22 @@ smoke() {
   forward clickhouse "$namespace" service/clickhouse :8123
   clickhouse=$forwarded_port
   forward prometheus "$namespace" service/prometheus :9090
+  prometheus=$forwarded_port
+  forward banking-service "$namespace" service/banking-service :8080
+  banking=$forwarded_port
+  forward keycloak "$namespace" service/keycloak 8092:8080
+  forward money-service "$namespace" service/money-service :8080
+  money=$forwarded_port
+  forward grafana "$namespace" service/grafana :3000
+  grafana=$forwarded_port
+  forward vault "$namespace" service/vault :8200
+  vault=$forwarded_port
   until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
   SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" \
-    SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$forwarded_port" scripts/smoke.sh
+    SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$prometheus" \
+    SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_KEYCLOAK_URL=http://localhost:8092 SMOKE_MONEY_URL="http://127.0.0.1:$money" \
+    SMOKE_GRAFANA_URL="http://127.0.0.1:$grafana" SMOKE_VAULT_URL="http://127.0.0.1:$vault" \
+    SMOKE_SERVICE_URLS="http://127.0.0.1:$banking http://127.0.0.1:$money" scripts/smoke.sh
 }
 
 commit_to_mirror() {

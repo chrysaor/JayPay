@@ -9,6 +9,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -31,7 +32,7 @@ class MembershipServiceAdapterTest {
                 """);
         membershipService.start();
         adapter = new MembershipServiceAdapter(
-                new CommonHttpClient(new SimpleMeterRegistry(), ObservationRegistry.NOOP),
+                new CommonHttpClient(new SimpleMeterRegistry(), ObservationRegistry.NOOP, Duration.ofSeconds(2), Duration.ofSeconds(5)),
                 "http://localhost:" + membershipService.getAddress().getPort());
     }
 

@@ -7,6 +7,7 @@ import java.util.List;
 public interface FindMembershipUseCase {
 
     Membership findMembership(FindMembershipCommand command);
+    boolean isValidMembership(FindMembershipCommand command);
     List<Membership> findMembershipListByAddress(FindMembershipListByAddressCommand command);
 
 }

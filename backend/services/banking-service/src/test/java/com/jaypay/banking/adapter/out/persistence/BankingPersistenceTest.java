@@ -23,9 +23,6 @@ class BankingPersistenceTest {
     @Autowired
     private SpringDataRegisteredBankAccountRepository registeredBankAccountRepository;
 
-    @Autowired
-    private SpringDataFirmBankingRequestRepository firmBankingRequestRepository;
-
     @Test
     void findsRegisteredBankAccountByMembershipId() {
         registeredBankAccountRepository.saveAndFlush(new RegisteredBankAccountJpaEntity("7", "Shinhan bank", "12345", true, "aggregate-7"));
@@ -39,23 +36,5 @@ class BankingPersistenceTest {
                         RegisteredBankAccountJpaEntity::isLinkedStatusIsValid,
                         RegisteredBankAccountJpaEntity::getAggregateIdentifier)
                 .containsExactly(tuple("7", "Shinhan bank", "12345", true, "aggregate-7"));
-    }
-
-    @Test
-    void findsFirmBankingRequestByAggregateIdentifier() {
-        UUID uuid = UUID.fromString("00000000-0000-0000-0000-000000000001");
-        firmBankingRequestRepository.saveAndFlush(new FirmBankingRequestJpaEntity("Shinhan bank", "111", "KB bank", "222", 5000, 1, uuid, "aggregate-8"));
-        entityManager.clear();
-
-        assertThat(firmBankingRequestRepository.findByAggregateIdentifier("aggregate-8"))
-                .extracting(
-                        FirmBankingRequestJpaEntity::getFromBankName,
-                        FirmBankingRequestJpaEntity::getFromBankAccountNumber,
-                        FirmBankingRequestJpaEntity::getToBankName,
-                        FirmBankingRequestJpaEntity::getToBankAccountNumber,
-                        FirmBankingRequestJpaEntity::getMoneyAmount,
-                        FirmBankingRequestJpaEntity::getFirmBankingStatus,
-                        FirmBankingRequestJpaEntity::getUuid)
-                .containsExactly(tuple("Shinhan bank", "111", "KB bank", "222", 5000, 1, uuid.toString()));
     }
 }

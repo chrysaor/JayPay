@@ -3,6 +3,8 @@ import re
 
 INGRESS = "the ingress controller"
 NAME = "app.kubernetes.io/name"
+MANAGEMENT_PORT = "management"
+SCRAPER = "prometheus"
 ADDRESS = re.compile(r"(^|//|[@,=\s\"'])([a-z0-9][a-z0-9-]*)((?:\.[a-z0-9-]+)*)(?::(\d+))?(?=$|[/?,;\s\"'])")
 
 
@@ -125,7 +127,10 @@ def allowed_calls(manifests):
                 elif set(peer) != {"podSelector"} or not caller:
                     problems.append(f"NetworkPolicy {name}: the peer {peer} is neither a workload nor the ingress controller")
                     continue
-                edges.update((callee, port["port"], caller) for port in rule["ports"])
+                for port in rule["ports"]:
+                    if port["port"] == MANAGEMENT_PORT and caller != SCRAPER:
+                        problems.append(f"NetworkPolicy {name}: lets {caller} reach the {MANAGEMENT_PORT} port of {callee}, which only {SCRAPER} may reach")
+                    edges.add((callee, port["port"], caller))
     if not default_deny:
         problems.append("no NetworkPolicy denies ingress to every pod by default")
     return edges, problems

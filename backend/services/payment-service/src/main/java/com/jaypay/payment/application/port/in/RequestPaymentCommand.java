@@ -1,16 +1,14 @@
 package com.jaypay.payment.application.port.in;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.jaypay.payment.domain.RequestId;
 
+import java.util.Objects;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class RequestPaymentCommand {
-    private String requestMembershipId;
-    private String requestPrice;
-    private String franchiseId;
-    private String franchiseFeeRate;
+public record RequestPaymentCommand(RequestId requestId, String requestMembershipId, String franchiseId, long requestPrice) {
+
+    public RequestPaymentCommand {
+        Objects.requireNonNull(requestId, "requestId");
+        Objects.requireNonNull(requestMembershipId, "requestMembershipId");
+        Objects.requireNonNull(franchiseId, "franchiseId");
+    }
 }

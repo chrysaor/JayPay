@@ -3,16 +3,29 @@ import { ErrorNotice } from '@jaypay/ui/ErrorNotice'
 import { readForm } from '@jaypay/ui/form'
 import { formatDateTime, formatWon } from '@jaypay/ui/format'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRef } from 'react'
 import { requestPayment } from '../api/payment'
 import { useMember } from '../session'
+
+type Order = { franchiseId: string; requestPrice: number }
 
 export function Pay() {
   const { membershipId } = useMember()
   const queryClient = useQueryClient()
+  const pending = useRef<(Order & { requestId: string }) | null>(null)
   const pay = useMutation({
-    mutationFn: requestPayment,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['balance', membershipId] }),
+    mutationFn: (order: Order) => {
+      if (pending.current?.franchiseId !== order.franchiseId || pending.current.requestPrice !== order.requestPrice) {
+        pending.current = { ...order, requestId: crypto.randomUUID() }
+      }
+      return requestPayment({ requestId: pending.current.requestId, requestMembershipId: membershipId, ...order })
+    },
+    onSuccess: () => {
+      pending.current = null
+      return queryClient.invalidateQueries({ queryKey: ['balance', membershipId] })
+    },
   })
+  const payment = pay.data
   return (
     <>
       <h1>Pay</h1>
@@ -21,43 +34,37 @@ export function Pay() {
           className="stack"
           onSubmit={(event) => {
             const form = readForm(event)
-            pay.mutate({
-              requestMembershipId: membershipId,
-              requestPrice: form.text('requestPrice'),
-              franchiseId: form.text('franchiseId'),
-              franchiseFeeRate: form.text('franchiseFeeRate'),
-            })
+            pay.mutate({ franchiseId: form.text('franchiseId'), requestPrice: form.number('requestPrice') })
           }}
         >
           <label>
             Merchant ID
-            <input name="franchiseId" required />
+            <input name="franchiseId" inputMode="numeric" pattern="[0-9]+" required />
           </label>
           <label>
             Amount
             <input name="requestPrice" type="number" min="1" step="1" required />
           </label>
-          <label>
-            Merchant fee rate (%)
-            <input name="franchiseFeeRate" inputMode="decimal" pattern="[0-9]+(\.[0-9]+)?" required />
-          </label>
           <button className="primary" disabled={pay.isPending}>
             Pay
           </button>
         </form>
-        {pay.data ? (
+        {payment?.paymentStatus === 'PAID' ? (
           <div className="receipt" role="status">
-            <p className="receipt-title">Payment #{pay.data.paymentId} approved</p>
+            <p className="receipt-title">Payment #{payment.paymentId} approved</p>
             <dl className="details">
               <dt>Amount</dt>
-              <dd>{formatWon(pay.data.requestPrice)}</dd>
+              <dd>{formatWon(payment.requestPrice)}</dd>
               <dt>Merchant</dt>
-              <dd>{pay.data.franchiseId}</dd>
-              <dt>Fee rate</dt>
-              <dd>{pay.data.franchiseFeeRate}%</dd>
+              <dd>{payment.franchiseId}</dd>
               <dt>Approved at</dt>
-              <dd>{formatDateTime(pay.data.approvedAt)}</dd>
+              <dd>{formatDateTime(payment.approvedAt)}</dd>
             </dl>
+          </div>
+        ) : null}
+        {payment?.paymentStatus === 'FAILED' ? (
+          <div className="notice notice-error" role="alert">
+            Payment #{payment.paymentId} was declined: your wallet holds less than {formatWon(payment.requestPrice)}.
           </div>
         ) : null}
         <ErrorNotice error={pay.error} />

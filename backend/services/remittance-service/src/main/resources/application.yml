@@ -10,6 +10,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:create-drop}
+remittance:
+  amount:
+    max: 10000000
 service:
   banking:
     url: ${SERVICE_BANKING_URL:http://localhost:8082}

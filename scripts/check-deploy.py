@@ -43,13 +43,57 @@ def workloads(root, services):
             yield name, service, set(UPSTREAM.findall(template))
 
 
-def rendered_containers(manifests_path, kind):
-    containers = {}
+def rendered_pods(manifests_path, kind):
+    pods = {}
     for line in read(manifests_path).splitlines():
         manifest = json.loads(line)
         if manifest.get("kind") == kind:
-            containers[manifest["metadata"]["name"]] = manifest["spec"]["template"]["spec"]["containers"][0]
-    return containers
+            pods[manifest["metadata"]["name"]] = manifest["spec"]["template"]["spec"]
+    return pods
+
+
+def rendered_containers(manifests_path, kind):
+    return {name: pod["containers"][0] for name, pod in rendered_pods(manifests_path, kind).items()}
+
+
+def compose_hardening(services):
+    problems = []
+    for name, service in sorted(services.items()):
+        for port in service.get("ports") or []:
+            if port.get("host_ip") != "127.0.0.1":
+                problems.append(f"{name}: compose.yaml publishes port {port.get('published')} on {port.get('host_ip') or 'every address'}, bind it to 127.0.0.1")
+        if service.get("cap_drop") != ["ALL"]:
+            problems.append(f"{name}: compose.yaml must drop every capability with cap_drop: [ALL]")
+        if "no-new-privileges:true" not in (service.get("security_opt") or []):
+            problems.append(f"{name}: compose.yaml must set security_opt no-new-privileges:true")
+        if service.get("restart") != "no" and not re.fullmatch(r"[1-9][0-9]*:[1-9][0-9]*", str(service.get("user") or "")):
+            problems.append(f"{name}: compose.yaml runs it as {service.get('user') or 'the image user'}, set a numeric user:group where neither is root")
+    return problems
+
+
+def compare_security(name, service, pod):
+    container = pod["containers"][0]
+    context = {**(pod.get("securityContext") or {}), **(container.get("securityContext") or {})}
+    problems = []
+    user = f"{context.get('runAsUser')}:{context.get('runAsGroup')}"
+    if user != service.get("user"):
+        problems.append(f"{name}: deploy/envs/local runs it as {user}, compose.yaml as {service.get('user')}")
+    if context.get("runAsNonRoot") is not True:
+        problems.append(f"{name}: deploy/envs/local does not set runAsNonRoot")
+    if (context.get("seccompProfile") or {}).get("type") != "RuntimeDefault":
+        problems.append(f"{name}: deploy/envs/local does not set seccompProfile RuntimeDefault")
+    if context.get("allowPrivilegeEscalation") is not False:
+        problems.append(f"{name}: deploy/envs/local does not set allowPrivilegeEscalation: false")
+    if (context.get("capabilities") or {}).get("drop") != ["ALL"]:
+        problems.append(f"{name}: deploy/envs/local does not drop every capability")
+    if bool(context.get("readOnlyRootFilesystem")) != bool(service.get("read_only")):
+        problems.append(f"{name}: readOnlyRootFilesystem is {bool(context.get('readOnlyRootFilesystem'))} in deploy/envs/local, read_only is {bool(service.get('read_only'))} in compose.yaml")
+    empty_dirs = {volume["name"] for volume in pod.get("volumes") or [] if "emptyDir" in volume}
+    scratch = {mount["mountPath"] for mount in container.get("volumeMounts") or [] if mount["name"] in empty_dirs}
+    tmpfs = {entry.split(":", 1)[0] for entry in service.get("tmpfs") or []}
+    if scratch != tmpfs:
+        problems.append(f"{name}: deploy/envs/local mounts emptyDir volumes at {sorted(scratch)}, compose.yaml tmpfs at {sorted(tmpfs)}")
+    return problems
 
 
 def compose_image(service):
@@ -107,7 +151,7 @@ def repo_server_mount(rendered_dir):
     return ["argocd: argocd-repo-server does not mount jaypay-git, the repository that deploy/envs/local/gitops.yaml points at"]
 
 
-def compare(name, service, upstreams, container, secret_keys, deployed):
+def compare(name, service, upstreams, container, secret_keys, services_in_cluster):
     problems = []
     compose_env = service.get("environment") or {}
     deployed_env = {}
@@ -133,7 +177,7 @@ def compare(name, service, upstreams, container, secret_keys, deployed):
             problems.append(f"{name}: {key} reads the Secret key {secret_key}, which infra/docker/.env.example does not have")
         if key in upstreams:
             target = UPSTREAM_SERVICE.match(entry.get("value", ""))
-            if not target or target.group(1) not in deployed:
+            if not target or target.group(1) not in services_in_cluster:
                 problems.append(f"{name}: {key} points at {entry.get('value')}, which is no Service in deploy/envs/local")
 
     limit = container.get("resources", {}).get("limits", {}).get("memory")
@@ -182,7 +226,10 @@ def main():
         report(network_policies(root, rendered_dir, write=True), "check-deploy: run make verify STEPS=charts to check the result")
         return
     local = os.path.join(rendered_dir, "local.json")
-    deployed = rendered_containers(local, "Deployment")
+    deployed_pods = rendered_pods(local, "Deployment")
+    dependency_pods = rendered_pods(local, "StatefulSet")
+    deployed = {name: pod["containers"][0] for name, pod in deployed_pods.items()}
+    dependencies = {name: pod["containers"][0] for name, pod in dependency_pods.items()}
     services = compose_services(os.path.join(root, "infra", "docker"))
     secret_keys = {line.split("=", 1)[0] for line in read(os.path.join(root, "infra", "docker", ".env.example")).splitlines() if "=" in line}
 
@@ -193,12 +240,15 @@ def main():
         if name not in deployed:
             problems.append(f"{name}: compose.yaml runs it but deploy/envs/local has no workload {name}")
             continue
-        problems += compare(name, service, upstreams, deployed[name], secret_keys, deployed)
+        problems += compare(name, service, upstreams, deployed[name], secret_keys, set(deployed) | set(dependencies))
+        problems += compare_security(name, service, deployed_pods[name])
     for name in sorted(set(deployed) - expected):
         problems.append(f"{name}: deploy/envs/local has it but compose.yaml does not run it")
-    dependencies = rendered_containers(local, "StatefulSet")
     for name, container in sorted(dependencies.items()):
         problems += compare_dependency(name, services.get(name), container)
+        if name in services:
+            problems += compare_security(name, services[name], dependency_pods[name])
+    problems += compose_hardening(services)
     problems += unpulled_images(rendered_dir)
     problems += rendered_secrets(root, rendered_dir)
     problems += repo_server_mount(rendered_dir)

@@ -26,7 +26,7 @@ public class MembershipServiceAdapter implements GetMembershipPort {
     @Override
     public List<String> getMembershipByAddress(String address) {
         String url = String.join("/", membershipServiceUrl, "memberships/address", address);
-        List<MembershipResponse> memberships = commonHttpClient.get(url, new TypeReference<>() {});
+        List<MembershipResponse> memberships = commonHttpClient.get(url, new TypeReference<List<MembershipResponse>>() {}).body();
         return memberships.stream()
                 .map(MembershipResponse::membershipId)
                 .toList();
