@@ -26,6 +26,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ### Fixed
 
+- A saga top-up requested right after a new cluster starts reaches the wallet: money-service reads the recharge events from the start of the stream the first time its saga processor starts, instead of skipping the ones published before it connected to Axon Server ([#132](https://github.com/chrysaor/JayPay/issues/132))
 - A saga top-up first asks membership-service whether the member exists and is valid, and fails without asking the bank when it does not. When membership-service does not answer, the 60-second deadline fails the top-up ([#99](https://github.com/chrysaor/JayPay/issues/99))
 - A saga top-up adds money only when the bank confirmed the charge. An account that fails the check, a charge the bank refuses, a member without a bank account and a top-up that is not done within 60 seconds end as failed, the last one with the charge refunded, and the region total of money-query-service counts only confirmed charges ([#99](https://github.com/chrysaor/JayPay/issues/99))
 - A bank remittance the bank did not answer answers 503 and finishes when the same request is sent again, with the transfer sent once, and a refused one gives the money back ([#99](https://github.com/chrysaor/JayPay/issues/99))
