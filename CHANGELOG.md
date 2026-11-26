@@ -8,6 +8,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - The admin console has an **Event flow** page for every staff role. It lists the newest saga top-ups by status and shows each one step by step, with the service, outcome, time and reason of every step, and refreshes while a top-up is in progress. money-service, membership-service and banking-service write each step to the Kafka topic `jaypay.flow.events` with member ids and amounts only, and the new workload event-flow-service, with 384m of memory and its own `event_flow` database, collects them and serves `GET /flows` and `GET /flows/{flowType}/{flowId}` ([#124](https://github.com/chrysaor/JayPay/issues/124))
 - `CHANGELOG.md` records what each release adds. `make release-branch VERSION=X.Y.Z` moves Unreleased into the new version in the release commit, and the tag workflow publishes that section as the GitHub Release notes ([#113](https://github.com/chrysaor/JayPay/issues/113))
+- `make coverage` prints the line coverage of the backend, measured by JaCoCo across every module, and of the customer site and the admin console, measured by vitest. CI writes the same table to the summary of its backend and frontend jobs. The README opens with the CI, Security, release and license badges and a quick start, and JayPay is released under the MIT License ([#134](https://github.com/chrysaor/JayPay/issues/134))
 
 ### Changed
 

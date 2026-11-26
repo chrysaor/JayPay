@@ -1,5 +1,7 @@
 plugins {
     `java-library`
+    jacoco
+    id("jaypay.locking")
 }
 
 val libs = the<VersionCatalogsExtension>().named("libs")
@@ -15,8 +17,8 @@ java {
     }
 }
 
-dependencyLocking {
-    lockAllConfigurations()
+jacoco {
+    toolVersion = libs.findVersion("jacoco").get().requiredVersion
 }
 
 dependencies {
@@ -57,14 +59,5 @@ tasks.withType<Test>().configureEach {
     if (dockerContextHost != null && dockerContextHost.startsWith("unix://") && dockerContextHost != "unix:///var/run/docker.sock") {
         environment("DOCKER_HOST", dockerContextHost)
         environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
-    }
-}
-
-tasks.register("resolveAndLockAll") {
-    group = "help"
-    description = "Resolves every configuration, and with --write-locks records it in gradle.lockfile."
-    notCompatibleWithConfigurationCache("Resolves configurations at execution time")
-    doLast {
-        configurations.filter { it.isCanBeResolved }.forEach { it.resolve() }
     }
 }
