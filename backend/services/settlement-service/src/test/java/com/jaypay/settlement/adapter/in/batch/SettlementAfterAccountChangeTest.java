@@ -40,8 +40,8 @@ class SettlementAfterAccountChangeTest {
 
     private static final int CONCURRENT_RUNS = 4;
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final Map<Long, String> MERCHANT = Map.of(1L, "21", 2L, "22", 3L, "23");
-    private static final Map<Long, Long> PAYOUT = Map.of(1L, 9700L, 2L, 4825L, 3L, 194L);
+    private static final Map<Long, String> MERCHANT = Map.of(101L, "21", 102L, "22", 103L, "23");
+    private static final Map<Long, Long> PAYOUT = Map.of(101L, 9700L, 102L, 4825L, 103L, 194L);
     private static final Set<Long> PAID = ConcurrentHashMap.newKeySet();
     private static final Set<Long> SETTLED = ConcurrentHashMap.newKeySet();
     private static final Set<Long> FINISH_ANSWER_LOST = ConcurrentHashMap.newKeySet();
@@ -77,23 +77,24 @@ class SettlementAfterAccountChangeTest {
 
     @Test
     void aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount() throws Exception {
-        PAID.addAll(Set.of(1L, 2L, 3L));
+        PAID.addAll(Set.of(101L, 102L, 103L));
         ACCOUNTS.putAll(Map.of("21", "100-21", "22", "100-22", "23", "100-23"));
         REFUSING_ACCOUNTS.add("100-21");
-        FINISH_ANSWER_LOST.add(2L);
+        FINISH_ANSWER_LOST.add(102L);
         SILENT_ACCOUNTS.add("100-23");
 
         assertThat(run()).isEqualTo(BatchStatus.COMPLETED);
         assertThat(SETTLED).isEmpty();
-        assertThat(SENT_TO_THE_BANK).containsExactlyInAnyOrder("100-21:9700 FAILED", "100-22:4825 SUCCEEDED");
+        assertThat(SENT_TO_THE_BANK).containsExactlyInAnyOrder("100-21:9700 FAILED", "100-22:4825 SUCCEEDED", "100-23:194 SUCCEEDED");
 
         ACCOUNTS.putAll(Map.of("21", "200-21", "22", "200-22", "23", "200-23"));
+        assertThat(run()).isEqualTo(BatchStatus.COMPLETED);
         SILENT_ACCOUNTS.clear();
         runConcurrently();
         assertThat(run()).isEqualTo(BatchStatus.COMPLETED);
         assertThat(run()).isEqualTo(BatchStatus.COMPLETED);
 
-        assertThat(SETTLED).containsExactlyInAnyOrder(1L, 2L, 3L);
+        assertThat(SETTLED).containsExactlyInAnyOrder(101L, 102L, 103L);
         assertThat(SENT_TO_THE_BANK).containsExactlyInAnyOrder(
                 "100-21:9700 FAILED", "200-21:9700 SUCCEEDED", "100-22:4825 SUCCEEDED", "100-23:194 SUCCEEDED");
     }
@@ -157,13 +158,13 @@ class SettlementAfterAccountChangeTest {
             return;
         }
         if (!ANSWERED.containsKey(requestId)) {
-            if (SILENT_ACCOUNTS.contains(account)) {
-                respond(exchange, 503, "{\"error\":\"TRANSFER_NOT_CONFIRMED\",\"message\":\"no answer\"}");
-                return;
-            }
             String status = REFUSING_ACCOUNTS.contains(account) ? "FAILED" : "SUCCEEDED";
             ANSWERED.put(requestId, status);
             SENT_TO_THE_BANK.add(transfer + " " + status);
+        }
+        if (SILENT_ACCOUNTS.contains(account)) {
+            respond(exchange, 503, "{\"error\":\"TRANSFER_NOT_CONFIRMED\",\"message\":\"no answer\"}");
+            return;
         }
         respond(exchange, 200, "{\"requestId\":\"" + requestId + "\",\"transferStatus\":\"" + ANSWERED.get(requestId) + "\"}");
     }

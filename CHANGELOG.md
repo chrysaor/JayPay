@@ -15,6 +15,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 ### Fixed
 
 - A payment whose debit answer was lost now finishes when the same request is sent again, even after the payer or the merchant stopped being valid or the merchant lost its corporate flag. Before, the repeat answered 400 and the price stayed taken from the wallet on a payment that never reached settlement. payment-service now checks the payer and the merchant only on the first request with an id, the way remittance-service does ([#136](https://github.com/chrysaor/JayPay/issues/136))
+- A settlement payout the bank refused is now paid to the account the merchant registers next, once, by the next settlement run. Before, every run sent the same request id with the new account, banking-service answered 409 `REQUEST_ID_REUSED`, and the payment stayed `PAID` for good. settlement-service keeps each payment's payout attempt and its account in the new table `payout_attempt`, and starts a new attempt only after the bank refused the one before, so an unanswered or confirmed payout is never sent to the new account ([#138](https://github.com/chrysaor/JayPay/issues/138))
 
 ## [0.4.0] - 2026-11-26
 

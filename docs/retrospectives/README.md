@@ -37,3 +37,4 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-26 | [event-flow-service was killed at its memory limit on the cluster](2026-11-26-event-flow-service-killed-at-its-memory-limit.md) | [#157](https://github.com/chrysaor/JayPay/pull/157) |
 | 2026-11-27 | [The 0.4.0 release branch failed its own checks three times](2026-11-27-release-branch-failed-its-own-checks.md) | [#158](https://github.com/chrysaor/JayPay/pull/158) |
 | 2026-11-27 | [A payment whose debit answer was lost could never finish](2026-11-27-payment-checks-parties-before-resuming.md) | [#170](https://github.com/chrysaor/JayPay/pull/170) |
+| 2026-11-27 | [A refused payout could not be sent again after the merchant changed the account](2026-11-27-refused-payout-bound-to-one-request-id.md) | [#138](https://github.com/chrysaor/JayPay/issues/138) |
