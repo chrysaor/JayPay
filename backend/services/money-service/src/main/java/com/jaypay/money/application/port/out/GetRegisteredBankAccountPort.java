@@ -1,7 +1,9 @@
 package com.jaypay.money.application.port.out;
 
+import java.util.Optional;
+
 public interface GetRegisteredBankAccountPort {
 
-    RegisteredBankAccount getRegisteredBankAccount(String membershipId);
+    Optional<RegisteredBankAccount> getRegisteredBankAccount(String membershipId);
 
 }

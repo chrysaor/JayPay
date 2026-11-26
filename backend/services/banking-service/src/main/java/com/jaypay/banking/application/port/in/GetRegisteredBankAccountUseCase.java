@@ -2,8 +2,10 @@ package com.jaypay.banking.application.port.in;
 
 import com.jaypay.banking.domain.RegisteredBankAccount;
 
+import java.util.Optional;
+
 public interface GetRegisteredBankAccountUseCase {
 
-    RegisteredBankAccount getRegisteredBankAccount(GetRegisteredBankAccountCommand command);
+    Optional<RegisteredBankAccount> getRegisteredBankAccount(GetRegisteredBankAccountCommand command);
 
 }

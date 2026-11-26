@@ -1,4 +1,4 @@
-import { call, parse, postJson, request } from '@jaypay/api/client'
+import { call, parse, postJson, request, ServerError } from '@jaypay/api/client'
 import { z } from 'zod'
 
 const registeredBankAccountSchema = z.object({
@@ -16,6 +16,10 @@ export function registerBankAccount(input: NewBankAccount) {
 }
 
 export async function findBankAccount(membershipId: string) {
-  const text = await request('banking', `/banking/account/${encodeURIComponent(membershipId)}`)
-  return text === '' ? null : parse(text, registeredBankAccountSchema)
+  try {
+    return parse(await request('banking', `/banking/account/${encodeURIComponent(membershipId)}`), registeredBankAccountSchema)
+  } catch (error) {
+    if (error instanceof ServerError && error.status === 404) return null
+    throw error
+  }
 }
