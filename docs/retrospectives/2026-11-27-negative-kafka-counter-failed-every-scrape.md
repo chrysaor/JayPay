@@ -14,7 +14,7 @@ The management port contract that every service runs scraped the endpoint only w
 
 ## Fix
 
-`jaypay-common.yml` leaves out `kafka.consumer.coordinator.rebalance.latency.total` in every service, see [0023](../decisions/0023-kafka-rebalance-latency-total-left-out.md).
+[#179](https://github.com/chrysaor/JayPay/pull/179): `jaypay-common.yml` leaves out `kafka.consumer.coordinator.rebalance.latency.total` in every service, see [0023](../decisions/0023-kafka-rebalance-latency-total-left-out.md).
 
 ## What changed so it is caught next time
 

@@ -39,5 +39,6 @@ When Micrometer resolves #7302, or when a kafka-clients update adds a counter th
 ## Links
 
 - Issue [#154](https://github.com/chrysaor/JayPay/issues/154)
+- PR [#179](https://github.com/chrysaor/JayPay/pull/179)
 - Retrospective [One negative Kafka counter took logging-consumer out of Prometheus](../retrospectives/2026-11-27-negative-kafka-counter-failed-every-scrape.md)
 - [micrometer#7302](https://github.com/micrometer-metrics/micrometer/issues/7302)
