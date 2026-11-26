@@ -1,7 +1,5 @@
 package com.jaypay.eventflow.adapter.out.persistence;
 
-import com.jaypay.common.flow.FlowStep;
-import com.jaypay.common.flow.FlowType;
 import com.jaypay.eventflow.domain.FlowStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -29,8 +27,7 @@ public class FlowJpaEntity {
     private String flowKey;
 
     @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    private FlowType flowType;
+    private String flowType;
 
     @Column(nullable = false)
     private String flowId;
@@ -50,11 +47,9 @@ public class FlowJpaEntity {
     private Instant updatedAt;
 
     @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
-    private FlowStep lastStep;
+    private String lastStep;
 
-    @Enumerated(EnumType.STRING)
-    private FlowStep failedStep;
+    private String failedStep;
 
     private int stepCount;
 }
