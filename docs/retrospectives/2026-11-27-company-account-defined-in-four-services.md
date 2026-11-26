@@ -16,7 +16,7 @@ The review of [#135](https://github.com/chrysaor/JayPay/issues/135) found it whi
 
 ## Fix
 
-The PR for [#140](https://github.com/chrysaor/JayPay/issues/140) gives banking-service the only definition, `banking.company-account` in its `application.yml`. The charge goes into it and its event names it, and `POST /banking/firmbanking/request` always sends from it. The callers no longer send a company account, and `RequestFirmBankingCommand` lost its target account. The decision is in [0020](../decisions/0020-company-account-owned-by-banking-service.md).
+[#177](https://github.com/chrysaor/JayPay/pull/177) gives banking-service the only definition, `banking.company-account` in its `application.yml`. The charge goes into it and its event names it, and `POST /banking/firmbanking/request` always sends from it. The callers no longer send a company account, and `RequestFirmBankingCommand` lost its target account. The decision is in [0020](../decisions/0020-company-account-owned-by-banking-service.md).
 
 ## What changed so it is caught next time
 

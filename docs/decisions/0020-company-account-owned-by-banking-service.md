@@ -38,4 +38,5 @@ When the ledger of [#135](https://github.com/chrysaor/JayPay/issues/135) needs a
 ## Links
 
 - Issue [#140](https://github.com/chrysaor/JayPay/issues/140)
+- PR [#177](https://github.com/chrysaor/JayPay/pull/177)
 - Retrospective [The company bank account had four definitions in four services](../retrospectives/2026-11-27-company-account-defined-in-four-services.md)
