@@ -8,6 +8,7 @@ import com.jaypay.payment.application.port.in.SettlementOutcome;
 import com.jaypay.payment.application.port.out.DecreaseMoneyPort;
 import com.jaypay.payment.application.port.out.GetMembershipPort;
 import com.jaypay.payment.application.port.out.MembershipStatus;
+import com.jaypay.payment.application.port.out.PaymentFlowPort;
 import com.jaypay.payment.application.port.out.PaymentPort;
 import com.jaypay.payment.domain.FeeRate;
 import com.jaypay.payment.domain.NewPayment;
@@ -18,6 +19,7 @@ import com.jaypay.payment.domain.PaymentStatus;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.util.List;
+import java.util.Optional;
 
 @UseCase
 public class PaymentService implements RequestPaymentUseCase, FinishSettlementUseCase {
@@ -25,30 +27,31 @@ public class PaymentService implements RequestPaymentUseCase, FinishSettlementUs
     private final PaymentPort paymentPort;
     private final GetMembershipPort getMembershipPort;
     private final DecreaseMoneyPort decreaseMoneyPort;
+    private final PaymentFlowPort paymentFlowPort;
     private final FeeRate feeRate;
 
     public PaymentService(PaymentPort paymentPort,
                           GetMembershipPort getMembershipPort,
                           DecreaseMoneyPort decreaseMoneyPort,
+                          PaymentFlowPort paymentFlowPort,
                           @Value("${payment.fee-rate-basis-points}") int feeRateBasisPoints) {
         this.paymentPort = paymentPort;
         this.getMembershipPort = getMembershipPort;
         this.decreaseMoneyPort = decreaseMoneyPort;
+        this.paymentFlowPort = paymentFlowPort;
         this.feeRate = new FeeRate(feeRateBasisPoints);
     }
 
     @Override
     public Payment requestPayment(RequestPaymentCommand command) {
-        if (!getMembershipPort.getMembership(command.requestMembershipId()).valid()) {
-            throw new PaymentRejectedException(Reason.INVALID_PAYER);
-        }
-        MembershipStatus merchant = getMembershipPort.getMembership(command.franchiseId());
-        if (!merchant.valid() || !merchant.corp()) {
-            throw new PaymentRejectedException(Reason.INVALID_MERCHANT);
-        }
-
         NewPayment requested = NewPayment.of(command.requestId(), command.requestMembershipId(), command.franchiseId(),
                 command.requestPrice(), feeRate);
+        Optional<Reason> refusal = refusal(command);
+        if (refusal.isPresent()) {
+            paymentFlowPort.refused(requested, refusal.get());
+            throw new PaymentRejectedException(refusal.get());
+        }
+
         Payment payment = paymentPort.claim(requested);
         if (!payment.sameRequestAs(requested)) {
             throw new PaymentRejectedException(Reason.REQUEST_ID_REUSED);
@@ -56,12 +59,26 @@ public class PaymentService implements RequestPaymentUseCase, FinishSettlementUs
         if (payment.paymentStatus() != PaymentStatus.REQUESTED) {
             return payment;
         }
+        paymentFlowPort.requested(payment);
 
-        return switch (decreaseMoneyPort.decreaseMoney(payment.debitRequestId(), payment.requestMembershipId(), payment.requestPrice())) {
+        Payment concluded = switch (decreaseMoneyPort.decreaseMoney(payment.debitRequestId(), payment.requestMembershipId(), payment.requestPrice())) {
             case SUCCEEDED -> paymentPort.conclude(payment.paymentId(), PaymentStatus.PAID);
             case FAILED -> paymentPort.conclude(payment.paymentId(), PaymentStatus.FAILED);
             case UNCONFIRMED -> throw new PaymentRejectedException(Reason.PAYMENT_NOT_CONFIRMED);
         };
+        paymentFlowPort.concluded(concluded);
+        return concluded;
+    }
+
+    private Optional<Reason> refusal(RequestPaymentCommand command) {
+        if (!getMembershipPort.getMembership(command.requestMembershipId()).valid()) {
+            return Optional.of(Reason.INVALID_PAYER);
+        }
+        MembershipStatus merchant = getMembershipPort.getMembership(command.franchiseId());
+        if (!merchant.valid() || !merchant.corp()) {
+            return Optional.of(Reason.INVALID_MERCHANT);
+        }
+        return Optional.empty();
     }
 
     @Override
