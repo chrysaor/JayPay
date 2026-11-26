@@ -22,10 +22,10 @@ Who merges:
 
 ## Making a change
 
-1. Open an issue, or pick one.
+1. Open an issue, or pick one. A new issue gets at least one label (`bug`, `enhancement`, `documentation`, `test`, `security`, `infra`, `architecture` or `needs-decision`) and the milestone of the release it targets.
 2. `git switch -c feature/<issue>-<short-name> origin/develop`
 3. Write a failing test, then make it pass.
-4. Add a line to Unreleased in `CHANGELOG.md`, see [Changelog](#changelog).
+4. Add a line to Unreleased in `CHANGELOG.md`, see [Changelog](#changelog). A PR that makes a decision also adds a record to [docs/decisions](docs/decisions/README.md) that names the release it goes into.
 5. `make verify`. It runs every check CI runs and prints `FAILED: <steps>` when something breaks. Its `charts` step renders every workload in `deploy/envs` and fails when `deploy/envs/local` and `infra/docker/compose.yaml` disagree, so a change to a workload's environment or `mem_limit` in one needs the same change in the other.
 6. Open a PR against `develop` with the template filled in and `Closes #<issue>`.
 7. Merge after CI passes.
@@ -42,12 +42,13 @@ The `changelog` step of `make verify` checks the format. On a PR into `develop`,
 ## Releasing
 
 1. `make release-branch VERSION=X.Y.Z`, then `git push -u origin release/X.Y.Z`. It fails when Unreleased is empty. Otherwise the branch starts with one commit, `chore: release X.Y.Z`, that sets the backend version and turns Unreleased into `## [X.Y.Z] - <today>` with an empty Unreleased above it.
-2. Each push to the release branch runs `release.yml`. It verifies, builds every image, fails on HIGH or CRITICAL findings, and publishes `ghcr.io/chrysaor/jaypay-<name>:X.Y.Z-rc.<sha>`. Deploy the candidate and check it.
-3. Open a PR from `release/X.Y.Z` into `master`, and merge it once the owner confirms.
-4. After the merge, and with the owner's confirmation, tag the merge commit and push the tag:
+2. On the release branch, turn `## X.Y.Z (unreleased)` in [docs/news.md](docs/news.md) into `## X.Y.Z (<today>)` and complete that section and the In progress table, and drop `(unreleased)` from the decision records of the release and from the index in `docs/decisions/README.md`. `make release-branch` does not change these files. Commit and push.
+3. Each push to the release branch runs `release.yml`. It verifies, builds every image, fails on HIGH or CRITICAL findings, and publishes `ghcr.io/chrysaor/jaypay-<name>:X.Y.Z-rc.<sha>`. Deploy the candidate and check it.
+4. Open a PR from `release/X.Y.Z` into `master`, and merge it once the owner confirms.
+5. After the merge, and with the owner's confirmation, tag the merge commit and push the tag:
    `git tag vX.Y.Z <merge-commit> && git push origin vX.Y.Z`
    `release.yml` rebuilds and scans the images, publishes `ghcr.io/chrysaor/jaypay-<name>:vX.Y.Z`, and creates the GitHub Release with the `## [X.Y.Z]` section of `CHANGELOG.md` as its notes. Both the release branch and the tag runs read that section first and fail before they build anything when it is missing. Creating the Release is retried, and a rerun passes when the Release exists.
-5. Merge `release/X.Y.Z` back into `develop`.
+6. Merge `release/X.Y.Z` back into `develop`.
 
 ## Running locally
 

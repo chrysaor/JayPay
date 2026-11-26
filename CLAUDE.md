@@ -24,7 +24,7 @@ Do not report work as done until `make verify` passes. On a PR into `develop`, C
 
 `master` holds released code. `develop` is the integration branch.
 
-1. Start from an issue. Ask for one if the task has none.
+1. Start from an issue. Ask for one if the task has none. Give every new issue at least one label, `bug`, `enhancement`, `documentation`, `test`, `security`, `infra`, `architecture` or `needs-decision`, and the milestone of the release it targets.
 2. Branch from `develop` as `feature/<issue>-<short-name>`, for example `feature/40-workflow-release`.
 3. Write the failing test first, then the code that makes it pass. Run a new test at least five times before you push when it waits on a processor, Kafka, a scheduler or polling.
 4. Add a line to Unreleased in `CHANGELOG.md` that says what changed for a user or an operator, ending with the PR or issue link. Use the `Changelog: none` trailer only for a change nobody outside the repository notices, such as a typo, a CI internal or a test. The format is in `CONTRIBUTING.md`.
@@ -33,12 +33,13 @@ Do not report work as done until `make verify` passes. On a PR into `develop`, C
 7. Once CI passes, merge the PR into `develop` yourself.
 8. Close the issue right after the merge. `Closes` only fires on `master`, so an issue merged into `develop` stays open until you close it. When a PR is replaced by another, close it and delete its branch.
 9. When a PR fixes a bug that reached `develop`, that `make verify` missed, or that took more than one attempt, add a retrospective to `docs/retrospectives/` in the same PR. The format is in `docs/retrospectives/README.md`.
+10. When a PR makes a decision, such as picking one of the options an issue names, adding or removing a component, or changing a rule, add a record to `docs/decisions/` in the same PR. Its Release section names the release it goes into, `X.Y.Z (unreleased)` while it is only on `develop`. Record only reasons that the issue, the PR or the owner gave. The format is in `docs/decisions/README.md`.
 
 Never push to `master` or `develop` directly. Every change reaches them through a PR.
 
 Merging into `master` and creating a `vX.Y.Z` tag need the user's explicit confirmation in the conversation, every time. `master` requires a PR but no approval, so nothing else stops you. Without that confirmation, do not merge into `master` and do not tag.
 
-- Release: `make release-branch VERSION=X.Y.Z` cuts `release/X.Y.Z` from `develop` with one commit that sets the version and turns Unreleased in `CHANGELOG.md` into `## [X.Y.Z] - <today>`. It fails when Unreleased is empty. Each push to it builds, scans and publishes `X.Y.Z-rc.<sha>` images. Open the release PR into `master`. After the user confirms, merge it and tag the merge commit `vX.Y.Z`, which publishes the final images and the GitHub Release with that changelog section as its notes. Then merge the release branch back into `develop`.
+- Release: `make release-branch VERSION=X.Y.Z` cuts `release/X.Y.Z` from `develop` with one commit that sets the version and turns Unreleased in `CHANGELOG.md` into `## [X.Y.Z] - <today>`. It fails when Unreleased is empty. Each push to it builds, scans and publishes `X.Y.Z-rc.<sha>` images. On the release branch, turn `## X.Y.Z (unreleased)` in `docs/news.md` into `## X.Y.Z (<today>)`, complete that section and its In progress table, and drop `(unreleased)` from its decision records and from the index in `docs/decisions/README.md`. `make release-branch` does not touch these files. Open the release PR into `master`. After the user confirms, merge it and tag the merge commit `vX.Y.Z`, which publishes the final images and the GitHub Release with that changelog section as its notes. Then merge the release branch back into `develop`.
 - Hotfix: branch `hotfix/<issue>-<short-name>` from `master` and open PRs into `master` and `develop`. The `master` merge needs the same confirmation.
 
 ## Code rules
