@@ -4,6 +4,10 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+### Added
+
+- `make scorecard` writes `docs/scorecard.md` from GitHub and the local test reports: merged PRs and the time from open to merge per release, the CI failure rate, the time between releases, line coverage, test counts, smoke scenes, and issues by label and milestone, each with its source and what it does not measure. The vitest runs of both frontend apps also write `coverage/test-results.json` ([#152](https://github.com/chrysaor/JayPay/issues/152))
+
 ## [0.4.0] - 2026-11-26
 
 ### Added
@@ -13,7 +17,6 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 - `CHANGELOG.md` records what each release adds. `make release-branch VERSION=X.Y.Z` moves Unreleased into the new version in the release commit, and the tag workflow publishes that section as the GitHub Release notes ([#113](https://github.com/chrysaor/JayPay/issues/113))
 - `docs/decisions/` records each decision that shaped JayPay with the release it was made for, the options, what it gave up and the open decisions that wait for the owner, and `docs/news.md` sums up each release with its decisions, retrospectives and new or changed documents, and lists the next milestones ([#150](https://github.com/chrysaor/JayPay/issues/150), [#151](https://github.com/chrysaor/JayPay/issues/151))
 - `make coverage` prints the line coverage of the backend, measured by JaCoCo across every module, and of the customer site and the admin console, measured by vitest. CI writes the same table to the summary of its backend and frontend jobs. The README opens with the CI, Security, release and license badges and a quick start, and JayPay is released under the MIT License ([#134](https://github.com/chrysaor/JayPay/issues/134))
-- `make scorecard` writes `docs/scorecard.md` from GitHub and the local test reports: merged PRs and the time from open to merge per release, the CI failure rate, the time between releases, line coverage, test counts, smoke scenes, and issues by label and milestone, each with its source and what it does not measure. The vitest runs of both frontend apps also write `coverage/test-results.json` ([#152](https://github.com/chrysaor/JayPay/issues/152))
 
 ### Changed
 
