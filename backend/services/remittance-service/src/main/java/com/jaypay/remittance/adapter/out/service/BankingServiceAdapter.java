@@ -13,9 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 @Slf4j
 public class BankingServiceAdapter implements BankingPort {
 
-    private static final String JAYPAY_BANK_NAME = "jaypay-company";
-    private static final String JAYPAY_BANK_ACCOUNT_NUMBER = "123456789";
-
     private final CommonHttpClient commonHttpClient;
     private final String bankingServiceUrl;
 
@@ -35,7 +32,7 @@ public class BankingServiceAdapter implements BankingPort {
     public Outcome transfer(String requestId, Receiver.BankAccount account, long amount) {
         try {
             HttpReply<TransferResult> reply = commonHttpClient.post(url("firmbanking", "request"),
-                    new TransferRequest(requestId, JAYPAY_BANK_NAME, JAYPAY_BANK_ACCOUNT_NUMBER, account.bankName(), account.bankAccountNumber(), amount),
+                    new TransferRequest(requestId, account.bankName(), account.bankAccountNumber(), amount),
                     TransferResult.class);
             TransferResult result = reply.body();
             if (reply.isSuccessful() && result != null && requestId.equals(result.requestId())) {
@@ -67,8 +64,7 @@ public class BankingServiceAdapter implements BankingPort {
     record BankingInfo(boolean valid) {
     }
 
-    record TransferRequest(String requestId, String fromBankName, String fromBankAccountNumber, String toBankName, String toBankAccountNumber,
-                           long moneyAmount) {
+    record TransferRequest(String requestId, String toBankName, String toBankAccountNumber, long moneyAmount) {
     }
 
     record TransferResult(String requestId, String transferStatus) {

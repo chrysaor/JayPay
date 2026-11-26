@@ -359,6 +359,17 @@ class RemittanceInvariantsTest {
     }
 
     @Test
+    void aBankRemittanceLeavesTheSourceAccountToTheBankingService() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1003-" + sender;
+
+        remit(toBank(UUID.randomUUID().toString(), sender, "Jay Bank", account, "7000"));
+
+        assertThat(transfersTo(account)).singleElement()
+                .satisfies(transfer -> assertThat(transfer.has("fromBankName") || transfer.has("fromBankAccountNumber")).isFalse());
+    }
+
+    @Test
     void aBankRemittanceWithoutEnoughMoneySendsNoTransfer() throws Exception {
         String sender = memberWithBalance(1000);
         String account = "1002-" + sender;

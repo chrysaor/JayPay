@@ -408,17 +408,19 @@ request "repeated bank remittance" POST "$web/api/remittance/remittance/request"
 wallet_balance_is "$receiver" 4000 || fail "a repeated bank remittance moved the receiver's wallet: $(cat "$work/last")"
 
 log "banking-service sends a transfer once per request id and answers a repeat with the first result"
-bank_transfer='{"requestId":"smoke-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":700}'
+bank_transfer='{"requestId":"smoke-transfer-'$run'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":700}'
 request "bank transfer" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$bank_transfer"
 [ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank transfer answered $(response)"
+company_account=$(json_field fromBankAccountNumber)
+[ -n "$company_account" ] || fail "the bank transfer names no company account: $(response)"
 first_transfer=$(cat "$work/body")
 request "repeated bank transfer" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$bank_transfer"
 [ "$(cat "$work/body")" = "$first_transfer" ] || fail "the repeated bank transfer answered $(response) instead of $first_transfer"
 expect "a reused transfer request id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
-  '{"requestId":"smoke-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":701}'
+  '{"requestId":"smoke-transfer-'$run'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":701}'
 [ "$(json_field error)" = REQUEST_ID_REUSED ] || fail "a reused transfer request id answered $(response)"
 request "transfer to an account the bank refuses" POST "$banking/banking/firmbanking/request" "$(hex 16)" \
-  '{"requestId":"smoke-refused-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'-refused","moneyAmount":700}'
+  '{"requestId":"smoke-refused-transfer-'$run'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'-refused","moneyAmount":700}'
 [ "$(json_field transferStatus)" = FAILED ] || fail "a refused transfer answered $(response)"
 
 log "register a second member's bank account synchronously, the way the web site does, and top it up through the saga"
@@ -658,15 +660,16 @@ as_staff VIEWER expect "the event flows of a type nobody knows" 400 GET "$flows?
 
 log "the settlement job settles the payment once the bank confirms its payout"
 as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
-payout='{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2910}'
+payout='{"requestId":"settlement-'$payment_id'","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2910}'
 request "the payout the settlement job sent, sent again" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$payout"
 [ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank holds no settled payout for payment $payment_id: $(response)"
+[ "$(json_field fromBankAccountNumber)" = "$company_account" ] || fail "the payout of payment $payment_id left another account than the bank transfer: $(response)"
 expect "the payout id of payment $payment_id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
-  '{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
+  '{"requestId":"settlement-'$payment_id'","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
 as_staff VIEWER eventually 60 "the settlement of payment $payment_id never showed every step as SUCCEEDED" flow_is SETTLEMENT "settlement-$payment_id" SUCCEEDED "" \
   "SETTLEMENT_STARTED MERCHANT_PAID_OUT PAYMENT_SETTLED"
 [ "$(json_field membershipId)" = "$merchant" ] && [ "$(json_field amount)" = 2910 ] || fail "the flow settlement-$payment_id names $(response)"
-! grep -q -e "3002-$run" -e "111-222-333" "$work/body" || fail "the flow settlement-$payment_id shows a bank account: $(response)"
+! grep -q -e "3002-$run" -e "$company_account" "$work/body" || fail "the flow settlement-$payment_id shows a bank account: $(response)"
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
 as_staff VIEWER eventually 60 "the region total never reached 19000" region_total_is 19000

@@ -5,6 +5,7 @@ import com.jaypay.banking.application.port.out.BankAnswer;
 import com.jaypay.banking.application.port.out.BankTransferPort;
 import com.jaypay.banking.application.port.out.ExternalBankPort;
 import com.jaypay.banking.domain.BankTransfer;
+import com.jaypay.banking.domain.CompanyAccount;
 import com.jaypay.banking.domain.RecordedTransfer;
 import com.jaypay.banking.domain.RequestIdReusedException;
 import com.jaypay.banking.domain.TransferStatus;
@@ -22,6 +23,7 @@ public class TransferMoneyService implements TransferMoneyUseCase {
 
     private final BankTransferPort bankTransferPort;
     private final ExternalBankPort externalBankPort;
+    private final CompanyAccount companyAccount;
 
     @Override
     @Transactional
@@ -31,7 +33,7 @@ public class TransferMoneyService implements TransferMoneyUseCase {
         if (recorded.status() == TransferStatus.CANCELLED) {
             return new RecordedTransfer(transfer, TransferStatus.CANCELLED);
         }
-        if (!recorded.transfer().equals(transfer)) {
+        if (!recorded.transfer().equals(transfer) && !companyAccount.sendsAgain(recorded.transfer(), transfer)) {
             throw new RequestIdReusedException(transfer.requestId());
         }
         return send(recorded);
