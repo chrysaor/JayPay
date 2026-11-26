@@ -24,7 +24,7 @@ Do not report work as done until `make verify` passes. On a PR into `develop`, C
 
 `master` holds released code. `develop` is the integration branch.
 
-1. Start from an issue. Ask for one if the task has none. Give every new issue at least one label, `bug`, `enhancement`, `documentation`, `test`, `security`, `infra`, `architecture` or `needs-decision`, and the milestone of the release it targets.
+1. Start from an issue. Ask for one if the task has none. Give every new issue at least one label, `bug`, `enhancement`, `documentation`, `test`, `security`, `infra`, `architecture` or `needs-decision`, and the milestone of the release it targets. Add it to the JayPay project and keep its Status current: Backlog without a milestone or while it waits for a decision, Ready, In Progress when work starts, Review when the PR is open, Verify while it is checked on a running stack, Done after the merge.
 2. Branch from `develop` as `feature/<issue>-<short-name>`, for example `feature/40-workflow-release`.
 3. Write the failing test first, then the code that makes it pass. Run a new test at least five times before you push when it waits on a processor, Kafka, a scheduler or polling.
 4. Add a line to Unreleased in `CHANGELOG.md` that says what changed for a user or an operator, ending with the PR or issue link. Use the `Changelog: none` trailer only for a change nobody outside the repository notices, such as a typo, a CI internal or a test. The format is in `CONTRIBUTING.md`.
