@@ -27,7 +27,10 @@ public class FindMembershipController {
                 .membershipId(membershipId)
                 .build();
 
-        return ResponseEntity.ok(MembershipResponseMapper.toResponse(findMembershipUseCase.findMembership(command)));
+        return findMembershipUseCase.findMembership(command)
+                .map(MembershipResponseMapper::toResponse)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping(path = "/memberships/address/{addressName}")

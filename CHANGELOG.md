@@ -16,6 +16,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 ### Fixed
 
 - A payment whose debit answer was lost now finishes when the same request is sent again, even after the payer or the merchant stopped being valid or the merchant lost its corporate flag. Before, the repeat answered 400 and the price stayed taken from the wallet on a payment that never reached settlement. payment-service now checks the payer and the merchant only on the first request with an id, the way remittance-service does ([#136](https://github.com/chrysaor/JayPay/issues/136))
+- A wallet change asked while membership-service fails or does not answer now answers 503 with `MEMBERSHIP_NOT_CONFIRMED`, records nothing under its request id, and is applied once when the same request is sent again. Before, it was stored as failed for good, so a remittance refund asked during the outage left the sender's money taken. A member that does not exist or is not valid is still refused with the status `2`, and `GET /memberships/{membershipId}` now answers 404 instead of 500 when the id names no member ([#137](https://github.com/chrysaor/JayPay/issues/137))
 
 ## [0.4.0] - 2026-11-26
 

@@ -30,7 +30,7 @@ public class AuthMembershipService implements AuthMembershipUseCase {
         String membershipId = command.membershipId();
         Membership membership = findMembershipPort.findMembership(
                 new Membership.MembershipId(membershipId)
-        );
+        ).orElseThrow();
 
         if (membership.isValid()) {
             String jwtToken = authMembershipPort.generateJwtToken(
@@ -69,7 +69,7 @@ public class AuthMembershipService implements AuthMembershipUseCase {
             Membership.MembershipId membershipId = authMembershipPort.parseMembershipIdFromToken(requestedRefreshToken);
             String membershipIdString = membershipId.getMembershipId();
 
-            Membership membership = findMembershipPort.findMembership(membershipId);
+            Membership membership = findMembershipPort.findMembership(membershipId).orElseThrow();
             if(!membership.getRefreshToken().equals(
                     command.refreshToken()
             )) {
@@ -105,7 +105,7 @@ public class AuthMembershipService implements AuthMembershipUseCase {
 
         if(isValid) {
             Membership.MembershipId membershipId = authMembershipPort.parseMembershipIdFromToken(jwtToken);
-            Membership membership = findMembershipPort.findMembership(membershipId);
+            Membership membership = findMembershipPort.findMembership(membershipId).orElseThrow();
 
             if (!membership.getRefreshToken().equals(command.jwtToken())) {
                 return null;
