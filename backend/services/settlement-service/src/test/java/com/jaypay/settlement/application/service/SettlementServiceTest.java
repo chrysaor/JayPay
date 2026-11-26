@@ -5,6 +5,7 @@ import com.jaypay.settlement.application.port.out.BankingPort;
 import com.jaypay.settlement.application.port.out.Payout;
 import com.jaypay.settlement.application.port.out.Payment;
 import com.jaypay.settlement.application.port.out.PaymentPort;
+import com.jaypay.settlement.application.port.out.SettlementFlowPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -26,6 +27,49 @@ class SettlementServiceTest {
     private final RecordingBanking banking = new RecordingBanking(Map.of(
             "11", FIRST_MERCHANT_ACCOUNT,
             "12", SECOND_MERCHANT_ACCOUNT));
+    private final RecordingFlow flow = new RecordingFlow();
+
+    @Test
+    void reportsTheStartThePayoutAndTheSettlementOfEachPayment() {
+        PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700));
+
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
+
+        assertThat(flow.reports).containsExactly("started 1", "paid out 1 PAID", "settled 1");
+    }
+
+    @Test
+    void reportsAPaymentWaitingForItsMerchantsAccountAndARefusedPayoutWithoutSettlingThem() {
+        PaidPayments payments = new PaidPayments(new Payment(1, "99", 9700), new Payment(2, "11", 4825));
+        banking.refuse(FIRST_MERCHANT_ACCOUNT);
+
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
+
+        assertThat(flow.reports).containsExactly("waiting for an account 1", "started 2", "paid out 2 REFUSED");
+    }
+
+    @Test
+    void reportsAPayoutWithoutAnAnswerOnlyOnceTheBankAnswers() {
+        PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700));
+        banking.silence(FIRST_MERCHANT_ACCOUNT);
+        SettlementService settlement = new SettlementService(banking, payments, flow);
+
+        settlement.settleNormalStatusPayments();
+        banking.answerAgain();
+        settlement.settleNormalStatusPayments();
+
+        assertThat(flow.reports).containsExactly("started 1", "paid out 1 UNCONFIRMED", "started 1", "paid out 1 PAID", "settled 1");
+    }
+
+    @Test
+    void doesNotReportASettlementThatAnotherRunFinished() {
+        PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700));
+        payments.settledElsewhere(1);
+
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
+
+        assertThat(flow.reports).containsExactly("started 1", "paid out 1 PAID");
+    }
 
     @Test
     void paysEachPaidPaymentItsPayoutOnceAndSettlesIt() {
@@ -34,7 +78,7 @@ class SettlementServiceTest {
                 new Payment(2, "12", 4825),
                 new Payment(3, "11", 194));
 
-        new SettlementService(banking, payments).settleNormalStatusPayments();
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
 
         assertThat(banking.transfers).containsExactly(
                 new Transfer(FIRST_MERCHANT_ACCOUNT, 9700),
@@ -46,7 +90,7 @@ class SettlementServiceTest {
     @Test
     void aSecondRunPaysNothingAgain() {
         PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
-        SettlementService settlement = new SettlementService(banking, payments);
+        SettlementService settlement = new SettlementService(banking, payments, flow);
 
         settlement.settleNormalStatusPayments();
         settlement.settleNormalStatusPayments();
@@ -59,7 +103,7 @@ class SettlementServiceTest {
         PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
         banking.alreadyPaid("settlement-1", FIRST_MERCHANT_ACCOUNT, 9700);
 
-        new SettlementService(banking, payments).settleNormalStatusPayments();
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
 
         assertThat(banking.transfers).containsExactly(new Transfer(FIRST_MERCHANT_ACCOUNT, 9700), new Transfer(SECOND_MERCHANT_ACCOUNT, 4825));
         assertThat(payments.settled).containsExactly(1L, 2L);
@@ -69,7 +113,7 @@ class SettlementServiceTest {
     void leavesAPaymentUnsettledWhileItsMerchantHasNoAccount() {
         PaidPayments payments = new PaidPayments(new Payment(1, "99", 9700), new Payment(2, "12", 4825));
 
-        new SettlementService(banking, payments).settleNormalStatusPayments();
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
 
         assertThat(banking.transfers).containsExactly(new Transfer(SECOND_MERCHANT_ACCOUNT, 4825));
         assertThat(payments.paid()).extracting(Payment::paymentId).containsExactly(1L);
@@ -79,7 +123,7 @@ class SettlementServiceTest {
     void aPayoutWithoutAnAnswerStaysPaidAndTheNextRunFinishesItOnce() {
         PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
         banking.silence(FIRST_MERCHANT_ACCOUNT);
-        SettlementService settlement = new SettlementService(banking, payments);
+        SettlementService settlement = new SettlementService(banking, payments, flow);
 
         settlement.settleNormalStatusPayments();
         assertThat(payments.paid()).extracting(Payment::paymentId).containsExactly(1L);
@@ -97,7 +141,7 @@ class SettlementServiceTest {
     void aRefusedPayoutIsNeitherSettledNorPaidAgain() {
         PaidPayments payments = new PaidPayments(new Payment(1, "11", 9700), new Payment(2, "12", 4825));
         banking.refuse(FIRST_MERCHANT_ACCOUNT);
-        SettlementService settlement = new SettlementService(banking, payments);
+        SettlementService settlement = new SettlementService(banking, payments, flow);
 
         settlement.settleNormalStatusPayments();
         settlement.settleNormalStatusPayments();
@@ -111,7 +155,7 @@ class SettlementServiceTest {
     void doesNothingWhenNoPaymentWaitsForSettlement() {
         PaidPayments payments = new PaidPayments();
 
-        new SettlementService(banking, payments).settleNormalStatusPayments();
+        new SettlementService(banking, payments, flow).settleNormalStatusPayments();
 
         assertThat(banking.transfers).isEmpty();
         assertThat(payments.settled).isEmpty();
@@ -167,6 +211,30 @@ class SettlementServiceTest {
                 transfers.add(new Transfer(to, amount));
                 return Payout.PAID;
             });
+        }
+    }
+
+    private static final class RecordingFlow implements SettlementFlowPort {
+        private final List<String> reports = new ArrayList<>();
+
+        @Override
+        public void waitingForAccount(Payment payment) {
+            reports.add("waiting for an account " + payment.paymentId());
+        }
+
+        @Override
+        public void started(Payment payment) {
+            reports.add("started " + payment.paymentId());
+        }
+
+        @Override
+        public void paidOut(Payment payment, Payout payout) {
+            reports.add("paid out " + payment.paymentId() + " " + payout);
+        }
+
+        @Override
+        public void settled(Payment payment) {
+            reports.add("settled " + payment.paymentId());
         }
     }
 
