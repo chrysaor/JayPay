@@ -30,8 +30,13 @@ const flowDetailSchema = flowSchema.extend({ steps: z.array(stepSchema) })
 
 export type FlowDetail = z.output<typeof flowDetailSchema>
 
-export function findFlows(status: Outcome | null) {
-  return call('event-flow', status ? `/flows?status=${status}` : '/flows', z.array(flowSchema))
+export const flowTypeSchema = z.enum(['RECHARGE', 'REMITTANCE', 'PAYMENT', 'SETTLEMENT'])
+
+export type FlowType = z.output<typeof flowTypeSchema>
+
+export function findFlows(status: Outcome | null, flowType: FlowType | null) {
+  const query = new URLSearchParams({ ...(flowType ? { flowType } : {}), ...(status ? { status } : {}) }).toString()
+  return call('event-flow', query ? `/flows?${query}` : '/flows', z.array(flowSchema))
 }
 
 export function findFlow(flowType: string, flowId: string) {
@@ -46,10 +51,23 @@ const stepLabels: Partial<Record<string, string>> = {
   WALLET_INCREASED: 'Wallet increased',
   RECHARGE_FAILED: 'Recharge failed',
   CHARGE_ROLLED_BACK: 'Charge rolled back',
+  REMITTANCE_REQUESTED: 'Remittance requested',
+  SENDER_DEBITED: 'Sender debited',
+  RECEIVER_CREDITED: 'Receiver credited',
+  BANK_TRANSFERRED: 'Bank transfer',
+  SENDER_REFUNDED: 'Sender refunded',
+  PAYMENT_REQUESTED: 'Payment requested',
+  PAYER_DEBITED: 'Payer debited',
+  SETTLEMENT_STARTED: 'Settlement started',
+  MERCHANT_PAID_OUT: 'Merchant paid out',
+  PAYMENT_SETTLED: 'Payment settled',
 }
 
-const flowTypeLabels: Partial<Record<string, string>> = {
+export const flowTypeLabels: Record<FlowType, string> = {
   RECHARGE: 'Top-up',
+  REMITTANCE: 'Remittance',
+  PAYMENT: 'Payment',
+  SETTLEMENT: 'Settlement',
 }
 
 export function stepLabel(step: string) {
@@ -57,7 +75,8 @@ export function stepLabel(step: string) {
 }
 
 export function flowTypeLabel(flowType: string) {
-  return flowTypeLabels[flowType] ?? flowType
+  const known = flowTypeSchema.safeParse(flowType)
+  return known.success ? flowTypeLabels[known.data] : flowType
 }
 
 export function formatGap(from: string, to: string) {

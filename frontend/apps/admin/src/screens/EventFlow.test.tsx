@@ -99,6 +99,95 @@ describe('event flow', () => {
     expect(requests.some((r) => r.url === '/api/event-flow/flows?status=FAILED')).toBe(true)
   })
 
+  test('the list tells top-ups, remittances, payments and settlements apart', async () => {
+    fakeRoutes({
+      ...signedInAs(),
+      [listRoute]: {
+        body: [
+          running,
+          { ...failed, flowType: 'REMITTANCE', flowId: 'remit-1', lastStep: 'SENDER_REFUNDED', failedStep: 'BANK_TRANSFERRED' },
+          { ...succeeded, flowType: 'PAYMENT', flowId: 'pay-1', lastStep: 'PAYER_DEBITED' },
+          { ...running, flowType: 'SETTLEMENT', flowId: 'settlement-7', lastStep: 'MERCHANT_PAID_OUT' },
+        ],
+      },
+    })
+    renderApp('/event-flow')
+
+    const topUp = within(await screen.findByRole('row', { name: /saga-1/ }))
+    expect(topUp.getByText('Top-up')).toBeInTheDocument()
+    const remittance = within(screen.getByRole('row', { name: /remit-1/ }))
+    expect(remittance.getByText('Remittance')).toBeInTheDocument()
+    expect(remittance.getByText('Bank transfer')).toBeInTheDocument()
+    const payment = within(screen.getByRole('row', { name: /pay-1/ }))
+    expect(payment.getByText('Payment')).toBeInTheDocument()
+    expect(payment.getByText('Payer debited')).toBeInTheDocument()
+    const settlement = within(screen.getByRole('row', { name: /settlement-7/ }))
+    expect(settlement.getByText('Settlement')).toBeInTheDocument()
+    expect(settlement.getByText('Merchant paid out')).toBeInTheDocument()
+  })
+
+  test('the type filter asks the server for that type and keeps the status', async () => {
+    const payment = { ...failed, flowType: 'PAYMENT', flowId: 'pay-2', lastStep: 'PAYMENT_REQUESTED', failedStep: 'PAYMENT_REQUESTED' }
+    const requests = fakeRoutes({
+      ...signedInAs(),
+      [listRoute]: { body: [running, failed, payment] },
+      [`${listRoute}?status=FAILED`]: { body: [failed, payment] },
+      [`${listRoute}?flowType=PAYMENT&status=FAILED`]: { body: [payment] },
+    })
+    const user = renderApp('/event-flow')
+
+    await screen.findByRole('row', { name: /saga-1/ })
+    await user.selectOptions(screen.getByLabelText('Status'), 'Failed')
+    await user.selectOptions(screen.getByLabelText('Type'), 'Payment')
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('row', { name: /saga-2/ })).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('row', { name: /pay-2/ })).toBeInTheDocument()
+    expect(requests.some((r) => r.url === '/api/event-flow/flows?flowType=PAYMENT&status=FAILED')).toBe(true)
+  })
+
+  test('a filter that matches nothing says so', async () => {
+    fakeRoutes({ ...signedInAs(), [listRoute]: { body: [] }, [`${listRoute}?flowType=SETTLEMENT`]: { body: [] } })
+    renderApp('/event-flow?type=SETTLEMENT')
+
+    expect(await screen.findByText('No flows match these filters.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Type')).toHaveValue('SETTLEMENT')
+  })
+
+  test('a remittance the bank refused shows the refund after the failed transfer', async () => {
+    const remittancePath = '/api/event-flow/flows/REMITTANCE/remit-3'
+    fakeRoutes({
+      ...signedInAs(),
+      [listRoute]: { body: [] },
+      [`GET ${remittancePath}`]: {
+        body: {
+          ...failed,
+          flowType: 'REMITTANCE',
+          flowId: 'remit-3',
+          lastStep: 'SENDER_REFUNDED',
+          failedStep: 'BANK_TRANSFERRED',
+          stepCount: 4,
+          steps: [
+            step('REMITTANCE_REQUESTED', 'remittance-service', 'SUCCEEDED', '2026-11-26T01:02:03.000Z'),
+            step('SENDER_DEBITED', 'remittance-service', 'SUCCEEDED', '2026-11-26T01:02:03.050Z'),
+            step('BANK_TRANSFERRED', 'remittance-service', 'FAILED', '2026-11-26T01:02:03.250Z', 'The bank refused the transfer'),
+            step('SENDER_REFUNDED', 'remittance-service', 'SUCCEEDED', '2026-11-26T01:02:03.300Z'),
+          ],
+        },
+      },
+    })
+    renderApp('/event-flow?flowType=REMITTANCE&flowId=remit-3')
+
+    await screen.findByRole('list', { name: 'Steps' })
+    expect(stepAt(0).getByText('Remittance requested')).toBeInTheDocument()
+    expect(stepAt(1).getByText('Sender debited')).toBeInTheDocument()
+    expect(stepAt(2).getByText('Bank transfer')).toBeInTheDocument()
+    expect(stepAt(2).getByText('The bank refused the transfer')).toBeInTheDocument()
+    expect(stepAt(3).getByText('Sender refunded')).toBeInTheDocument()
+    expect(screen.getByText('Remittance', { selector: 'dd' })).toBeInTheDocument()
+  })
+
   test('choosing a flow shows its steps with the service, the gap and why it failed', async () => {
     fakeRoutes({
       ...signedInAs(),
