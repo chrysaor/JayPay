@@ -35,4 +35,5 @@ When a merchant or payer that loses its standing must stop a payment already sta
 ## Links
 
 - Issue [#136](https://github.com/chrysaor/JayPay/issues/136)
+- PR [#170](https://github.com/chrysaor/JayPay/pull/170)
 - Retrospective [A payment whose debit answer was lost could never finish](../retrospectives/2026-11-27-payment-checks-parties-before-resuming.md)

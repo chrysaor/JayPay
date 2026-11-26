@@ -16,7 +16,7 @@ The review of [#135](https://github.com/chrysaor/JayPay/issues/135) found it, an
 
 ## Fix
 
-payment-service looks up the payment by its request id first. Only a request with a new id checks the payer and the merchant and claims a row. A repeat of a `REQUESTED` payment calls money-service again under the same debit id, so it ends `PAID` when the debit landed and `FAILED` when it was refused. The decision is in [0017](../decisions/0017-payment-resumes-before-checking-parties.md).
+[#170](https://github.com/chrysaor/JayPay/pull/170) makes payment-service look up the payment by its request id first. Only a request with a new id checks the payer and the merchant and claims a row. A repeat of a `REQUESTED` payment calls money-service again under the same debit id, so it ends `PAID` when the debit landed and `FAILED` when it was refused. The decision is in [0017](../decisions/0017-payment-resumes-before-checking-parties.md).
 
 ## What changed so it is caught next time
 
