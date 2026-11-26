@@ -16,7 +16,7 @@ The review of [#135](https://github.com/chrysaor/JayPay/issues/135) found it, an
 
 ## Fix
 
-The PR for [#138](https://github.com/chrysaor/JayPay/issues/138) adds the table `payout_attempt` to settlement-service. Each payment has one current attempt with its own request id and the account it is sent to. A run sends the stored attempt with the stored account, and starts the next attempt with the new account only after banking-service answered that the current one failed. The decision is in [0019](../decisions/0019-payout-attempts-in-settlement-service.md).
+[#174](https://github.com/chrysaor/JayPay/pull/174) adds the table `payout_attempt` to settlement-service. Each payment has one current attempt with its own request id and the account it is sent to. A run sends the stored attempt with the stored account, and starts the next attempt with the new account only after banking-service answered that the current one failed. The decision is in [0019](../decisions/0019-payout-attempts-in-settlement-service.md).
 
 ## What changed so it is caught next time
 

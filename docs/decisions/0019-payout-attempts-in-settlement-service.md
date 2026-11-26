@@ -36,4 +36,5 @@ When the settlement record of [#135](https://github.com/chrysaor/JayPay/issues/1
 ## Links
 
 - Issue [#138](https://github.com/chrysaor/JayPay/issues/138)
+- PR [#174](https://github.com/chrysaor/JayPay/pull/174)
 - Retrospective [A refused payout could not be sent again after the merchant changed the account](../retrospectives/2026-11-27-refused-payout-bound-to-one-request-id.md)
