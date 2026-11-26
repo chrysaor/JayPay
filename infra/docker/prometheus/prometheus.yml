@@ -18,7 +18,6 @@ scrape_configs:
           - settlement-service:9080
           - auth-service:9080
           - logging-consumer:9080
-          - task-consumer:9080
     relabel_configs:
       - source_labels: [__address__]
         regex: "([^:]+):.*"

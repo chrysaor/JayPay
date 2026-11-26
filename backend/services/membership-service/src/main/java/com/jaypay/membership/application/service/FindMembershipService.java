@@ -27,6 +27,11 @@ public class FindMembershipService implements FindMembershipUseCase {
     }
 
     @Override
+    public boolean isValidMembership(FindMembershipCommand command) {
+        return findMembershipPort.isValidMembership(new Membership.MembershipId(command.membershipId()));
+    }
+
+    @Override
     public List<Membership> findMembershipListByAddress(FindMembershipListByAddressCommand command) {
         return findMembershipPort.findMembershipListByAddress(new Membership.MembershipAddress(command.addressName())).stream()
                 .map(stored -> stored.withEmail(encryptionPort.decrypt(stored.getEmail())))

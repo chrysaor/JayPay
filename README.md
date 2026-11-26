@@ -4,7 +4,7 @@ JayPay is a study project for a small payment service: members sign up, register
 
 ## Architecture
 
-Eleven Spring Boot services run in Docker Compose. Nine of them have a host port, and eight of those nine have their own PostgreSQL database. Eight of the nine serve HTTP endpoints, and settlement-service runs a batch job instead. task-consumer and logging-consumer only consume Kafka topics. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services. Staff sign in to the admin console through Keycloak, and before the admin console forwards a request, nginx asks auth-service whether the staff token's role may make it.
+Ten Spring Boot services run in Docker Compose. Nine of them have a host port, and eight of those nine have their own PostgreSQL database. Eight of the nine serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services. Staff sign in to the admin console through Keycloak, and before the admin console forwards a request, nginx asks auth-service whether the staff token's role may make it.
 
 ### Request path
 
@@ -20,13 +20,13 @@ The services then call each other over HTTP. Each row is a caller, each column t
 
 ### Messaging and storage
 
-Kafka carries the task top-up and a log record for each web request.
+Kafka carries a log record for each web request.
 
-![money-service writes jaypay.task.topic, task-consumer reads it and writes jaypay.task.result.topic, which money-service reads. Seven services write one record per web request to jaypay.logging.out.stdout, which logging-consumer reads.](docs/diagrams/kafka.svg)
+![Seven services write one record per web request to jaypay.logging.out.stdout, which logging-consumer reads.](docs/diagrams/kafka.svg)
 
 Axon Server routes the commands and events of the money top-up saga and stores the events of the Axon aggregates. Every service with a host port has its own PostgreSQL database.
 
-![Axon Server connects banking-service, money-service and money-query-service. membership-service reads a key from Vault, money-query-service writes to DynamoDB, and nine services each use their own PostgreSQL database.](docs/diagrams/axon-and-storage.svg)
+![Axon Server connects membership-service, banking-service, money-service and money-query-service. membership-service reads a key from Vault, money-query-service writes to DynamoDB, and nine services each use their own PostgreSQL database.](docs/diagrams/axon-and-storage.svg)
 
 `make diagrams` draws these four pictures with `scripts/check-docs.py` from `deploy/envs/local/network-policy/calls.yaml`, `infra/docker/compose.yaml` and the service code. `make verify` fails when a committed picture differs from what the script draws.
 
@@ -59,7 +59,7 @@ make smoke
 
 1. `make images` builds `jaypay/<service>` for every backend service, and `jaypay/frontend-web` and `jaypay/frontend-admin`.
 2. `make up` writes `infra/docker/.env` with random secrets the first time, starts the Compose project `jaypay`, and waits until every container is healthy. The first start also builds the OpenTelemetry Collector image.
-3. `make smoke` signs a member up through the customer site, registers a bank account, tops the wallet up through the saga and through the Kafka task, pays, signs the three staff roles in to the admin console through the Keycloak Authorization Code flow and checks what each may do, checks that a disabled or locked Keycloak account cannot sign in, and checks that logs, traces and metrics arrived. It prints the cause and exits non-zero on the first failure.
+3. `make smoke` signs a member up through the customer site, registers a bank account, tops the wallet up through the saga, checks that a saga top-up of a member membership-service does not know fails, pays, signs the three staff roles in to the admin console through the Keycloak Authorization Code flow and checks what each may do, checks that a disabled or locked Keycloak account cannot sign in, and checks that logs, traces and metrics arrived. It prints the cause and exits non-zero on the first failure.
 
 Stop the stack with `make down`.
 
@@ -91,16 +91,15 @@ Every service and site has a section in [docs/services.md](docs/services.md) wit
 
 | Service | Role | Host port | Storage | Messaging |
 | --- | --- | --- | --- | --- |
-| [membership-service](docs/services.md#membership-service) | Sign up, look members up by id or address, edit members, and issue and check member JWTs | 8081 | PostgreSQL `membership`, Vault for the key that encrypts member email | Writes the log topic |
+| [membership-service](docs/services.md#membership-service) | Sign up, look members up by id or address, edit members, issue and check member JWTs, and check the member of a saga top-up | 8081 | PostgreSQL `membership`, Vault for the key that encrypts member email | Axon command handler for the member check, writes the log topic |
 | [banking-service](docs/services.md#banking-service) | Register bank accounts and run firm banking requests against a fake bank | 8082 | PostgreSQL `banking` | Axon aggregates for bank accounts and firm banking, writes the log topic |
-| [money-service](docs/services.md#money-service) | Wallet balances and top-ups: synchronous, through a Kafka task, or through the Axon saga | 8083 | PostgreSQL `money` | Axon aggregate and recharge saga, Kafka task topics, writes the log topic |
+| [money-service](docs/services.md#money-service) | Wallet balances and top-ups: synchronous or through the Axon saga | 8083 | PostgreSQL `money` | Axon aggregate and recharge saga, writes the log topic |
 | [remittance-service](docs/services.md#remittance-service) | Send money to a member or a bank account through money-service and banking-service | 8084 | PostgreSQL `remittance` | Writes the log topic |
 | [payment-service](docs/services.md#payment-service) | Take payments from wallets to corporate merchants at a server-set fee, list paid payments, and mark each settled once | 8085 | PostgreSQL `payment` | Writes the log topic |
 | [money-aggregation-service](docs/services.md#money-aggregation-service) | Sum the wallet balances of the members at one address | 8086 | PostgreSQL `money_aggregation`, no tables | Writes the log topic |
 | [money-query-service](docs/services.md#money-query-service) | Read model of saga top-ups per address, read over HTTP | 8087 | DynamoDB `MoneyIncreaseEventByRegion`, PostgreSQL `money_query` with no tables | Axon event handler, writes the log topic |
 | [settlement-service](docs/services.md#settlement-service) | Spring Batch job every 30 seconds that settles each paid payment once and pays its payout through firm banking | 8088 | PostgreSQL `settlement` for the batch tables | none |
 | [auth-service](docs/services.md#auth-service) | The decision for every admin console request from the Keycloak token's realm role: viewer, operator or admin | 8089 | none | none |
-| [task-consumer](docs/services.md#task-consumer) | Reads top-up tasks, marks every subtask done, and writes the result | none | none | Kafka `jaypay.task.topic` in, `jaypay.task.result.topic` out |
 | [logging-consumer](docs/services.md#logging-consumer) | Writes each record of the log topic to its own log | none | none | Kafka `jaypay.logging.out.stdout` in |
 | [frontend-web](docs/services.md#frontend-web) | Customer site: nginx serves the React app and proxies `/api/<service>/` to five services | 8090 | The session in the browser | none |
 | [frontend-admin](docs/services.md#frontend-admin) | Admin console: nginx serves the React app, proxies the Keycloak sign-in, asks auth-service, and proxies to four services | 8091 | The staff tokens in the tab's memory | none |
@@ -115,7 +114,7 @@ Every Spring Boot service sends its logs and traces to the OpenTelemetry Collect
 
 ```mermaid
 flowchart LR
-    services["Eleven Spring Boot services"]
+    services["Ten Spring Boot services"]
     collector["OpenTelemetry Collector<br/>drops /actuator spans"]
     clickhouse[("ClickHouse<br/>otel.otel_logs, otel.otel_traces<br/>kept 72 hours")]
     prometheus[("Prometheus<br/>kept 3 days")]

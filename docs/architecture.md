@@ -22,6 +22,9 @@ sequenceDiagram
     money->>banking: GET /banking/account/{membershipId}
     banking-->>money: registered bank account
     Note over money: RechargingRequestCreatedEvent<br/>starts the recharge saga and its deadline
+    money->>membership: CheckMembershipCommand
+    membership->>money: CheckedMembershipEvent
+    Note over money: a member that does not exist or is not valid<br/>fails the wallet change, and the saga ends
     money->>banking: CheckRegisteredBankAccountCommand
     Note over banking: the fake bank confirms the account
     banking->>money: CheckedRegisteredBankAccountEvent
@@ -40,9 +43,9 @@ sequenceDiagram
     query->>dynamodb: add the amount to the total of that address
 ```
 
-`POST /money/increase-async` reaches the same end through Kafka. money-service writes a task to `jaypay.task.topic` and blocks the request. task-consumer marks every subtask done and writes the result to `jaypay.task.result.topic`. When money-service reads the result, it adds the amount to the balance and answers.
+When membership-service does not answer, or the command cannot reach it, nothing else happens until the deadline fails the wallet change.
 
-`make smoke` runs both top-ups. It checks that the saga trace spans money-service and banking-service, and that the Kafka trace spans money-service and task-consumer.
+`make smoke` runs saga top-ups that succeed, one the bank refuses, and one for a member that membership-service does not know. It checks that the saga trace spans money-service and banking-service, and that the trace of a top-up request reaches logging-consumer through the Kafka log topic.
 
 ## Admin console sign-in through Keycloak
 
@@ -139,7 +142,7 @@ flowchart RL
 
 ## Workloads on Kubernetes
 
-[deploy/README.md](../deploy/README.md) packages the same thirteen workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
+[deploy/README.md](../deploy/README.md) packages the same twelve workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
 
 ```mermaid
 flowchart LR

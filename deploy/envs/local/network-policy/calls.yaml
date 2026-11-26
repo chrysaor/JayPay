@@ -6,7 +6,7 @@ calls:
     http: [frontend-admin]
     management: [prometheus]
   axon-server:
-    grpc: [auth-service, axon-server, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    grpc: [auth-service, axon-server, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
     http: [axon-server]
   banking-service:
     http: [frontend-web, money-service, remittance-service, settlement-service]
@@ -16,7 +16,7 @@ calls:
   dynamodb:
     http: [money-query-service]
   kafka:
-    kafka: [auth-service, banking-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    kafka: [auth-service, banking-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   keycloak:
     http: [auth-service, frontend-admin]
   logging-consumer:
@@ -34,7 +34,7 @@ calls:
     http: [frontend-web, money-aggregation-service, payment-service, remittance-service]
     management: [prometheus]
   otel-collector:
-    otlp-http: [auth-service, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service, task-consumer]
+    otlp-http: [auth-service, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   payment-service:
     http: [frontend-admin, frontend-web, settlement-service]
     management: [prometheus]
@@ -46,8 +46,6 @@ calls:
     http: [frontend-web]
     management: [prometheus]
   settlement-service:
-    management: [prometheus]
-  task-consumer:
     management: [prometheus]
   vault:
     http: [membership-service]

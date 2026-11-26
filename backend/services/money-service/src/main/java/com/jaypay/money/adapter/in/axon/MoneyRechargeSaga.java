@@ -1,6 +1,8 @@
 package com.jaypay.money.adapter.in.axon;
 
+import com.jaypay.common.event.CheckMembershipCommand;
 import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
+import com.jaypay.common.event.CheckedMembershipEvent;
 import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
@@ -44,6 +46,7 @@ public class MoneyRechargeSaga {
     private String bankName;
     private String bankAccountNumber;
     private long amount;
+    private String registeredBankAccountAggregateIdentifier;
     private String deadlineId;
 
     @Autowired
@@ -74,12 +77,29 @@ public class MoneyRechargeSaga {
         bankName = event.bankName();
         bankAccountNumber = event.bankAccountNumber();
         amount = event.amount();
+        registeredBankAccountAggregateIdentifier = event.registeredBankAccountAggregateIdentifier();
         deadlineId = deadlineManager.schedule(deadline, DEADLINE);
 
+        String checkMembershipId = UUID.randomUUID().toString();
+        SagaLifecycle.associateWith("checkMembershipId", checkMembershipId);
+        commandGateway.send(new CheckMembershipCommand(checkMembershipId, rechargingRequestId, membershipId)).exceptionally(failure -> {
+            log.warn("The membership check of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());
+            return null;
+        });
+    }
+
+    @SagaEventHandler(associationProperty = "checkMembershipId")
+    public void handle(CheckedMembershipEvent event) {
+        if (!event.valid()) {
+            log.warn("Member {} of recharge {} is not a valid member, so the recharge fails", membershipId, rechargingRequestId);
+            changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId));
+            end();
+            return;
+        }
         String checkRegisteredBankAccountId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("checkRegisteredBankAccountId", checkRegisteredBankAccountId);
         commandGateway.send(new CheckRegisteredBankAccountCommand(
-                event.registeredBankAccountAggregateIdentifier(),
+                registeredBankAccountAggregateIdentifier,
                 rechargingRequestId,
                 membershipId,
                 checkRegisteredBankAccountId,

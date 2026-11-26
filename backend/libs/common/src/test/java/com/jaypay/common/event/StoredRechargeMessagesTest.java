@@ -17,6 +17,12 @@ class StoredRechargeMessagesTest {
 
     static Stream<Arguments> storedPayloads() {
         return Stream.of(
+                Arguments.of(CheckMembershipCommand.class,
+                        "{\"checkMembershipId\":\"m\",\"rechargingRequestId\":\"r\",\"membershipId\":\"1\"}",
+                        "\"membershipId\":\"1\""),
+                Arguments.of(CheckedMembershipEvent.class,
+                        "{\"checkMembershipId\":\"m\",\"rechargingRequestId\":\"r\",\"membershipId\":\"1\",\"valid\":false}",
+                        "\"valid\":false"),
                 Arguments.of(CheckRegisteredBankAccountCommand.class,
                         "{\"aggregateIdentifier\":\"a\",\"rechargeRequestId\":\"r\",\"membershipId\":\"1\",\"checkRegisteredBankAccountId\":\"c\","
                                 + "\"bankName\":\"Shinhan bank\",\"bankAccountNumber\":\"111\",\"amount\":5000}",

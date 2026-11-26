@@ -177,8 +177,8 @@ rm "$dir/infra/docker/vault/encryption-key.sh"
 expect charts fail "$dir" "files/vault/encryption-key.sh is empty or missing"
 
 dir=$(copy_repo charts-workload)
-rm "$dir/deploy/envs/local/spring-service/task-consumer.yaml"
-expect charts fail "$dir" "no workload task-consumer"
+rm "$dir/deploy/envs/local/spring-service/logging-consumer.yaml"
+expect charts fail "$dir" "no workload logging-consumer"
 
 dir=$(copy_repo charts-env)
 perl -ni -e 'print unless /SERVICE_PAYMENT_URL/' "$dir/deploy/envs/local/spring-service/settlement-service.yaml"

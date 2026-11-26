@@ -1,6 +1,6 @@
 # Services
 
-This page describes each of the eleven Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
+This page describes each of the ten Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
 
 ## membership-service
 
@@ -14,7 +14,7 @@ Members of the customer site: sign up, look-up, edits and the customer tokens.
 | Calls | none |
 | Called by | `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `frontend-web`, `frontend-admin` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
-| Axon | none |
+| Axon | Command handler `CheckMembershipHandler` for `CheckMembershipCommand`, publishing `CheckedMembershipEvent` |
 | Other stores | Vault, KV version 2 mount `kv-v1/data/encrypt`, secret `dbkey`, field `key`, read once at startup |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SPRING_CLOUD_VAULT_TOKEN`, `SPRING_CLOUD_VAULT_SCHEME`, `SPRING_CLOUD_VAULT_HOST`, `SPRING_CLOUD_VAULT_PORT`, `JWT_SECRET`. Secrets are `SPRING_DATASOURCE_PASSWORD`, `SPRING_CLOUD_VAULT_TOKEN`, which is `VAULT_MEMBERSHIP_TOKEN` and may only read `dbkey`, and `JWT_SECRET`. |
 
@@ -26,6 +26,7 @@ The other services call `GET /memberships/{membershipId}` to check that a member
 - The email is encrypted with AES-GCM before it is stored and decrypted on every read. The key comes from Vault. When Vault does not answer, refuses the token or holds no `key` field at startup, the service fails to start.
 - Login takes a member id and returns an access token and a refresh token, both HS512 JWTs signed with `JWT_SECRET`. The access token lives 20 seconds and the refresh token 60 seconds. The service stores the refresh token on the member.
 - An edit replaces the name, email, address, valid flag and corporate flag, and clears the stored refresh token.
+- For the first step of a saga top-up, `CheckMembershipCommand` asks whether a member exists and is valid. The answer is `CheckedMembershipEvent` with `valid` false for a member that does not exist or is not valid.
 
 ### Endpoints
 
@@ -95,7 +96,7 @@ banking-service calls membership-service for the member check before it register
 
 ## money-service
 
-Wallet balances and the three ways to top a wallet up.
+Wallet balances and the two ways to top a wallet up.
 
 | | |
 | --- | --- |
@@ -104,10 +105,10 @@ Wallet balances and the three ways to top a wallet up.
 | Database | PostgreSQL `money`, tables `wallet` and `wallet_change` |
 | Calls | `membership-service`, `banking-service` |
 | Called by | `remittance-service`, `payment-service`, `money-aggregation-service`, `frontend-web` |
-| Kafka | Produces `jaypay.task.topic`. Consumes `jaypay.task.result.topic` in the group `my-group`. Produces `jaypay.logging.out.stdout`, one record for each controller call and one for each task result. |
-| Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, and sends `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. |
+| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedMembershipEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, and sends `CheckMembershipCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. |
 | Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `TASK_TOPIC`, `TASK_RESULT_TOPIC`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `MONEY_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `MONEY_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
 money-service calls membership-service for the member check of a synchronous top-up. It calls `GET /banking/account/{membershipId}` on banking-service to find the registered account before a saga top-up.
 
@@ -122,16 +123,14 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 
 - `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. An invalid member answers with the status `2`.
 - `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
-- `POST /money/increase-async` writes a task with two subtasks to `jaypay.task.topic` and blocks the request until the result arrives on `jaypay.task.result.topic`. When every subtask is done, it adds the amount the same way as `POST /money/increase` and answers.
 - `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account fails at once with the status `2`.
-- The saga checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. An account that fails the check or a charge the bank refuses ends the wallet change as `2` and moves no money. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
+- The saga first sends `CheckMembershipCommand` to membership-service, then checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. A member that does not exist or is not valid, an account that fails the check, or a charge the bank refuses ends the wallet change as `2` and moves no money. When membership-service does not answer, or the command cannot reach it, the deadline ends the saga. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too.
 - `POST /money/create-member-money` creates a `MemberMoneyAggregate` and a wallet with the balance 0, or links the aggregate to the wallet that a top-up already created. It waits for the command, so a failure answers as an error. A wallet keeps the first aggregate it was linked to. A saga top-up for a member without an aggregate creates one first.
 - `POST /money/member-money` returns the wallets of a list of member ids. money-aggregation-service uses it to read balances.
 
 ### Endpoints
 
 - `POST /money/increase` tops a wallet up synchronously.
-- `POST /money/increase-async` tops a wallet up through the Kafka task.
 - `POST /money/increase-eda` tops a wallet up through the Axon saga and returns the wallet change.
 - `POST /money/decrease` lowers a wallet synchronously.
 - `POST /money/create-member-money` creates a wallet.
@@ -145,8 +144,6 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - The saga deadline lives in the memory of the money-service instance, so a restart drops it and a saga that was waiting on the bank stays at the status `0`. A rollback the bank does not confirm is logged and not sent again.
 - Two concurrent first top-ups of a member without an aggregate can each create an aggregate. The wallet keeps one, and the other stays unused.
 - Wallets from before the `wallet` table stay in the old `member_money` table, which money-service no longer reads.
-- `POST /money/increase-async` waits for the task result with no timeout. A failed task returns an empty body.
-- The task result goes to an in-memory latch, so the request returns only when the same money-service instance reads the result.
 
 ## remittance-service
 
@@ -330,7 +327,7 @@ money-query-service calls membership-service to read the address of the member i
 
 ### Known limitations
 
-- Only top-ups through the Axon saga reach the read model. `POST /money/increase` and `POST /money/increase-async` publish no event, so the total can differ from the sum that money-aggregation-service returns.
+- Only top-ups through the Axon saga reach the read model. `POST /money/increase` publishes no event, so the total can differ from the sum that money-aggregation-service returns.
 - Two top-ups of the same amount on the same day at the same address write the same per-top-up item, so the second overwrites the first. The totals still count both.
 
 ## settlement-service
@@ -405,26 +402,6 @@ nginx in frontend-admin sends an `auth_request` to `/authorize` followed by the 
 
 - auth-service does not ask Keycloak about each token, so revoking an account takes up to the lifetime of its access token plus the clock skew.
 
-## task-consumer
-
-Kafka consumer that completes the top-up tasks of money-service.
-
-| | |
-| --- | --- |
-| Host port | none |
-| Memory limit | `384m` |
-| Database | none |
-| Calls | none |
-| Called by | none |
-| Kafka | Consumes `jaypay.task.topic` in the group `my-group`. Produces `jaypay.task.result.topic`. |
-| Axon | none |
-| Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `TASK_TOPIC`, `TASK_RESULT_TOPIC` |
-
-### What it does
-
-For each task, task-consumer sets the status of every subtask to `success` and writes the task to `jaypay.task.result.topic` under the same key. It checks neither the member nor the bank account that the subtasks name.
-
 ## logging-consumer
 
 Kafka consumer that writes every record of the logging topic to its own log.
@@ -443,7 +420,7 @@ Kafka consumer that writes every record of the logging topic to its own log.
 
 ### What it does
 
-The record value is logged at level INFO, so it reaches ClickHouse like any other log line. The records come from `LoggingAspect` in `backend/libs/common`, which writes one record before each method call on a web controller. The aspect runs in every service that scans `com.jaypay.common` and has web controllers: membership-service, banking-service, money-service, remittance-service, payment-service, money-aggregation-service and money-query-service. money-service also writes one record for each task result.
+The record value is logged at level INFO, so it reaches ClickHouse like any other log line. The records come from `LoggingAspect` in `backend/libs/common`, which writes one record before each method call on a web controller. The aspect runs in every service that scans `com.jaypay.common` and has web controllers: membership-service, banking-service, money-service, remittance-service, payment-service, money-aggregation-service and money-query-service.
 
 ## frontend-web
 

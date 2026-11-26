@@ -26,11 +26,6 @@ public class RequestMoneyChangingController {
         return MoneyChangingResultDetail.of(changeMoneyUseCase.increaseMoney(moneyChangingCommands.parse(request)));
     }
 
-    @PostMapping(path = "/money/increase-async")
-    MoneyChangingResultDetail increaseMoneyChangingRequestAsync(@RequestBody MoneyChangingRequestBody request) {
-        return MoneyChangingResultDetail.of(changeMoneyUseCase.increaseMoneyRequestAsync(moneyChangingCommands.parse(request)));
-    }
-
     @PostMapping(path = "/money/decrease")
     MoneyChangingResultDetail decreaseMoneyChangingRequest(@RequestBody MoneyChangingRequestBody request) {
         return MoneyChangingResultDetail.of(changeMoneyUseCase.decreaseMoney(moneyChangingCommands.parse(request)));
