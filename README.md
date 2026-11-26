@@ -160,6 +160,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
 | `make coverage` | Prints the line coverage of the backend and of each frontend app. CI writes the same table to the summary of its backend and frontend jobs |
+| `make scorecard` | Writes `docs/scorecard.md`: merged PRs, time to merge, CI failure rate, releases, coverage, tests, smoke scenes and issues, each with its source and what it does not measure |
 | `make verify` | Runs the gate that CI runs: `changelog contract docs english env terraform actionlint charts frontend backend` |
 | `make verify STEPS="contract backend"` | Runs only the named steps |
 | `make verify-selftest` | Proves that the gate fails on planted errors |

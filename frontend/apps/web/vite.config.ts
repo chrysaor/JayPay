@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./src/test/setup.ts'],
       restoreMocks: true,
       unstubGlobals: true,
+      reporters: ['default', 'json'],
+      outputFile: { json: 'coverage/test-results.json' },
       coverage: {
         enabled: true,
         provider: 'v8',

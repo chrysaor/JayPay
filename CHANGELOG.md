@@ -4,6 +4,10 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+### Added
+
+- `make scorecard` writes `docs/scorecard.md` from GitHub and the local test reports: merged PRs and the time from open to merge per release, the CI failure rate, the time between releases, line coverage, test counts, smoke scenes, and issues by label and milestone, each with its source and what it does not measure. The vitest runs of both frontend apps also write `coverage/test-results.json` ([#152](https://github.com/chrysaor/JayPay/issues/152))
+
 ## [0.4.0] - 2026-11-26
 
 ### Added
