@@ -64,6 +64,7 @@ class RechargeSagaTest {
     private static final Duration PATIENCE = Duration.ofSeconds(20);
     private static final AtomicInteger MEMBERS = new AtomicInteger(500);
     private static final Set<String> WITHOUT_ACCOUNT = ConcurrentHashMap.newKeySet();
+    private static final Set<String> ACCOUNT_LOOKUP_DROPPED = ConcurrentHashMap.newKeySet();
     private static final HttpServer OTHER_SERVICES = startOtherServices();
 
     @Autowired
@@ -328,6 +329,157 @@ class RechargeSagaTest {
         assertThat(wallets.findByMembershipId(Long.parseLong(member)).orElseThrow().getAggregateIdentifier()).isEqualTo(first);
     }
 
+    @Test
+    void aRepeatOfARechargeTheMemberCheckRefusedStaysFailedAfterTheMemberIsConfirmedAgain() throws Exception {
+        String member = memberWithWallet();
+        membership.refuse(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        membership.confirmAgain(member);
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(membership.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain() throws Exception {
+        String member = memberWithWallet();
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
+        membership.refuse(member);
+        banking.refuse(account(member));
+        WITHOUT_ACCOUNT.add(member);
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
+        assertThat(membership.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(700);
+    }
+
+    @Test
+    void aRechargeWhoseAccountCheckIsNeverAnsweredFailsAtTheDeadlineWithoutACharge() throws Exception {
+        String member = memberWithWallet();
+        banking.silenceCheckOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(banking.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+    }
+
+    @Test
+    void aRechargeWhoseAccountCheckCannotBeDeliveredFailsAtTheDeadlineWithoutACharge() throws Exception {
+        String member = memberWithWallet();
+        banking.disconnectCheckOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRepeatOfARechargeTheAccountCheckRefusedStaysFailedAfterTheAccountPasses() throws Exception {
+        String member = memberWithWallet();
+        banking.failCheckOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        banking.passCheckOf(account(member));
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(banking.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseChargeCannotBeDeliveredFailsAtTheDeadlineWithoutCreditingTheWallet() throws Exception {
+        String member = memberWithWallet();
+        banking.disconnectChargeOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+        assertThat(walletRecharges.of(requestId)).isEmpty();
+    }
+
+    @Test
+    void aRepeatWhileTheChargeIsUnansweredChargesNothingAgainAndTheDeadlineRollsTheChargeBackOnce() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> Optional.of(banking.charges(requestId)).filter(count -> count > 0));
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.PENDING.code());
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 0))).isEqualTo(1);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseRollbackAnswerIsLostStaysFailedAndIsNeitherChargedNorRolledBackAgain() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.silenceRollbackOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 0))).isEqualTo(1);
+        banking.answerAgain(account(member));
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+        assertThat(walletRecharges.of(requestId)).isEmpty();
+    }
+
+    @Test
+    void aRechargeWhoseAccountLookupAnswerIsLostStoresNothingAndTheRepeatCreditsOnce() throws Exception {
+        String member = memberWithWallet();
+        ACCOUNT_LOOKUP_DROPPED.add(member);
+        String requestId = UUID.randomUUID().toString();
+
+        int lost = mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member + "\",\"amount\":700}"))
+                .andReturn().getResponse().getStatus();
+
+        assertThat(lost).isGreaterThanOrEqualTo(500);
+        assertThat(statusOf(requestId)).isEmpty();
+        assertThat(banking.checks(requestId)).isZero();
+
+        ACCOUNT_LOOKUP_DROPPED.remove(member);
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(700);
+    }
+
     private String memberWithWallet() throws Exception {
         String member = String.valueOf(MEMBERS.incrementAndGet());
         mockMvc.perform(post("/money/create-member-money").contentType(MediaType.APPLICATION_JSON)
@@ -402,6 +554,10 @@ class RechargeSagaTest {
                     respond(exchange, 404, "{\"status\":404}");
                     return;
                 }
+                if (ACCOUNT_LOOKUP_DROPPED.contains(member)) {
+                    exchange.close();
+                    return;
+                }
                 respond(exchange, 200, "{\"registeredBankAccountId\":\"3\",\"membershipId\":\"" + member + "\",\"bankName\":\"jay-bank\","
                         + "\"bankAccountNumber\":\"" + account(member) + "\",\"linkedStatusIsValid\":true,\"aggregateIdentifier\":\"bank-" + member + "\"}");
             });
@@ -474,6 +630,10 @@ class RechargeSagaTest {
             disconnectedMembers.add(member);
         }
 
+        void confirmAgain(String member) {
+            refusedMembers.remove(member);
+        }
+
         long checks(String rechargeId) {
             return checked.stream().filter(rechargeId::equals).count();
         }
@@ -501,6 +661,10 @@ class RechargeSagaTest {
         private final Set<String> refusedAccounts = ConcurrentHashMap.newKeySet();
         private final Set<String> silentAccounts = ConcurrentHashMap.newKeySet();
         private final Set<String> heldAccounts = ConcurrentHashMap.newKeySet();
+        private final Set<String> silentChecks = ConcurrentHashMap.newKeySet();
+        private final Set<String> disconnectedChecks = ConcurrentHashMap.newKeySet();
+        private final Set<String> disconnectedCharges = ConcurrentHashMap.newKeySet();
+        private final Set<String> silentRollbacks = ConcurrentHashMap.newKeySet();
         private final Map<String, RequestFirmBankingFinishedEvent> heldConfirmations = new ConcurrentHashMap<>();
         private final List<String> checked = new CopyOnWriteArrayList<>();
         private final List<String> charged = new CopyOnWriteArrayList<>();
@@ -512,6 +676,30 @@ class RechargeSagaTest {
 
         void failCheckOf(String account) {
             uncheckedAccounts.add(account);
+        }
+
+        void passCheckOf(String account) {
+            uncheckedAccounts.remove(account);
+        }
+
+        void silenceCheckOf(String account) {
+            silentChecks.add(account);
+        }
+
+        void disconnectCheckOf(String account) {
+            disconnectedChecks.add(account);
+        }
+
+        void disconnectChargeOf(String account) {
+            disconnectedCharges.add(account);
+        }
+
+        void silenceRollbackOf(String account) {
+            silentRollbacks.add(account);
+        }
+
+        void answerAgain(String account) {
+            silentAccounts.remove(account);
         }
 
         void refuse(String account) {
@@ -544,7 +732,13 @@ class RechargeSagaTest {
 
         @CommandHandler
         public void check(CheckRegisteredBankAccountCommand command) {
+            if (disconnectedChecks.contains(command.getBankAccountNumber())) {
+                throw new IllegalStateException("banking-service is not connected");
+            }
             checked.add(command.getRechargeRequestId());
+            if (silentChecks.contains(command.getBankAccountNumber())) {
+                return;
+            }
             eventGateway.publish(new CheckedRegisteredBankAccountEvent(
                     command.getRechargeRequestId(),
                     command.getCheckRegisteredBankAccountId(),
@@ -558,8 +752,11 @@ class RechargeSagaTest {
 
         @CommandHandler
         public void charge(RequestFirmBankingCommand command) {
-            charged.add(command.getRechargeRequestId());
             String account = command.getFromBankAccountNumber();
+            if (disconnectedCharges.contains(account)) {
+                throw new IllegalStateException("banking-service is not connected");
+            }
+            charged.add(command.getRechargeRequestId());
             int status = silentAccounts.contains(account) ? RequestFirmBankingFinishedEvent.UNCONFIRMED
                     : refusedAccounts.contains(account) ? RequestFirmBankingFinishedEvent.REFUSED : RequestFirmBankingFinishedEvent.SUCCEEDED;
             RequestFirmBankingFinishedEvent finished = new RequestFirmBankingFinishedEvent(
@@ -581,6 +778,9 @@ class RechargeSagaTest {
         @CommandHandler
         public void rollback(RollbackFirmBankingRequestCommand command) {
             rolledBack.add(command.getRechargeRequestId());
+            if (silentRollbacks.contains(command.getBankAccountNumber())) {
+                return;
+            }
             eventGateway.publish(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(),
                     UUID.randomUUID().toString()));
         }
