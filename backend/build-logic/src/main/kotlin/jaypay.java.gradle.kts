@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
 plugins {
     `java-library`
     jacoco
@@ -56,6 +59,10 @@ val dockerContextHost: String? = if (System.getenv("DOCKER_HOST") != null) null 
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    testLogging {
+        events(TestLogEvent.FAILED)
+        exceptionFormat = TestExceptionFormat.FULL
+    }
     if (dockerContextHost != null && dockerContextHost.startsWith("unix://") && dockerContextHost != "unix:///var/run/docker.sock") {
         environment("DOCKER_HOST", dockerContextHost)
         environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
