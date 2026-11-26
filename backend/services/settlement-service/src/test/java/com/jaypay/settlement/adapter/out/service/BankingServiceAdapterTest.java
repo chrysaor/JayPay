@@ -82,12 +82,11 @@ class BankingServiceAdapterTest {
     }
 
     @Test
-    void sendsThePayoutFromTheSettlementAccountToTheMerchantUnderItsRequestId() {
+    void sendsThePayoutToTheMerchantUnderItsRequestIdAndLeavesTheSourceAccountToTheBankingService() {
         assertThat(adapter.pay("settlement-7", new BankAccount("jaybank", "123-456-789"), 9000)).isEqualTo(Payout.PAID);
 
         assertThat(firmBankingRequests).containsExactly(
-                "{\"requestId\":\"settlement-7\",\"fromBankName\":\"jaypay\",\"fromBankAccountNumber\":\"111-222-333\","
-                        + "\"toBankName\":\"jaybank\",\"toBankAccountNumber\":\"123-456-789\",\"moneyAmount\":9000}");
+                "{\"requestId\":\"settlement-7\",\"toBankName\":\"jaybank\",\"toBankAccountNumber\":\"123-456-789\",\"moneyAmount\":9000}");
     }
 
     @Test

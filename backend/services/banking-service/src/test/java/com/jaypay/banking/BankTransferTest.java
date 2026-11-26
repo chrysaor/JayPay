@@ -168,6 +168,23 @@ class BankTransferTest {
         assertThat(bank.sent(requestId)).isZero();
     }
 
+    @Test
+    void aTransferLeavesTheCompanyAccountWhateverSourceTheCallerNames() throws Exception {
+        String requestId = newRequestId();
+
+        mockMvc.perform(post("/banking/firmbanking/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"requestId": "%s", "fromBankName": "jaypay", "fromBankAccountNumber": "111-222-333", "toBankName": "KB bank", "toBankAccountNumber": "778", "moneyAmount": 2000}
+                                """.formatted(requestId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fromBankName").value(COMPANY_BANK_NAME))
+                .andExpect(jsonPath("$.fromBankAccountNumber").value(COMPANY_BANK_ACCOUNT_NUMBER));
+
+        assertThat(bank.delivered).containsExactly(new BankTransfer(
+                requestId, COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, "KB bank", "778", 2000));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"0", "-1", "10000001", "1.5", "null"})
     void refusesAnAmountOutsideOneWonToTheLimit(String amount) throws Exception {
@@ -203,6 +220,17 @@ class BankTransferTest {
                 "recharge-" + rechargeId, "Shinhan bank", "888", COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, 3000));
         assertThat(finished(aggregateId).getStatus()).isEqualTo(RequestFirmBankingFinishedEvent.SUCCEEDED);
         assertThat(finished(aggregateId).getMoneyAmount()).isEqualTo(3000L);
+    }
+
+    @Test
+    void theFinishedChargeNamesTheCompanyAccountTheChargeWentTo() {
+        String rechargeId = UUID.randomUUID().toString();
+        String aggregateId = UUID.randomUUID().toString();
+
+        commandGateway.sendAndWait(charge(rechargeId, aggregateId, "887", 3000));
+
+        assertThat(finished(aggregateId)).extracting(RequestFirmBankingFinishedEvent::getToBankName, RequestFirmBankingFinishedEvent::getToBankAccountNumber)
+                .containsExactly(COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER);
     }
 
     @Test
@@ -339,14 +367,14 @@ class BankTransferTest {
 
     private static String body(String requestId, String toAccount, String amount) {
         return """
-                {"requestId": "%s", "fromBankName": "jaypay", "fromBankAccountNumber": "111", "toBankName": "KB bank", "toBankAccountNumber": "%s", "moneyAmount": %s}
+                {"requestId": "%s", "toBankName": "KB bank", "toBankAccountNumber": "%s", "moneyAmount": %s}
                 """.formatted(requestId, toAccount, amount);
     }
 
     private static RequestFirmBankingCommand charge(String rechargeId, String aggregateId, String memberAccount, long amount) {
         String bankName = memberAccount.startsWith("9") ? "Woori bank" : "Shinhan bank";
         return new RequestFirmBankingCommand("firmbanking-" + rechargeId, aggregateId, rechargeId, "1",
-                bankName, memberAccount, COMPANY_BANK_NAME, COMPANY_BANK_ACCOUNT_NUMBER, amount);
+                bankName, memberAccount, "jaypay-company", "123456789", amount);
     }
 
     private static RollbackFirmBankingRequestCommand rollback(String rechargeId) {
