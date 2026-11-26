@@ -34,3 +34,5 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-26 | [A top-up asked right after a first start was never processed](2026-11-26-saga-skips-events-on-first-start.md) | [#133](https://github.com/chrysaor/JayPay/pull/133) |
 | 2026-11-26 | [An existing event flow database refused the steps of new flows](2026-11-26-event-flow-schema-refuses-new-steps.md) | [#145](https://github.com/chrysaor/JayPay/pull/145) |
 | 2026-11-26 | [Two tests that passed or failed by timing](2026-11-26-tests-that-depend-on-timing.md) | [#133](https://github.com/chrysaor/JayPay/pull/133), [#145](https://github.com/chrysaor/JayPay/pull/145) |
+| 2026-11-26 | [event-flow-service was killed at its memory limit on the cluster](2026-11-26-event-flow-service-killed-at-its-memory-limit.md) | [#157](https://github.com/chrysaor/JayPay/pull/157) |
+| 2026-11-27 | [The 0.4.0 release branch failed its own checks three times](2026-11-27-release-branch-failed-its-own-checks.md) | [#158](https://github.com/chrysaor/JayPay/pull/158) |

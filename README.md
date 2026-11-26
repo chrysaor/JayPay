@@ -69,7 +69,7 @@ Axon Server routes the commands and events of the money top-up saga and stores t
 | `infra/terraform/` | The AWS DynamoDB table that money-query-service uses, see [infra/terraform/README.md](infra/terraform/README.md) |
 | `deploy/` | Helm charts for the services, the two sites and the dependencies of the local cluster, and the values of every workload per environment, see [deploy/README.md](deploy/README.md) |
 | `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke` and `make k8s-smoke`, `k8s.sh` behind the `make k8s-*` targets, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, `check-docs.py` that draws `docs/diagrams/`, and the checks that `make verify` runs |
-| `docs/` | The HTTP API contract, the [service reference](docs/services.md), the diagrams, the architecture notes, and the [legacy documents](docs/legacy/README.md) |
+| `docs/` | The HTTP API contract, the [service reference](docs/services.md), the diagrams, the architecture notes, the [decision records](docs/decisions/README.md), the [retrospectives](docs/retrospectives/README.md), the [news of each release](docs/news.md), and the [legacy documents](docs/legacy/README.md) |
 
 ## Local stack
 
@@ -192,7 +192,7 @@ flowchart LR
     tag -- "release.yml pushes vX.Y.Z,<br/>creates the GitHub Release" --> ghcr
 ```
 
-[CHANGELOG.md](CHANGELOG.md) says what each release added and changed. [CONTRIBUTING.md](CONTRIBUTING.md) has the branch table, the steps for a change, the release steps and the hotfix flow. [CLAUDE.md](CLAUDE.md) has the rules that coding agents follow in this repository.
+[CHANGELOG.md](CHANGELOG.md) says what each release added and changed. [docs/news.md](docs/news.md) sums up each release with its decisions, retrospectives and new documents, and lists the next milestones. [docs/decisions](docs/decisions/README.md) records why each decision was made and for which release, and [docs/retrospectives](docs/retrospectives/README.md) what each bug taught. [CONTRIBUTING.md](CONTRIBUTING.md) has the branch table, the steps for a change, the release steps and the hotfix flow. [CLAUDE.md](CLAUDE.md) has the rules that coding agents follow in this repository.
 
 ### Security
 

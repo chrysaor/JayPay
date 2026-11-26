@@ -372,7 +372,7 @@ Read model of the flows that move money: it collects the step records of each sa
 | | |
 | --- | --- |
 | Host port | `8093` |
-| Memory limit | `384m` |
+| Memory limit | `512m` |
 | Database | PostgreSQL `event_flow`, tables `flow_step` and `flow` |
 | Calls | none |
 | Called by | `frontend-admin` |
