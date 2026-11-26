@@ -88,9 +88,9 @@ describe('signing in', () => {
       redirect_uri: `${window.location.origin}/callback`,
       code_verifier: testVerifier,
     })
-    await waitFor(() =>
-      expect(requests.find((r) => r.url.endsWith('/normal-status'))?.authorization).toBe(`Bearer ${staffToken}`),
-    )
+    await waitFor(() => {
+      expect(requests.find((r) => r.url.endsWith('/normal-status'))?.authorization).toBe(`Bearer ${staffToken}`)
+    })
     expect(pending()).toBeNull()
     expect(localStorage.length).toBe(0)
     expect(JSON.stringify(sessionStorage)).not.toContain(staffToken)
