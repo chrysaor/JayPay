@@ -294,6 +294,11 @@ tbody tr:last-child td {
   overflow-x: auto;
 }
 
+.flow-list td,
+.flow-list th {
+  white-space: nowrap;
+}
+
 .flow-layout > .card {
   position: sticky;
   top: 16px;
@@ -487,7 +492,7 @@ tr[aria-current='true'] td {
   width: 100%;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1500px) {
   .flow-layout {
     grid-template-columns: 1fr;
   }

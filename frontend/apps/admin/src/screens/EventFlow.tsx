@@ -136,13 +136,13 @@ export function EventFlow() {
             <table>
               <thead>
                 <tr>
-                  <th>Flow</th>
-                  <th>Type</th>
-                  <th>Member</th>
-                  <th>Amount</th>
                   <th>Status</th>
+                  <th>Flow</th>
+                  <th>Amount</th>
                   <th>Last step</th>
                   <th>Started at</th>
+                  <th>Member</th>
+                  <th>Type</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,16 +151,16 @@ export function EventFlow() {
                   return (
                     <tr key={`${flow.flowType}/${flow.flowId}`} aria-current={chosen ? 'true' : undefined}>
                       <td>
-                        <Link to={`?${searchOf(status, { flowType: flow.flowType, flowId: flow.flowId }).toString()}`}>{flow.flowId}</Link>
-                      </td>
-                      <td>{flowTypeLabel(flow.flowType)}</td>
-                      <td>{flow.membershipId}</td>
-                      <td>{formatWon(flow.amount)}</td>
-                      <td>
                         <OutcomeBadge outcome={flow.status} />
                       </td>
+                      <td>
+                        <Link to={`?${searchOf(status, { flowType: flow.flowType, flowId: flow.flowId }).toString()}`}>{flow.flowId}</Link>
+                      </td>
+                      <td>{formatWon(flow.amount)}</td>
                       <td>{stepLabel(flow.failedStep ?? flow.lastStep)}</td>
                       <td>{formatDateTime(flow.startedAt)}</td>
+                      <td>{flow.membershipId}</td>
+                      <td>{flowTypeLabel(flow.flowType)}</td>
                     </tr>
                   )
                 })}
