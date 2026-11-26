@@ -6,13 +6,12 @@ What each release was about, newest first: the theme, the changes that matter, t
 
 | Milestone | Theme | Issues |
 | --- | --- | --- |
-| 0.4.0, in progress | The event flow for every money flow, README badges and coverage, the MIT license, retrospectives, and these records | Open: [#150](https://github.com/chrysaor/JayPay/issues/150), [#151](https://github.com/chrysaor/JayPay/issues/151). Done: [#124](https://github.com/chrysaor/JayPay/issues/124), [#132](https://github.com/chrysaor/JayPay/issues/132), [#134](https://github.com/chrysaor/JayPay/issues/134), [#156](https://github.com/chrysaor/JayPay/issues/156) |
 | 0.5.0 | Money correctness: flows that fail between two services finish, and the company account has one owner | [#136](https://github.com/chrysaor/JayPay/issues/136), [#137](https://github.com/chrysaor/JayPay/issues/137), [#138](https://github.com/chrysaor/JayPay/issues/138), [#139](https://github.com/chrysaor/JayPay/issues/139), [#140](https://github.com/chrysaor/JayPay/issues/140), [#142](https://github.com/chrysaor/JayPay/issues/142), [#148](https://github.com/chrysaor/JayPay/issues/148), [#152](https://github.com/chrysaor/JayPay/issues/152), [#154](https://github.com/chrysaor/JayPay/issues/154) |
 | 0.6.0 | Confidence: the smoke in CI, browser tests and the audit of missing tests | [#143](https://github.com/chrysaor/JayPay/issues/143), [#144](https://github.com/chrysaor/JayPay/issues/144), [#149](https://github.com/chrysaor/JayPay/issues/149) |
 
 The decisions that wait for the owner are listed under [Open decisions](decisions/README.md#open-decisions).
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-11-26)
 
 Money moves correctly, staff sign in through Keycloak, and operators can watch every money flow step by step. The money and security fixes answer the security review in [#88](https://github.com/chrysaor/JayPay/issues/88).
 
