@@ -5,7 +5,7 @@ import com.jaypay.common.kafka.KafkaTestBroker;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.config.EventProcessingConfiguration;
-import org.axonframework.eventhandling.EventProcessor;
+import org.axonframework.eventhandling.TrackingEventProcessor;
 import org.axonframework.eventhandling.gateway.EventGateway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -50,7 +51,8 @@ class RechargeSagaFirstStartTest {
 
     @Test
     void aRechargeRequestedBeforeTheSagaProcessorFirstStartsIsStillProcessed() throws Exception {
-        EventProcessor processor = processors.eventProcessor(PROCESSOR).orElseThrow();
+        TrackingEventProcessor processor = processors.eventProcessor(PROCESSOR, TrackingEventProcessor.class).orElseThrow();
+        assertThat(eventually(() -> !processor.processingStatus().isEmpty())).as("the processor claimed its segment").isTrue();
         processor.shutDown();
         database.update("delete from token_entry where processor_name = ?", PROCESSOR);
         String requestId = UUID.randomUUID().toString();
@@ -58,7 +60,24 @@ class RechargeSagaFirstStartTest {
         events.publish(new RechargingRequestCreatedEvent(requestId, "900", 700, "bank-900", "jay-bank", "1002-900"));
         processor.start();
 
-        assertThat(membershipChecks.eventuallyContains(requestId)).isTrue();
+        assertThat(eventually(() -> membershipChecks.contains(requestId)))
+                .as("events %s, sagas %s", count("domain_event_entry"), count("saga_entry"))
+                .isTrue();
+    }
+
+    private static boolean eventually(BooleanSupplier condition) throws InterruptedException {
+        long until = System.nanoTime() + PATIENCE.toNanos();
+        while (System.nanoTime() < until) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            Thread.sleep(100);
+        }
+        return false;
+    }
+
+    private Integer count(String table) {
+        return database.queryForObject("select count(*) from " + table, Integer.class);
     }
 
     @TestConfiguration
@@ -77,15 +96,8 @@ class RechargeSagaFirstStartTest {
             checked.add(command.rechargingRequestId());
         }
 
-        boolean eventuallyContains(String rechargeId) throws InterruptedException {
-            long until = System.nanoTime() + PATIENCE.toNanos();
-            while (System.nanoTime() < until) {
-                if (checked.contains(rechargeId)) {
-                    return true;
-                }
-                Thread.sleep(100);
-            }
-            return false;
+        boolean contains(String rechargeId) {
+            return checked.contains(rechargeId);
         }
     }
 }
