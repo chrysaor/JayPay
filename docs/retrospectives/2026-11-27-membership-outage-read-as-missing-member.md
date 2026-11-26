@@ -18,7 +18,7 @@ The two could not be told apart from the status either. membership-service answe
 
 ## Fix
 
-membership-service answers 404 when the id names no member. money-service reads 404 as a member that does not exist, reads a member as valid or not valid, and treats any other answer or no answer as an outage: the change answers 503 with `MEMBERSHIP_NOT_CONFIRMED`, and the claim on the request id is rolled back with the transaction. The same request sent later checks the member again and is applied once. The decision is in [0018](../decisions/0018-membership-outage-is-not-a-missing-member.md).
+[#175](https://github.com/chrysaor/JayPay/pull/175) makes membership-service answer 404 when the id names no member. money-service reads 404 as a member that does not exist, reads a member as valid or not valid, and treats any other answer or no answer as an outage: the change answers 503 with `MEMBERSHIP_NOT_CONFIRMED`, and the claim on the request id is rolled back with the transaction. The same request sent later checks the member again and is applied once. The decision is in [0018](../decisions/0018-membership-outage-is-not-a-missing-member.md).
 
 ## What changed so it is caught next time
 

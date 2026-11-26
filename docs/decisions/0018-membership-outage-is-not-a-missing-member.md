@@ -35,4 +35,5 @@ When another service stores a final result from a membership check, or when wall
 ## Links
 
 - Issue [#137](https://github.com/chrysaor/JayPay/issues/137)
+- PR [#175](https://github.com/chrysaor/JayPay/pull/175)
 - Retrospective [A wallet change asked during a membership-service outage failed for good](../retrospectives/2026-11-27-membership-outage-read-as-missing-member.md)
