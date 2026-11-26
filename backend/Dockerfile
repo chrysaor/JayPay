@@ -46,5 +46,5 @@ COPY --from=extract /workspace/extracted/application/ ./
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=180s --retries=6 \
-    CMD ["/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
+    CMD ["/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9080/actuator/health"]
 ENTRYPOINT ["java", "-Duser.country=US", "-XX:MaxRAMPercentage=50", "-XX:+ExitOnOutOfMemoryError", "-jar", "app.jar"]

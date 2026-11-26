@@ -18,6 +18,12 @@ dockerLayer(
     runtimeOnly = listOf(lib("micrometer-registry-prometheus"), lib("axon-tracing-opentelemetry")),
 )
 
+sourceSets {
+    test {
+        java.srcDir(rootProject.layout.projectDirectory.dir("build-logic/src/service-test/java"))
+    }
+}
+
 dependencies {
     testImplementation(lib("spring-boot-starter-webmvc-test"))
     testImplementation(lib("opentelemetry-sdk-testing"))

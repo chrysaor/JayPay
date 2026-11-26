@@ -54,10 +54,10 @@ class AdminConsoleGateTest {
             "GET,    /authorize,                                                                             401, 403, 403, 403",
             "GET,    /staff/me,                                                                              401, 403, 403, 403",
             "POST,   /staff/sign-in,                                                                         401, 403, 403, 403",
-            "GET,    /actuator/health,                                                                       200, 200, 200, 200",
-            "GET,    /actuator/prometheus,                                                                   200, 200, 200, 200",
-            "GET,    /v3/api-docs,                                                                           200, 200, 200, 200",
-            "POST,   /actuator/health,                                                                       401, 403, 403, 403",
+            "GET,    /actuator/health,                                                                       401, 403, 403, 403",
+            "GET,    /actuator/prometheus,                                                                   401, 403, 403, 403",
+            "GET,    /v3/api-docs,                                                                           401, 403, 403, 403",
+            "GET,    /swagger-ui/index.html,                                                                 401, 403, 403, 403",
             "GET,    /anything/else,                                                                         401, 403, 403, 403",
     })
     void decidesEveryRequestOfTheAdminConsole(String method, String path, int anonymous, int viewer, int operator, int admin) throws Exception {

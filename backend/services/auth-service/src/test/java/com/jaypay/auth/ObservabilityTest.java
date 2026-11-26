@@ -12,31 +12,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ObservabilityTest {
 
     private static final InMemoryLogRecordExporter LOGS = InMemoryLogRecordExporter.create();
-
-    @Autowired
-    private MockMvc mockMvc;
 
     @Autowired
     private ObservationRegistry observationRegistry;
@@ -47,13 +36,6 @@ class ObservabilityTest {
     @DynamicPropertySource
     static void keycloak(DynamicPropertyRegistry registry) {
         StaffTokens.register(registry);
-    }
-
-    @Test
-    void startsAndReportsHealthyWithoutAToken() throws Exception {
-        mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("UP"));
     }
 
     @Test
@@ -70,19 +52,6 @@ class ObservabilityTest {
                 .singleElement()
                 .extracting(LogRecordData::getSpanContext)
                 .satisfies(spanContext -> assertThat(spanContext.getTraceId()).isEqualTo(traceId));
-    }
-
-    @Test
-    void exposesJvmMetricsForPrometheusWithoutAToken() throws Exception {
-        mockMvc.perform(get("/actuator/prometheus"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("jvm_memory_used_bytes")));
-    }
-
-    @Test
-    void keepsEveryOtherActuatorEndpointPrivate() throws Exception {
-        mockMvc.perform(get("/actuator/env")).andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/actuator/beans")).andExpect(status().isUnauthorized());
     }
 
     @TestConfiguration

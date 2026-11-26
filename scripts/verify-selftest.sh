@@ -193,8 +193,12 @@ perl -0pi -e 's/(\n  auth-service:\n    http: \[)/$1frontend-web, /' "$dir/deplo
 expect charts fail "$dir" "lets frontend-web reach auth-service on port http, but nothing"
 
 dir=$(copy_repo charts-policy-missing)
-perl -0pi -e 's/(\n  auth-service:\n    http: \[)frontend-admin, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
-expect charts fail "$dir" "frontend-admin calls auth-service on port http, but no NetworkPolicy allows it"
+perl -0pi -e 's/(\n  membership-service:\n    http: \[[^\]]*)frontend-admin, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "frontend-admin calls membership-service on port http, but no NetworkPolicy allows it"
+
+dir=$(copy_repo charts-policy-management)
+perl -0pi -e 's/(\n  auth-service:\n(?:    .*\n)*?    management: \[)prometheus/$1frontend-admin, prometheus/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets frontend-admin reach the management port of auth-service, which only prometheus may reach"
 
 dir=$(copy_repo charts-policy-default)
 perl -pi -e 's/^  podSelector: \{\}$/  podSelector: {matchLabels: {app.kubernetes.io\/name: nothing}}/' "$dir/deploy/charts/network-policy/templates/network-policy.yaml"

@@ -24,8 +24,12 @@ logging:
     format:
       console: ${LOG_FORMAT:}
 management:
+  server:
+    port: 9080
   endpoints:
     web:
+      discovery:
+        enabled: false
       exposure:
         include: health,prometheus
   tracing:
@@ -35,3 +39,18 @@ management:
     metrics:
       export:
         enabled: false
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
