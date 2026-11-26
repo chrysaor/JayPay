@@ -9,6 +9,7 @@ import com.jaypay.eventflow.domain.RecordedStep;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Limit;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,14 +46,17 @@ class FlowPersistenceAdapter implements FlowStorePort {
     }
 
     @Override
-    public List<FlowSummary> recent(Optional<FlowStatus> status, int limit) {
-        List<FlowJpaEntity> found = status
-                .map(wanted -> flows.findByStatusOrderByStartedAtDesc(wanted, Limit.of(limit)))
-                .orElseGet(() -> flows.findByOrderByStartedAtDesc(Limit.of(limit)));
-        return found.stream()
+    public List<FlowSummary> recent(Optional<FlowType> flowType, Optional<FlowStatus> status, int limit) {
+        return flows.findRecent(flowType.orElse(null), status.orElse(null), Limit.of(limit)).stream()
                 .map(flow -> new FlowSummary(flow.getFlowType(), flow.getFlowId(), flow.getStatus(), flow.getMembershipId(),
                         flow.getAmount(), flow.getStartedAt(), flow.getUpdatedAt(), flow.getLastStep(), flow.getFailedStep(),
                         flow.getStepCount()))
                 .toList();
+    }
+
+    @Override
+    public int forgetFlowsUpdatedBefore(Instant cutoff) {
+        steps.deleteStepsOfFlowsUpdatedBefore(cutoff);
+        return flows.deleteUpdatedBefore(cutoff);
     }
 }

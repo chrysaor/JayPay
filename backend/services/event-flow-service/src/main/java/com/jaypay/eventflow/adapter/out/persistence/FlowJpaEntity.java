@@ -17,7 +17,9 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "flow", indexes = @Index(name = "flow_by_start", columnList = "started_at"))
+@Table(name = "flow", indexes = {
+        @Index(name = "flow_by_start", columnList = "started_at"),
+        @Index(name = "flow_by_update", columnList = "updated_at")})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

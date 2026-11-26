@@ -29,8 +29,9 @@ class FlowController {
     private final FindFlowsUseCase findFlowsUseCase;
 
     @GetMapping("/flows")
-    List<FlowView> recent(@RequestParam Optional<String> status) {
-        return findFlowsUseCase.recent(status.map(FlowController::status)).stream().map(FlowView::of).toList();
+    List<FlowView> recent(@RequestParam Optional<String> flowType, @RequestParam Optional<String> status) {
+        return findFlowsUseCase.recent(flowType.map(FlowController::flowType), status.map(FlowController::status)).stream()
+                .map(FlowView::of).toList();
     }
 
     @GetMapping("/flows/{flowType}/{flowId}")
@@ -51,6 +52,16 @@ class FlowController {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     Error invalidStatus(InvalidStatus invalid) {
         return new Error("INVALID_STATUS", "Ask for the status IN_PROGRESS, SUCCEEDED or FAILED, or for none.");
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    Error invalidFlowType(InvalidFlowType invalid) {
+        return new Error("INVALID_FLOW_TYPE", "Ask for one of the flow types " + Arrays.toString(FlowType.values()) + ", or for none.");
+    }
+
+    private static FlowType flowType(String value) {
+        return Arrays.stream(FlowType.values()).filter(type -> type.name().equals(value)).findFirst().orElseThrow(InvalidFlowType::new);
     }
 
     private static FlowStatus status(String value) {
@@ -93,5 +104,8 @@ class FlowController {
     }
 
     static class InvalidStatus extends RuntimeException {
+    }
+
+    static class InvalidFlowType extends RuntimeException {
     }
 }

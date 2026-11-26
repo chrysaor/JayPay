@@ -3,7 +3,9 @@ package com.jaypay.eventflow;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.kafka.KafkaTestBroker;
+import com.jaypay.eventflow.application.port.in.ForgetOldFlowsUseCase;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
@@ -35,6 +37,9 @@ class EventFlowKafkaTest {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private ForgetOldFlowsUseCase forgetOldFlowsUseCase;
 
     @DynamicPropertySource
     static void kafka(DynamicPropertyRegistry registry) {
@@ -134,24 +139,124 @@ class EventFlowKafkaTest {
         assertThat(json.readTree(response.body()).get("error").asText()).isEqualTo("INVALID_STATUS");
     }
 
+    @Test
+    void collectsTheStepsOfARemittanceAPaymentAndASettlementUnderTheirOwnType() throws Exception {
+        String remittance = UUID.randomUUID().toString();
+        String payment = UUID.randomUUID().toString();
+        String settlement = "settlement-" + UUID.randomUUID();
+
+        send("REMITTANCE", remittance, "REMITTANCE_REQUESTED", "remittance-service", "SUCCEEDED", null, START);
+        send("REMITTANCE", remittance, "SENDER_DEBITED", "remittance-service", "SUCCEEDED", null, START.plusMillis(10));
+        send("REMITTANCE", remittance, "BANK_TRANSFERRED", "remittance-service", "FAILED", "The bank refused the transfer", START.plusMillis(20));
+        send("REMITTANCE", remittance, "SENDER_REFUNDED", "remittance-service", "SUCCEEDED", null, START.plusMillis(30));
+        send("PAYMENT", payment, "PAYMENT_REQUESTED", "payment-service", "SUCCEEDED", null, START);
+        send("PAYMENT", payment, "PAYER_DEBITED", "payment-service", "SUCCEEDED", null, START.plusMillis(10));
+        send("SETTLEMENT", settlement, "SETTLEMENT_STARTED", "settlement-service", "SUCCEEDED", null, START);
+        send("SETTLEMENT", settlement, "MERCHANT_PAID_OUT", "settlement-service", "SUCCEEDED", null, START.plusMillis(10));
+
+        JsonNode refunded = awaitFlow("REMITTANCE", remittance, 4);
+        assertThat(refunded.get("status").asText()).isEqualTo("FAILED");
+        assertThat(refunded.get("failedStep").asText()).isEqualTo("BANK_TRANSFERRED");
+        assertThat(refunded.get("lastStep").asText()).isEqualTo("SENDER_REFUNDED");
+        assertThat(awaitFlow("PAYMENT", payment, 2).get("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(awaitFlow("SETTLEMENT", settlement, 2).get("status").asText()).isEqualTo("IN_PROGRESS");
+        assertThat(get("/flows/RECHARGE/" + payment).statusCode()).isEqualTo(404);
+
+        send("SETTLEMENT", settlement, "PAYMENT_SETTLED", "settlement-service", "SUCCEEDED", null, START.plusMillis(20));
+        assertThat(awaitFlow("SETTLEMENT", settlement, 3).get("status").asText()).isEqualTo("SUCCEEDED");
+    }
+
+    @Test
+    void skipsAStepThatBelongsToAnotherTypeOfFlow() throws Exception {
+        String flowId = UUID.randomUUID().toString();
+
+        send("PAYMENT", flowId, "SENDER_DEBITED", "payment-service", "SUCCEEDED", null, START);
+        send("PAYMENT", flowId, "PAYMENT_REQUESTED", "payment-service", "SUCCEEDED", null, START.plusMillis(10));
+
+        assertThat(steps(awaitFlow("PAYMENT", flowId, 1))).containsExactly("PAYMENT_REQUESTED");
+    }
+
+    @Test
+    void filtersTheListByTypeAndByTypeAndStatusTogether() throws Exception {
+        String recharge = UUID.randomUUID().toString();
+        String paid = UUID.randomUUID().toString();
+        String refused = UUID.randomUUID().toString();
+
+        send("RECHARGE", recharge, "RECHARGE_REQUESTED", "money-service", "SUCCEEDED", null, START.plusSeconds(300));
+        send("PAYMENT", paid, "PAYER_DEBITED", "payment-service", "SUCCEEDED", null, START.plusSeconds(301));
+        send("PAYMENT", refused, "PAYMENT_REQUESTED", "payment-service", "FAILED", "The payer does not exist or is not valid", START.plusSeconds(302));
+        awaitFlow("RECHARGE", recharge, 1);
+        awaitFlow("PAYMENT", paid, 1);
+        awaitFlow("PAYMENT", refused, 1);
+
+        JsonNode payments = json.readTree(get("/flows?flowType=PAYMENT").body());
+        assertThat(flowIds(payments.toString())).containsSubsequence(refused, paid).doesNotContain(recharge);
+        assertThat(payments).allSatisfy(flow -> assertThat(flow.get("flowType").asText()).isEqualTo("PAYMENT"));
+        assertThat(flowIds(get("/flows?flowType=PAYMENT&status=FAILED").body())).contains(refused).doesNotContain(paid, recharge);
+        assertThat(flowIds(get("/flows").body())).contains(recharge, paid, refused);
+    }
+
+    @Test
+    void refusesAFlowTypeItDoesNotKnow() throws Exception {
+        for (String flowType : List.of("TRANSFER", "payment")) {
+            HttpResponse<String> response = get("/flows?flowType=" + flowType);
+
+            assertThat(response.statusCode()).as(flowType).isEqualTo(400);
+            assertThat(json.readTree(response.body()).get("error").asText()).isEqualTo("INVALID_FLOW_TYPE");
+        }
+    }
+
+    @Test
+    void forgetsTheFlowsWhoseLastStepIsOlderThanTheRetentionPeriodWithAllTheirSteps() throws Exception {
+        Instant now = Instant.now();
+        String forgotten = UUID.randomUUID().toString();
+        String kept = UUID.randomUUID().toString();
+        String stillMoving = UUID.randomUUID().toString();
+
+        send("REMITTANCE", forgotten, "REMITTANCE_REQUESTED", "remittance-service", "SUCCEEDED", null, now.minus(Duration.ofDays(1002)));
+        send("REMITTANCE", forgotten, "SENDER_DEBITED", "remittance-service", "SUCCEEDED", null, now.minus(Duration.ofDays(1001)));
+        send("REMITTANCE", kept, "REMITTANCE_REQUESTED", "remittance-service", "SUCCEEDED", null, now.minus(Duration.ofDays(999)));
+        send("SETTLEMENT", stillMoving, "SETTLEMENT_STARTED", "settlement-service", "IN_PROGRESS", "waits", now.minus(Duration.ofDays(1001)));
+        send("SETTLEMENT", stillMoving, "MERCHANT_PAID_OUT", "settlement-service", "SUCCEEDED", null, now.minus(Duration.ofDays(1)));
+        awaitFlow("REMITTANCE", forgotten, 2);
+        awaitFlow("REMITTANCE", kept, 1);
+        awaitFlow("SETTLEMENT", stillMoving, 2);
+
+        assertThat(forgetOldFlowsUseCase.forgetOldFlows()).isPositive();
+
+        assertThat(get("/flows/REMITTANCE/" + forgotten).statusCode()).isEqualTo(404);
+        assertThat(flowIds(get("/flows?flowType=REMITTANCE").body())).contains(kept).doesNotContain(forgotten);
+        assertThat(awaitFlow("REMITTANCE", kept, 1).get("status").asText()).isEqualTo("IN_PROGRESS");
+        assertThat(steps(awaitFlow("SETTLEMENT", stillMoving, 2))).containsExactly("SETTLEMENT_STARTED", "MERCHANT_PAID_OUT");
+        assertThat(forgetOldFlowsUseCase.forgetOldFlows()).isZero();
+    }
+
     private void send(String flowId, String step, String service, String outcome, String reason, long millis) throws Exception {
+        send("RECHARGE", flowId, step, service, outcome, reason, START.plusMillis(millis));
+    }
+
+    private void send(String flowType, String flowId, String step, String service, String outcome, String reason, Instant at) throws Exception {
         String record = json.writeValueAsString(json.createObjectNode()
-                .put("flowType", "RECHARGE")
+                .put("flowType", flowType)
                 .put("flowId", flowId)
                 .put("step", step)
                 .put("service", service)
                 .put("outcome", outcome)
                 .put("reason", reason)
-                .put("occurredAt", START.plusMillis(millis).toString())
+                .put("occurredAt", at.toString())
                 .put("membershipId", "12")
                 .put("amount", 3000));
         KafkaTestBroker.send(TOPIC, flowId, record);
     }
 
     private JsonNode awaitFlow(String flowId, int stepCount) {
+        return awaitFlow("RECHARGE", flowId, stepCount);
+    }
+
+    private JsonNode awaitFlow(String flowType, String flowId, int stepCount) {
         JsonNode[] found = new JsonNode[1];
         await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
-            HttpResponse<String> response = get("/flows/RECHARGE/" + flowId);
+            HttpResponse<String> response = get("/flows/" + flowType + "/" + flowId);
             assertThat(response.statusCode()).isEqualTo(200);
             found[0] = json.readTree(response.body());
             assertThat(found[0].get("stepCount").asInt()).isEqualTo(stepCount);

@@ -10,3 +10,8 @@ spring:
 axon:
   axonserver:
     enabled: false
+flow:
+  retention:
+    period: 1000d
+    schedule:
+      enabled: false
