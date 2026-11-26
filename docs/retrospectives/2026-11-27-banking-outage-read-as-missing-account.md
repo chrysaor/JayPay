@@ -18,7 +18,7 @@ The two could not be told apart from the status either. banking-service answered
 
 ## Fix
 
-banking-service answers 404 when the member has no registered account. money-service reads 404 as no account, an account as found, and any other answer or no answer as an outage: the top-up answers 503 with `REGISTERED_ACCOUNT_NOT_CONFIRMED`, and the claim on the request id is rolled back with the transaction. The same request sent later looks the account up again and tops up once. The customer site reads 404 as a member without an account. This is the rule of decision 0018, applied to the account lookup.
+banking-service answers 404 when the member has no registered account. money-service reads 404 as no account, an account as found, and any other answer or no answer as an outage: the top-up answers 503 with `REGISTERED_ACCOUNT_NOT_CONFIRMED`, and the claim on the request id is rolled back with the transaction. The same request sent later looks the account up again and tops up once. The customer site reads 404 as a member without an account. This is the rule of decision 0018, applied to the account lookup, in [#186](https://github.com/chrysaor/JayPay/pull/186).
 
 ## What changed so it is caught next time
 

@@ -38,7 +38,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [The 0.4.0 release branch failed its own checks three times](2026-11-27-release-branch-failed-its-own-checks.md) | [#158](https://github.com/chrysaor/JayPay/pull/158) |
 | 2026-11-27 | [A payment whose debit answer was lost could never finish](2026-11-27-payment-checks-parties-before-resuming.md) | [#170](https://github.com/chrysaor/JayPay/pull/170) |
 | 2026-11-27 | [A wallet change asked during a membership-service outage failed for good](2026-11-27-membership-outage-read-as-missing-member.md) | [#175](https://github.com/chrysaor/JayPay/pull/175) |
-| 2026-11-27 | [A top-up asked during a banking-service outage failed for good](2026-11-27-banking-outage-read-as-missing-account.md) | [#182](https://github.com/chrysaor/JayPay/issues/182) |
+| 2026-11-27 | [A top-up asked during a banking-service outage failed for good](2026-11-27-banking-outage-read-as-missing-account.md) | [#186](https://github.com/chrysaor/JayPay/pull/186) |
 | 2026-11-27 | [A refused payout could not be sent again after the merchant changed the account](2026-11-27-refused-payout-bound-to-one-request-id.md) | [#174](https://github.com/chrysaor/JayPay/pull/174) |
 | 2026-11-27 | [The region total kept top-ups the saga rolled back](2026-11-27-region-total-kept-rolled-back-top-ups.md) | [#178](https://github.com/chrysaor/JayPay/pull/178) |
 | 2026-11-27 | [The company bank account had four definitions in four services](2026-11-27-company-account-defined-in-four-services.md) | [#177](https://github.com/chrysaor/JayPay/pull/177) |
