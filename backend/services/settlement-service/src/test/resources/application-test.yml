@@ -6,3 +6,6 @@ spring:
 axon:
   axonserver:
     enabled: false
+settlement:
+  schedule:
+    enabled: false
