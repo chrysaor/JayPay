@@ -16,13 +16,14 @@ def backend_rows():
     return [("backend", covered, covered + int(lines.get("missed")))]
 
 
+def frontend_row(app):
+    summary = json.loads((ROOT / f"frontend/apps/{app}/coverage/coverage-summary.json").read_text())
+    lines = summary["total"]["lines"]
+    return (f"frontend {app}", lines["covered"], lines["total"])
+
+
 def frontend_rows():
-    rows = []
-    for app in FRONTEND_APPS:
-        summary = json.loads((ROOT / f"frontend/apps/{app}/coverage/coverage-summary.json").read_text())
-        lines = summary["total"]["lines"]
-        rows.append((f"frontend {app}", lines["covered"], lines["total"]))
-    return rows
+    return [frontend_row(app) for app in FRONTEND_APPS]
 
 
 AREAS = {"backend": backend_rows, "frontend": frontend_rows}
