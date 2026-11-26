@@ -161,10 +161,10 @@ The commands travel through Axon Server. A lost answer is a command the other se
 
 These cells have no test, because the current answer moves money the wrong way or because nobody has decided the right answer yet:
 
-- Top-up, `GET /banking/account/{id}` answers 5xx. money-service reads the outage as a member without an account and stores the top-up as failed. The same request sent after banking-service is back answers failed again.
-- Top-up, `RollbackFirmBankingRequestCommand` fails. The saga logs the failure and nothing sends the rollback again. A charge that left the member's bank account is not returned.
-- Remittance, a debit whose answer was lost, then the sender or the receiver becomes invalid. The repeat does not check the members again. Decision record 0017 settles this for payments only.
-- Remittance, a refund that money-service answered with 5xx without doing it, then the sender becomes invalid. money-service refuses a change for a member that is not valid, so the repeat cannot refund and answers 503 every time.
+- Top-up, `GET /banking/account/{id}` answers 5xx. money-service reads the outage as a member without an account and stores the top-up as failed. The same request sent after banking-service is back answers failed again. [#182](https://github.com/chrysaor/JayPay/issues/182).
+- Top-up, `RollbackFirmBankingRequestCommand` fails. The saga logs the failure and nothing sends the rollback again. A charge that left the member's bank account is not returned. [#183](https://github.com/chrysaor/JayPay/issues/183).
+- Remittance, a debit whose answer was lost, then the sender or the receiver becomes invalid. The repeat does not check the members again. Decision record 0017 settles this for payments only. [#184](https://github.com/chrysaor/JayPay/issues/184).
+- Remittance, a refund that money-service answered with 5xx without doing it, then the sender becomes invalid. money-service refuses a change for a member that is not valid, so the repeat cannot refund and answers 503 every time. [#184](https://github.com/chrysaor/JayPay/issues/184).
 - Remittance, `POST /banking/info` answers 5xx. The remittance is refused as `INVALID_BANK_ACCOUNT`, as #176 describes for membership-service.
 
 banking-service's own calls to the bank, and the event flow topic on Kafka, are not in these tables. `BankTransferTest` covers the bank's missing and refused answers.
