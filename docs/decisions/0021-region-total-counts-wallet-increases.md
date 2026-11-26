@@ -37,4 +37,5 @@ When the two reporting services become one ([#164](https://github.com/chrysaor/J
 ## Links
 
 - Issue [#139](https://github.com/chrysaor/JayPay/issues/139)
+- PR [#178](https://github.com/chrysaor/JayPay/pull/178)
 - Retrospective [The region total kept top-ups the saga rolled back](../retrospectives/2026-11-27-region-total-kept-rolled-back-top-ups.md)

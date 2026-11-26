@@ -17,7 +17,7 @@ The review of [#135](https://github.com/chrysaor/JayPay/issues/135) found it, an
 
 ## Fix
 
-The saga publishes `WalletRechargedEvent` after it increased the wallet, and money-query-service counts only that event. It writes an item per recharge id in the same DynamoDB transaction that adds to the totals, so a repeated event changes nothing. The decision is in [0021](../decisions/0021-region-total-counts-wallet-increases.md). Totals written before the fix are not corrected.
+[#178](https://github.com/chrysaor/JayPay/pull/178): the saga publishes `WalletRechargedEvent` after it increased the wallet, and money-query-service counts only that event. It writes an item per recharge id in the same DynamoDB transaction that adds to the totals, so a repeated event changes nothing. The decision is in [0021](../decisions/0021-region-total-counts-wallet-increases.md). Totals written before the fix are not corrected.
 
 ## What changed so it is caught next time
 
