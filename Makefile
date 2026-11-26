@@ -14,7 +14,7 @@ BACKEND_VERSION_FILE := backend/build-logic/src/main/kotlin/jaypay.java.gradle.k
 GIT_COMMON_DIR :=$(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock contract release-branch
+.PHONY: help build test verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
@@ -34,6 +34,7 @@ help:
 	@echo "make network-policy            regenerate deploy/envs/*/network-policy/calls.yaml from the calls the workloads make"
 	@echo "make diagrams                  redraw docs/diagrams/*.svg from the calls, compose.yaml and the code"
 	@echo "make lock                      refresh gradle.lockfile and package-lock.json"
+	@echo "make dependencies              download the backend dependencies, retrying when the repository refuses"
 	@echo "make contract                  regenerate docs/api-contract.md"
 	@echo "make release-branch VERSION=X.Y.Z  cut release/X.Y.Z from origin/develop, Unreleased becomes X.Y.Z"
 
@@ -115,6 +116,9 @@ diagrams:
 lock:
 	cd backend && ./gradlew resolveAndLockAll --write-locks
 	cd frontend && npm install --package-lock-only --no-audit --no-fund
+
+dependencies:
+	cd backend && for delay in 0 30 60 120; do sleep $$delay; ./gradlew resolveAndLockAll --quiet && exit 0; done; exit 1
 
 contract:
 	python3 scripts/extract-endpoints.py backend > docs/api-contract.md
