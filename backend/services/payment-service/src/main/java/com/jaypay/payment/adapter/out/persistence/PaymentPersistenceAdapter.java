@@ -20,6 +20,11 @@ public class PaymentPersistenceAdapter implements PaymentPort {
     private final SpringDataPaymentRepository paymentRepository;
 
     @Override
+    public Optional<Payment> findByRequestId(RequestId requestId) {
+        return paymentRepository.findByRequestId(requestId.value()).map(PaymentPersistenceAdapter::toDomain);
+    }
+
+    @Override
     public Payment claim(NewPayment payment) {
         paymentRepository.claim(
                 payment.requestId().value(),
@@ -29,7 +34,7 @@ public class PaymentPersistenceAdapter implements PaymentPort {
                 payment.feeRate().basisPoints(),
                 payment.charge().fee(),
                 payment.charge().payout());
-        return paymentRepository.findByRequestId(payment.requestId().value()).map(PaymentPersistenceAdapter::toDomain).orElseThrow();
+        return findByRequestId(payment.requestId()).orElseThrow();
     }
 
     @Override
