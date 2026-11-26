@@ -1,10 +1,16 @@
 package com.jaypay.money.adapter.out.service;
 
 import com.jaypay.common.CommonHttpClient;
+import com.jaypay.common.HttpReply;
 import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
 import com.jaypay.money.application.port.out.RegisteredBankAccount;
+import com.jaypay.money.domain.RegisteredAccountNotConfirmedException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.io.UncheckedIOException;
+import java.net.HttpURLConnection;
+import java.util.Optional;
 
 
 @Component
@@ -21,9 +27,21 @@ public class BankingServiceAdapter implements GetRegisteredBankAccountPort {
     }
 
     @Override
-    public RegisteredBankAccount getRegisteredBankAccount(String membershipId) {
+    public Optional<RegisteredBankAccount> getRegisteredBankAccount(String membershipId) {
         String url = String.join("/", bankingServiceUrl, "banking/account", membershipId);
-        return commonHttpClient.get(url, RegisteredBankAccount.class).body();
+        HttpReply<RegisteredBankAccount> reply;
+        try {
+            reply = commonHttpClient.get(url, RegisteredBankAccount.class);
+        } catch (UncheckedIOException unanswered) {
+            throw new RegisteredAccountNotConfirmedException(membershipId, unanswered.getMessage());
+        }
+        if (reply.status() == HttpURLConnection.HTTP_NOT_FOUND) {
+            return Optional.empty();
+        }
+        if (reply.body() == null) {
+            throw new RegisteredAccountNotConfirmedException(membershipId, "status " + reply.status());
+        }
+        return Optional.of(reply.body());
     }
 
 }

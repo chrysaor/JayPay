@@ -34,12 +34,14 @@ function readProblem(text: string) {
   }
 }
 
-class ServerError extends Error {
+export class ServerError extends Error {
+  readonly status: number
   readonly violations: string[]
 
   constructor(status: number, text: string) {
     const problem = readProblem(text)
     super(problem?.message ?? `The server returned an error (HTTP ${String(status)}). ${text}`.trim())
+    this.status = status
     this.violations = problem?.violations?.map((violation) => violation.message) ?? []
   }
 }

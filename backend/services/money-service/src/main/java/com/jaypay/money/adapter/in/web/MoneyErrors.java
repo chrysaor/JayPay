@@ -1,6 +1,7 @@
 package com.jaypay.money.adapter.in.web;
 
 import com.jaypay.money.domain.MembershipNotConfirmedException;
+import com.jaypay.money.domain.RegisteredAccountNotConfirmedException;
 import com.jaypay.money.domain.RequestIdReusedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -36,5 +37,11 @@ class MoneyErrors {
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     Error notConfirmed(MembershipNotConfirmedException notConfirmed) {
         return new Error("MEMBERSHIP_NOT_CONFIRMED", "The member could not be checked, so nothing changed. Send the same request again.");
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    Error accountNotConfirmed(RegisteredAccountNotConfirmedException notConfirmed) {
+        return new Error("REGISTERED_ACCOUNT_NOT_CONFIRMED", "The registered bank account could not be checked, so nothing changed. Send the same request again.");
     }
 }

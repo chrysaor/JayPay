@@ -27,7 +27,7 @@ describe('bank account', () => {
   })
 
   test('a member without an account links one', async () => {
-    const routes = { ...signedInRoutes, [accountRoute]: { body: undefined }, [registerRoute]: { body: account } }
+    const routes = { ...signedInRoutes, [accountRoute]: { status: 404 }, [registerRoute]: { body: account } }
     const requests = fakeRoutes(routes)
     const user = renderApp('/account', { signedIn: true })
 
@@ -47,7 +47,7 @@ describe('bank account', () => {
   })
 
   test('a rejected link shows the server error', async () => {
-    fakeRoutes({ ...signedInRoutes, [accountRoute]: { body: undefined }, [registerRoute]: { status: 500 } })
+    fakeRoutes({ ...signedInRoutes, [accountRoute]: { status: 404 }, [registerRoute]: { status: 500 } })
     const user = renderApp('/account', { signedIn: true })
 
     const form = await region('Link a bank account')
