@@ -7,6 +7,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 ### Added
 
 - The admin console has an **Event flow** page for every staff role. It lists the newest saga top-ups by status and shows each one step by step, with the service, outcome, time and reason of every step, and refreshes while a top-up is in progress. money-service, membership-service and banking-service write each step to the Kafka topic `jaypay.flow.events` with member ids and amounts only, and the new workload event-flow-service, with 384m of memory and its own `event_flow` database, collects them and serves `GET /flows` and `GET /flows/{flowType}/{flowId}` ([#124](https://github.com/chrysaor/JayPay/issues/124))
+- The **Event flow** page also follows remittances, payments and settlements step by step, filters the list by type and shows the type of each flow. remittance-service, payment-service and settlement-service write their steps to `jaypay.flow.events` with member ids and amounts only. `GET /flows` takes `?flowType=`, and event-flow-service deletes every flow whose newest step is older than `FLOW_RETENTION_PERIOD`, 30 days by default ([#124](https://github.com/chrysaor/JayPay/issues/124))
 - `CHANGELOG.md` records what each release adds. `make release-branch VERSION=X.Y.Z` moves Unreleased into the new version in the release commit, and the tag workflow publishes that section as the GitHub Release notes ([#113](https://github.com/chrysaor/JayPay/issues/113))
 
 ### Changed
