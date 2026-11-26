@@ -8,4 +8,5 @@ dependencies {
     runtimeOnly(libs.jjwt.impl)
     runtimeOnly(libs.jjwt.jackson)
     implementation(libs.spring.vault.core)
+    testImplementation(testFixtures(project(":libs:common")))
 }

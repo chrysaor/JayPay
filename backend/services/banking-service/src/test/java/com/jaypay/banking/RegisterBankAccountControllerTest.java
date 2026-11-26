@@ -4,6 +4,9 @@ import com.jayway.jsonpath.JsonPath;
 import com.jaypay.banking.application.port.out.GetMembershipPort;
 import com.jaypay.banking.application.port.out.MembershipStatus;
 import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
+import com.jaypay.common.kafka.KafkaTestBroker;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,9 +14,16 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -25,6 +35,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class RegisterBankAccountControllerTest {
+
+    @DynamicPropertySource
+    static void kafka(DynamicPropertyRegistry registry) {
+        registry.add("spring.kafka.bootstrap-servers", KafkaTestBroker::bootstrapServers);
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -99,8 +114,18 @@ class RegisterBankAccountControllerTest {
                 .andReturn().getResponse().getContentAsString();
         String aggregateIdentifier = JsonPath.read(response, "$.aggregateIdentifier");
 
+        String rechargeId = UUID.randomUUID().toString();
         assertThatCode(() -> commandGateway.sendAndWait(new CheckRegisteredBankAccountCommand(
-                aggregateIdentifier, "recharge-1", "2", "check-1", "KB bank", "67890", 1000)))
+                aggregateIdentifier, rechargeId, "2", "check-1", "KB bank", "67890", 1000)))
                 .doesNotThrowAnyException();
+
+        List<String> steps = KafkaTestBroker.awaitValues("jaypay.flow.events", rechargeId, found -> !found.isEmpty(), Duration.ofSeconds(20));
+        assertThat(steps).hasSize(1);
+        JsonNode step = new ObjectMapper().readTree(steps.getFirst());
+        assertThat(step.get("step").asText()).isEqualTo("BANK_ACCOUNT_CHECKED");
+        assertThat(step.get("outcome").asText()).isEqualTo("SUCCEEDED");
+        assertThat(step.get("service").asText()).isEqualTo("banking-service");
+        assertThat(step.get("amount").asLong()).isEqualTo(1000);
+        assertThat(step.toString()).doesNotContain("67890", "KB bank");
     }
 }

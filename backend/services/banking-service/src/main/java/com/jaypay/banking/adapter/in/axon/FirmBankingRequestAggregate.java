@@ -8,6 +8,9 @@ import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.flow.FlowEventPublisher;
+import com.jaypay.common.flow.FlowOutcome;
+import com.jaypay.common.flow.FlowStep;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.CommandHandler;
@@ -32,7 +35,8 @@ public class FirmBankingRequestAggregate {
     private String id;
 
     @CommandHandler
-    public FirmBankingRequestAggregate(RequestFirmBankingCommand command, TransferMoneyUseCase transferMoneyUseCase) {
+    public FirmBankingRequestAggregate(RequestFirmBankingCommand command, TransferMoneyUseCase transferMoneyUseCase,
+                                       FlowEventPublisher flowEvents) {
         id = command.getAggregateIdentifier();
         RecordedTransfer charge = transferMoneyUseCase.transfer(new BankTransfer(
                 chargeRequestId(command.getRechargeRequestId()),
@@ -50,15 +54,21 @@ public class FirmBankingRequestAggregate {
                 command.getMoneyAmount(),
                 finishedStatus(charge.status()),
                 id));
+        flowEvents.publish(command.getRechargeRequestId(), FlowStep.BANK_CHARGED, outcome(charge.status()), chargeReason(charge.status()),
+                command.getMembershipId(), command.getMoneyAmount());
     }
 
     @CommandHandler
-    public FirmBankingRequestAggregate(RollbackFirmBankingRequestCommand command, TransferMoneyUseCase transferMoneyUseCase) {
+    public FirmBankingRequestAggregate(RollbackFirmBankingRequestCommand command, TransferMoneyUseCase transferMoneyUseCase,
+                                       FlowEventPublisher flowEvents) {
         id = UUID.randomUUID().toString();
         String chargeRequestId = chargeRequestId(command.getRechargeRequestId());
         Optional<RecordedTransfer> refund = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
-        log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refund.map(RecordedTransfer::status).orElse(TransferStatus.CANCELLED));
+        TransferStatus refundStatus = refund.map(RecordedTransfer::status).orElse(TransferStatus.CANCELLED);
+        log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
         apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id));
+        flowEvents.publish(command.getRechargeRequestId(), FlowStep.CHARGE_ROLLED_BACK, rollbackOutcome(refundStatus), rollbackReason(refundStatus),
+                command.getMembershipId(), command.getMoneyAmount());
     }
 
     @EventSourcingHandler
@@ -73,6 +83,38 @@ public class FirmBankingRequestAggregate {
 
     private static String chargeRequestId(String rechargeRequestId) {
         return "recharge-" + rechargeRequestId;
+    }
+
+    private static FlowOutcome outcome(TransferStatus status) {
+        return switch (status) {
+            case SUCCEEDED -> FlowOutcome.SUCCEEDED;
+            case PENDING -> FlowOutcome.IN_PROGRESS;
+            case FAILED, CANCELLED -> FlowOutcome.FAILED;
+        };
+    }
+
+    private static String chargeReason(TransferStatus status) {
+        return switch (status) {
+            case SUCCEEDED -> null;
+            case PENDING -> "The bank has not confirmed the charge yet";
+            case FAILED, CANCELLED -> "The bank refused the charge";
+        };
+    }
+
+    private static FlowOutcome rollbackOutcome(TransferStatus refund) {
+        return switch (refund) {
+            case SUCCEEDED, CANCELLED -> FlowOutcome.SUCCEEDED;
+            case PENDING -> FlowOutcome.IN_PROGRESS;
+            case FAILED -> FlowOutcome.FAILED;
+        };
+    }
+
+    private static String rollbackReason(TransferStatus refund) {
+        return switch (refund) {
+            case SUCCEEDED, CANCELLED -> null;
+            case PENDING -> "The bank has not confirmed the refund yet";
+            case FAILED -> "The bank refused the refund";
+        };
     }
 
     private static int finishedStatus(TransferStatus status) {

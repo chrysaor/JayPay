@@ -12,12 +12,14 @@ import com.jaypay.money.application.port.out.CreateMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMemberMoneyPort;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.GetRegisteredBankAccountPort;
+import com.jaypay.money.application.port.out.RechargeFlowPort;
 import com.jaypay.money.application.port.out.RegisteredBankAccount;
 import com.jaypay.money.application.port.out.RequestMoneyRechargingPort;
 import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingType;
+import com.jaypay.money.domain.RechargeFailure;
 import com.jaypay.money.domain.RequestId;
 import com.jaypay.money.domain.RequestIdReusedException;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
     private final GetRegisteredBankAccountPort getRegisteredBankAccountPort;
     private final CreateMemberMoneyAggregatePort createMemberMoneyAggregatePort;
     private final RequestMoneyRechargingPort requestMoneyRechargingPort;
+    private final RechargeFlowPort rechargeFlowPort;
 
     @Override
     public MoneyChangingRequest increaseMoney(ChangeMoneyCommand command) {
@@ -64,20 +67,23 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
         RegisteredBankAccount account = getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId());
         if (account == null || account.bankAccountNumber() == null || account.bankAccountNumber().isBlank()) {
             log.warn("Member {} has no registered bank account, so recharge {} fails", command.targetMembershipId(), command.requestId().value());
+            rechargeFlowPort.requestFailed(pending, RechargeFailure.NO_BANK_ACCOUNT);
             return changeMoneyPort.settle(pending.settled(false));
         }
+        rechargeFlowPort.requested(pending);
         MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.targetMembershipId());
         requestMoneyRechargingPort.requestMoneyRecharging(command.requestId(), walletOf(membershipId), membershipId, command.amount(), account);
         return pending;
     }
 
     @Override
-    public boolean failRecharging(RequestId requestId) {
+    public boolean failRecharging(RequestId requestId, RechargeFailure failure) {
         return changeMoneyPort.findForUpdate(requestId).map(request -> {
             if (request.status() != MoneyChangingStatus.PENDING) {
                 return request.status() == MoneyChangingStatus.FAILED;
             }
             changeMoneyPort.settle(request.settled(false));
+            rechargeFlowPort.failed(request, failure);
             return true;
         }).orElse(true);
     }
@@ -99,6 +105,7 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
             }
             changeMoneyPort.increaseBalance(new MemberMoney.MembershipId(request.targetMembershipId()), request.amount());
             changeMoneyPort.settle(request.settled(true));
+            rechargeFlowPort.walletIncreased(request);
             return true;
         }).orElse(false);
     }

@@ -6,6 +6,9 @@ import com.jaypay.banking.application.port.in.RequestBankingInfoCommand;
 import com.jaypay.banking.application.port.in.RequestBankingInfoUseCase;
 import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
 import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
+import com.jaypay.common.flow.FlowEventPublisher;
+import com.jaypay.common.flow.FlowOutcome;
+import com.jaypay.common.flow.FlowStep;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.axonframework.commandhandling.CommandHandler;
@@ -41,7 +44,8 @@ public class RegisteredBankAccountAggregate {
     }
 
     @CommandHandler
-    public void handle(CheckRegisteredBankAccountCommand command, RequestBankingInfoUseCase requestBankingInfoUseCase) {
+    public void handle(CheckRegisteredBankAccountCommand command, RequestBankingInfoUseCase requestBankingInfoUseCase,
+                       FlowEventPublisher flowEvents) {
         log.info("CheckRegisteredBankAccountCommand Handler");
 
         id = command.getAggregateIdentifier();
@@ -60,6 +64,10 @@ public class RegisteredBankAccountAggregate {
                 command.getBankName(),
                 command.getBankAccountNumber()
         ));
+        flowEvents.publish(command.getRechargeRequestId(), FlowStep.BANK_ACCOUNT_CHECKED,
+                isValid ? FlowOutcome.SUCCEEDED : FlowOutcome.FAILED,
+                isValid ? null : "The bank did not confirm the account",
+                command.getMembershipId(), command.getAmount());
     }
 
     @EventSourcingHandler
