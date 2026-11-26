@@ -1,6 +1,6 @@
 # Services
 
-This page describes each of the ten Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
+This page describes each of the eleven Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
 
 ## membership-service
 
@@ -13,7 +13,7 @@ Members of the customer site: sign up, look-up, edits and the customer tokens.
 | Database | PostgreSQL `membership`, table `membership` |
 | Calls | none |
 | Called by | `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `frontend-web`, `frontend-admin` |
-| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Command handler `CheckMembershipHandler` for `CheckMembershipCommand`, publishing `CheckedMembershipEvent` |
 | Other stores | Vault, KV version 2 mount `kv-v1/data/encrypt`, secret `dbkey`, field `key`, read once at startup |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SPRING_CLOUD_VAULT_TOKEN`, `SPRING_CLOUD_VAULT_SCHEME`, `SPRING_CLOUD_VAULT_HOST`, `SPRING_CLOUD_VAULT_PORT`, `JWT_SECRET`. Secrets are `SPRING_DATASOURCE_PASSWORD`, `SPRING_CLOUD_VAULT_TOKEN`, which is `VAULT_MEMBERSHIP_TOKEN` and may only read `dbkey`, and `JWT_SECRET`. |
@@ -59,7 +59,7 @@ Registered bank accounts and firm banking requests against a fake bank.
 | Database | PostgreSQL `banking`, tables `registered_bank_account` and `bank_transfer` |
 | Calls | `membership-service` |
 | Called by | `money-service`, `remittance-service`, `settlement-service`, `frontend-web` |
-| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Aggregates `RegisteredBankAccountAggregate` and `FirmBankingRequestAggregate`. Command handlers for `CreateRegisteredBankAccountCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. Applies `CreateRegisteredBankAccountEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`. |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
@@ -105,7 +105,7 @@ Wallet balances and the two ways to top a wallet up.
 | Database | PostgreSQL `money`, tables `wallet` and `wallet_change` |
 | Calls | `membership-service`, `banking-service` |
 | Called by | `remittance-service`, `payment-service`, `money-aggregation-service`, `frontend-web` |
-| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedMembershipEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent` and `RollbackFirmBankingFinishedEvent`, and sends `CheckMembershipCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `MONEY_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
@@ -365,6 +365,53 @@ The service has no HTTP endpoints of its own. Actuator answers on the management
 
 - A payout the bank refuses keeps its payment `PAID`, and every later run asks again under the same id and gets the same refusal. Someone has to fix the merchant's account and settle it.
 
+## event-flow-service
+
+Read model of the flows that move money: it collects the step records of each saga top-up and serves the flows to the admin console.
+
+| | |
+| --- | --- |
+| Host port | `8093` |
+| Memory limit | `384m` |
+| Database | PostgreSQL `event_flow`, tables `flow_step` and `flow` |
+| Calls | none |
+| Called by | `frontend-admin` |
+| Kafka | Consumes `jaypay.flow.events` in the group `event-flow-service`. Produces `jaypay.logging.out.stdout`, one record for each controller call |
+| Axon | none |
+| Other stores | none |
+| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`. The topic is the key `flow.topic` in `backend/libs/common/src/main/resources/jaypay-common.yml`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
+
+### What it does
+
+`FlowEventPublisher` in `backend/libs/common` writes one JSON record to `jaypay.flow.events` for each step, keyed by the flow id, so the steps of one flow stay in order on one partition. A record holds `flowType`, `flowId`, `step`, `service`, `outcome`, `reason`, `occurredAt`, `membershipId` and `amount`, and nothing else: no name, email, address or account number. The flow id of a top-up is its request id. The publisher sends after the step's transaction commits, waits at most two seconds for Kafka and never throws, so a Kafka outage loses flow records but never stops or changes a top-up.
+
+| Step | Service | Outcome |
+| --- | --- | --- |
+| `RECHARGE_REQUESTED` | money-service | succeeded, or failed when the member has no registered bank account |
+| `MEMBERSHIP_CHECKED` | membership-service | succeeded, or failed for a member that does not exist or is not valid |
+| `BANK_ACCOUNT_CHECKED` | banking-service | succeeded, or failed when the bank does not confirm the account |
+| `BANK_CHARGED` | banking-service | succeeded, in progress while the bank has not answered, or failed when it refused |
+| `WALLET_INCREASED` | money-service | succeeded, which ends the flow |
+| `RECHARGE_FAILED` | money-service | failed, with the reason the saga gave up |
+| `CHARGE_ROLLED_BACK` | banking-service | succeeded, in progress or failed, for the refund of a charge |
+
+The service stores each step once per flow and step. A record that Kafka delivers again keeps the first copy, and a record that is not a well formed step is logged and skipped. After each new step it recomputes the flow: failed once any step failed, succeeded once `WALLET_INCREASED` succeeded, in progress otherwise.
+
+### Endpoints
+
+- `GET /flows` returns the 50 newest flows by start time, each with its status, member id, amount, start and last time, last step, failed step and step count. `?status=IN_PROGRESS`, `SUCCEEDED` or `FAILED` keeps one status, and any other status answers 400 `INVALID_STATUS`.
+- `GET /flows/{flowType}/{flowId}` returns one flow with its steps in the order they happened, or 404 `FLOW_NOT_FOUND`.
+
+The admin console reaches both through `/api/event-flow/` for every staff role.
+
+[docs/api-contract.md](api-contract.md) lists every endpoint of every service.
+
+### Known limitations
+
+- Only saga top-ups publish steps. `POST /money/increase`, remittance, payment and settlement do not.
+- A flow whose records were lost while Kafka was down shows fewer steps or stays in progress.
+- The service keeps every flow. Nothing removes old ones.
+
 ## auth-service
 
 The decision on every admin console request, made from the staff token Keycloak issued. Keycloak holds the staff accounts and signs them in.
@@ -420,7 +467,7 @@ Kafka consumer that writes every record of the logging topic to its own log.
 
 ### What it does
 
-The record value is logged at level INFO, so it reaches ClickHouse like any other log line. The records come from `LoggingAspect` in `backend/libs/common`, which writes one record before each method call on a web controller. The aspect runs in every service that scans `com.jaypay.common` and has web controllers: membership-service, banking-service, money-service, remittance-service, payment-service, money-aggregation-service and money-query-service.
+The record value is logged at level INFO, so it reaches ClickHouse like any other log line. The records come from `LoggingAspect` in `backend/libs/common`, which writes one record before each method call on a web controller. The aspect runs in every service that scans `com.jaypay.common` and has web controllers: membership-service, banking-service, money-service, remittance-service, payment-service, money-aggregation-service, money-query-service and event-flow-service.
 
 ## frontend-web
 
@@ -459,23 +506,23 @@ The site checks the stored access token on load with `POST /memberships/token-va
 
 ## frontend-admin
 
-The admin console, served by nginx, with a proxy to Keycloak for the staff sign-in and to four services behind the auth-service gate.
+The admin console, served by nginx, with a proxy to Keycloak for the staff sign-in and to five services behind the auth-service gate.
 
 | | |
 | --- | --- |
 | Host port | `8091` |
 | Memory limit | `64m` |
 | Database | none |
-| Calls | `auth-service`, `membership-service`, `payment-service`, `money-aggregation-service`, `money-query-service` |
+| Calls | `auth-service`, `membership-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `event-flow-service` |
 | Called by | the browser, through the nginx server on port 8080 of the container |
 | Kafka | none |
 | Axon | none |
 | Other stores | The staff tokens in memory only. The state, PKCE verifier and return path of a sign-in in progress in the tab's `sessionStorage` under `jaypay.admin.sign-in` |
-| Configuration | `JAYPAY_AUTH_URL`, `JAYPAY_KEYCLOAK_URL`, `JAYPAY_MEMBERSHIP_URL`, `JAYPAY_PAYMENT_URL`, `JAYPAY_MONEY_AGGREGATION_URL`, `JAYPAY_MONEY_QUERY_URL`, `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` |
+| Configuration | `JAYPAY_AUTH_URL`, `JAYPAY_KEYCLOAK_URL`, `JAYPAY_MEMBERSHIP_URL`, `JAYPAY_PAYMENT_URL`, `JAYPAY_MONEY_AGGREGATION_URL`, `JAYPAY_MONEY_QUERY_URL`, `JAYPAY_EVENT_FLOW_URL`, `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` |
 
 ### What it does
 
-`frontend/apps/admin/nginx.conf.template` proxies `/realms/staff/` and `/resources/` to Keycloak at `JAYPAY_KEYCLOAK_URL`, so the browser signs in on the admin site's own origin, and answers 404 to any other `/realms/` path. It proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/` and `/api/money-query/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. Any other `/api/` path answers 404, including the old `/api/auth/staff/` sign-in. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
+`frontend/apps/admin/nginx.conf.template` proxies `/realms/staff/` and `/resources/` to Keycloak at `JAYPAY_KEYCLOAK_URL`, so the browser signs in on the admin site's own origin, and answers 404 to any other `/realms/` path. It proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/`, `/api/money-query/` and `/api/event-flow/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. Any other `/api/` path answers 404, including the old `/api/auth/staff/` sign-in. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
 
 The console has these pages:
 
@@ -484,6 +531,7 @@ The console has these pages:
 - `/members` finds members by id or by address.
 - `/members/:membershipId` shows a member and lets an operator or admin edit it.
 - `/money` shows the sum of balances at an address from money-aggregation-service and the total from money-query-service.
+- `/event-flow` lists the 50 newest flows, newest first, filtered by status, and refreshes the list every 5 seconds. Selecting a flow shows its steps in order with the service, the outcome, the time since the previous step and the reason of a failure. The timeline refreshes every 2 seconds while the flow is in progress and stops once it succeeded or failed. Members appear by id only. Every staff role may open it.
 - `/settlement` lists the paid payments with their fee and payout, and lets an operator or admin mark one settled. Marking a payment that is settled already says so and changes nothing.
 - `/account` shows the username and role and links to the Keycloak account console at `/realms/staff/account`, where staff change their password and set up an authenticator app.
 

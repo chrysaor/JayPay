@@ -1,5 +1,6 @@
 upstreams:
   JAYPAY_AUTH_URL: auth-service
+  JAYPAY_EVENT_FLOW_URL: event-flow-service
   JAYPAY_KEYCLOAK_URL: keycloak
   JAYPAY_MEMBERSHIP_URL: membership-service
   JAYPAY_MONEY_AGGREGATION_URL: money-aggregation-service

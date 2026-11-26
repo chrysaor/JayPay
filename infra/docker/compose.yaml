@@ -496,6 +496,17 @@ services:
       SERVICE_PAYMENT_URL: http://payment-service:8080
     depends_on: *jpa-service-depends-on
 
+  event-flow-service:
+    <<: *service
+    image: jaypay/event-flow-service
+    mem_limit: 384m
+    ports:
+      - "127.0.0.1:8093:8080"
+    environment:
+      <<: *jpa-service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_flow
+    depends_on: *jpa-service-depends-on
+
   auth-service:
     <<: *service
     image: jaypay/auth-service

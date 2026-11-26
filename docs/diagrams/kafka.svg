@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 836 372" width="836" height="372" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 836 612" width="836" height="612" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
 <title id="title">JayPay Kafka topics</title>
-<desc id="desc">banking-service, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service write one record for each web request to jaypay.logging.out.stdout, which logging-consumer reads.</desc>
+<desc id="desc">banking-service, membership-service, money-service write one record for each flow step to jaypay.flow.events, which event-flow-service reads. banking-service, event-flow-service, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service write one record for each web request to jaypay.logging.out.stdout, which logging-consumer reads.</desc>
 <style>
 .bg{fill:#ffffff}
 .box{fill:#f6f8fa;stroke:#8c959f;stroke-width:1.2}
@@ -25,35 +25,56 @@
 .green{stroke:#3fb950}.greenf{fill:#3fb950}.greenbox{fill:#04260f;stroke:#3fb950}
 .gray{stroke:#8b949e}.grayf{fill:#9198a1}}
 </style>
-<rect class="bg" x="0" y="0" width="836" height="372" rx="12"/>
+<rect class="bg" x="0" y="0" width="836" height="612" rx="12"/>
 <rect class="box" x="16" y="24" width="210" height="36" rx="8"/>
 <text class="t" x="121" y="46">banking-service</text>
 <path class="purple" d="M226 42 H263"/>
 <rect class="box" x="16" y="72" width="210" height="36" rx="8"/>
 <text class="t" x="121" y="94">membership-service</text>
-<path class="purple" d="M226 90 H263"/>
 <rect class="box" x="16" y="120" width="210" height="36" rx="8"/>
-<text class="t" x="121" y="142">money-aggregation-service</text>
+<text class="t" x="121" y="142">money-service</text>
 <path class="purple" d="M226 138 H263"/>
-<rect class="box" x="16" y="168" width="210" height="36" rx="8"/>
-<text class="t" x="121" y="190">money-query-service</text>
+<path class="purple" d="M263 42 V138"/>
+<path class="purple" d="M226 90 H300"/>
+<path class="purplef" d="M292 85 L292 95 L300 90 Z"/>
+<rect class="purplebox" x="300" y="72" width="250" height="36" rx="18"/>
+<text class="t" x="425" y="94">jaypay.flow.events</text>
+<path class="purple" d="M550 90 H640"/>
+<path class="purplef" d="M632 85 L632 95 L640 90 Z"/>
+<rect class="box" x="640" y="72" width="180" height="36" rx="8"/>
+<text class="t" x="730" y="94">event-flow-service</text>
+<text class="l purplef" text-anchor="middle" x="425" y="66">one record for each flow step</text>
 <rect class="box" x="16" y="216" width="210" height="36" rx="8"/>
-<text class="t" x="121" y="238">money-service</text>
+<text class="t" x="121" y="238">banking-service</text>
 <path class="purple" d="M226 234 H263"/>
 <rect class="box" x="16" y="264" width="210" height="36" rx="8"/>
-<text class="t" x="121" y="286">payment-service</text>
+<text class="t" x="121" y="286">event-flow-service</text>
 <path class="purple" d="M226 282 H263"/>
 <rect class="box" x="16" y="312" width="210" height="36" rx="8"/>
-<text class="t" x="121" y="334">remittance-service</text>
+<text class="t" x="121" y="334">membership-service</text>
 <path class="purple" d="M226 330 H263"/>
-<path class="purple" d="M263 42 V330"/>
-<path class="purple" d="M226 186 H300"/>
-<path class="purplef" d="M292 181 L292 191 L300 186 Z"/>
-<rect class="purplebox" x="300" y="168" width="250" height="36" rx="18"/>
-<text class="t" x="425" y="190">jaypay.logging.out.stdout</text>
-<path class="purple" d="M550 186 H640"/>
-<path class="purplef" d="M632 181 L632 191 L640 186 Z"/>
-<rect class="box" x="640" y="168" width="180" height="36" rx="8"/>
-<text class="t" x="730" y="190">logging-consumer</text>
-<text class="l purplef" text-anchor="middle" x="425" y="162">one record per web request</text>
+<rect class="box" x="16" y="360" width="210" height="36" rx="8"/>
+<text class="t" x="121" y="382">money-aggregation-service</text>
+<rect class="box" x="16" y="408" width="210" height="36" rx="8"/>
+<text class="t" x="121" y="430">money-query-service</text>
+<path class="purple" d="M226 426 H263"/>
+<rect class="box" x="16" y="456" width="210" height="36" rx="8"/>
+<text class="t" x="121" y="478">money-service</text>
+<path class="purple" d="M226 474 H263"/>
+<rect class="box" x="16" y="504" width="210" height="36" rx="8"/>
+<text class="t" x="121" y="526">payment-service</text>
+<path class="purple" d="M226 522 H263"/>
+<rect class="box" x="16" y="552" width="210" height="36" rx="8"/>
+<text class="t" x="121" y="574">remittance-service</text>
+<path class="purple" d="M226 570 H263"/>
+<path class="purple" d="M263 234 V570"/>
+<path class="purple" d="M226 378 H300"/>
+<path class="purplef" d="M292 373 L292 383 L300 378 Z"/>
+<rect class="purplebox" x="300" y="360" width="250" height="36" rx="18"/>
+<text class="t" x="425" y="382">jaypay.logging.out.stdout</text>
+<path class="purple" d="M550 378 H640"/>
+<path class="purplef" d="M632 373 L632 383 L640 378 Z"/>
+<rect class="box" x="640" y="360" width="180" height="36" rx="8"/>
+<text class="t" x="730" y="382">logging-consumer</text>
+<text class="l purplef" text-anchor="middle" x="425" y="354">one record for each web request</text>
 </svg>

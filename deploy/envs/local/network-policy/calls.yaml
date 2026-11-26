@@ -6,7 +6,7 @@ calls:
     http: [frontend-admin]
     management: [prometheus]
   axon-server:
-    grpc: [auth-service, axon-server, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    grpc: [auth-service, axon-server, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
     http: [axon-server]
   banking-service:
     http: [frontend-web, money-service, remittance-service, settlement-service]
@@ -15,8 +15,11 @@ calls:
     native: [grafana, otel-collector]
   dynamodb:
     http: [money-query-service]
+  event-flow-service:
+    http: [frontend-admin]
+    management: [prometheus]
   kafka:
-    kafka: [auth-service, banking-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    kafka: [auth-service, banking-service, event-flow-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   keycloak:
     http: [auth-service, frontend-admin]
   logging-consumer:
@@ -34,12 +37,12 @@ calls:
     http: [frontend-web, money-aggregation-service, payment-service, remittance-service]
     management: [prometheus]
   otel-collector:
-    otlp-http: [auth-service, banking-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    otlp-http: [auth-service, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   payment-service:
     http: [frontend-admin, frontend-web, settlement-service]
     management: [prometheus]
   postgres:
-    postgres: [banking-service, keycloak, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    postgres: [banking-service, event-flow-service, keycloak, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   prometheus:
     http: [grafana]
   remittance-service:

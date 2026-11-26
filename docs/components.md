@@ -8,7 +8,7 @@ A new component is added to this page in the PR that introduces it.
 
 | Component | Role | Version pinned in |
 | --- | --- | --- |
-| Java | Language of the ten services. The images run a `jlink` runtime cut from the Temurin JDK with only the modules the services load | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
+| Java | Language of the eleven services. The images run a `jlink` runtime cut from the Temurin JDK with only the modules the services load | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
 | Distroless base, glibc without OpenSSL | Base of the service images: glibc, CA certificates, time zones and `/etc/passwd`, no shell or package manager | `backend/Dockerfile` |
 | Debian | Source of the `C.UTF-8` locale the service images copy, the same glibc as the distroless base | `backend/Dockerfile` |
 | Gradle | Backend build | `backend/gradle/wrapper/gradle-wrapper.properties` |
@@ -34,7 +34,7 @@ They run in the compose stack and, as StatefulSets, in the local cluster. The cl
 | --- | --- | --- |
 | PostgreSQL | One database per service with data, and one for Keycloak | `infra/docker/compose.yaml` |
 | Keycloak | Staff accounts and sign-in of the admin console: the realm `staff` with the Authorization Code flow and PKCE, brute force protection, the password policy and optional authenticator apps. Keeps its data in the `keycloak` database of PostgreSQL | `infra/docker/compose.yaml` |
-| Apache Kafka | Logging events between services | `infra/docker/compose.yaml` |
+| Apache Kafka | Logging events and the flow events of saga top-ups between services | `infra/docker/compose.yaml` |
 | Axon Server | Event store and command and event routing | `infra/docker/compose.yaml` |
 | HashiCorp Vault | Holds the encryption key of membership-service, which reads it with a token that may read nothing else, dev mode | `infra/docker/compose.yaml` |
 | DynamoDB Local | Regional money totals, stands in for the AWS table | `infra/docker/compose.yaml` |

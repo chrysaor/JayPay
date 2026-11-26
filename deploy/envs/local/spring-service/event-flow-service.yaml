@@ -1,0 +1,10 @@
+env:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_flow
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+secretEnv:
+  SPRING_DATASOURCE_PASSWORD: POSTGRES_PASSWORD
+resources:
+  requests:
+    memory: 384Mi
+  limits:
+    memory: 384Mi
