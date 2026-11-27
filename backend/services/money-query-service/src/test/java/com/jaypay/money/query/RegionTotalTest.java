@@ -65,7 +65,8 @@ class RegionTotalTest {
         String rechargeId = UUID.randomUUID().toString();
 
         events.publish(bankConfirmed(rechargeId, member, 3000));
-        events.publish(new RollbackFirmBankingFinishedEvent(UUID.randomUUID().toString(), member, UUID.randomUUID().toString()));
+        events.publish(new RollbackFirmBankingFinishedEvent(UUID.randomUUID().toString(), member, UUID.randomUUID().toString(),
+                RollbackFirmBankingFinishedEvent.CONFIRMED));
         waitUntilEarlierEventsAreHandled();
 
         assertThat(regionTotal(member)).isZero();

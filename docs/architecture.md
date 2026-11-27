@@ -35,6 +35,7 @@ sequenceDiagram
     alt the deadline passes or the wallet change is no longer running
         money->>banking: RollbackFirmBankingRequestCommand
         banking->>money: RollbackFirmBankingFinishedEvent
+        Note over money: a confirmed refund ends the saga,<br/>an unconfirmed one waits for the next send,<br/>a refused one stores ROLLBACK_UNCONFIRMED
     else the wallet was increased
         money->>query: WalletRechargedEvent
         query->>membership: GET /memberships/{membershipId}
@@ -147,6 +148,7 @@ A cell names the test that states the money and the status after that failure, a
 | `CheckRegisteredBankAccountCommand` to banking-service | `RechargeSagaTest.aRechargeWhoseAccountCheckIsNeverAnsweredFailsAtTheDeadlineWithoutACharge` | `RechargeSagaTest.aRechargeWhoseAccountCheckCannotBeDeliveredFailsAtTheDeadlineWithoutACharge` | `RechargeSagaTest.aRepeatOfARechargeTheAccountCheckRefusedStaysFailedAfterTheAccountPasses` |
 | `RequestFirmBankingCommand` to banking-service, the charge | `RechargeSagaTest.aRechargeWhoseChargeTheBankConfirmsAfterTheDeadlineIsRolledBackWithoutTellingThatTheWalletWasIncreased`, `aRechargeTheBankNeverConfirmsFailsAtTheDeadlineAndIsRolledBack` | `RechargeSagaTest.aRechargeWhoseChargeCannotBeDeliveredFailsAtTheDeadlineWithoutCreditingTheWallet` | `RechargeSagaTest.aRepeatWhileTheChargeIsUnansweredChargesNothingAgainAndTheDeadlineRollsTheChargeBackOnce`, `aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
 | `RollbackFirmBankingRequestCommand` to banking-service | `RechargeSagaTest.aRechargeWhoseRollbackAnswerIsLostIsRolledBackAgainAndIsNotChargedAgain`, `BankTransferTest.aRollbackReturnsALandedChargeToTheMemberOnce` | `RechargeSagaTest.aRollbackBankingServiceRefusesIsSentAgainUntilBankingServiceTakesIt`, `aRollbackThatIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed` | `RechargeSagaTest.aRechargeWhoseRollbackAnswerIsLostIsRolledBackAgainAndIsNotChargedAgain` |
+| The bank's answer to the refund, carried by `RollbackFirmBankingFinishedEvent` | `RechargeSagaTest.aRollbackWhoseRefundTheBankHasNotConfirmedIsSentAgainUntilTheRefundIsConfirmed`, `aRollbackWhoseRefundIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed`, `BankTransferTest.aRollbackWhoseRefundTheBankDoesNotAnswerFinishesUnconfirmedAndTheNextRollbackAsksTheBankAgain`, `aRollbackWhileTheBankStillDoesNotAnswerTheChargeFinishesUnconfirmed` | `RechargeSagaTest.aRollbackWhoseRefundTheBankRefusesLeavesTheRechargeRollbackUnconfirmedWithoutSendingItAgain`, `BankTransferTest.aRollbackWhoseRefundTheBankRefusesFinishesRefusedWithoutAskingTheBankAgain` | `BankTransferTest.aRollbackWhoseRefundTheBankDoesNotAnswerFinishesUnconfirmedAndTheNextRollbackAsksTheBankAgain` |
 
 The commands travel through Axon Server. A lost answer is a command the other service handled without publishing its event. A 5xx is a command its handler refused with an exception.
 

@@ -3,6 +3,7 @@ package com.jaypay.common.event;
 import org.axonframework.serialization.SimpleSerializedObject;
 import org.axonframework.serialization.SimpleSerializedType;
 import org.axonframework.serialization.json.JacksonSerializer;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -54,6 +55,15 @@ class StoredRechargeMessagesTest {
 
         assertThat(message).isInstanceOf(messageType);
         assertThat(serializer.serialize(message, String.class).getData()).contains(amount);
+    }
+
+    @Test
+    void readsARollbackFinishedBeforeTheRefundStatusExistedAsUnconfirmed() {
+        Object message = serializer.deserialize(new SimpleSerializedObject<>(
+                "{\"rollbackFirmBankingId\":\"b\",\"membershipId\":\"1\",\"rollbackFirmbankingAggregateIdentifier\":\"a\"}",
+                String.class, new SimpleSerializedType(RollbackFirmBankingFinishedEvent.class.getName(), null)));
+
+        assertThat(((RollbackFirmBankingFinishedEvent) message).getRefundStatus()).isEqualTo(RollbackFirmBankingFinishedEvent.UNCONFIRMED);
     }
 
     @ParameterizedTest
