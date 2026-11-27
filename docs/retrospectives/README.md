@@ -47,4 +47,5 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [A top-up rollback that failed was never sent again](2026-11-27-top-up-rollback-sent-once.md) | [#191](https://github.com/chrysaor/JayPay/pull/191) |
 | 2026-11-27 | [A restart of money-service dropped the deadlines of running top-ups](2026-11-27-saga-deadlines-lost-on-restart.md) | [#193](https://github.com/chrysaor/JayPay/issues/193) |
 | 2026-11-27 | [A top-up rollback ended while the bank had not confirmed the refund](2026-11-27-top-up-rollback-ended-on-an-unconfirmed-refund.md) | [#194](https://github.com/chrysaor/JayPay/issues/194) |
+| 2026-11-27 | [The upgrade to 0.5.0 depended on the order of the services](2026-11-27-upgrade-depended-on-the-order-of-the-services.md) | [#199](https://github.com/chrysaor/JayPay/issues/199) |
 | 2026-11-27 | [The first-start saga test stopped the processor before its worker ran](2026-11-27-first-start-saga-test-failed-without-a-reason.md) | [#187](https://github.com/chrysaor/JayPay/pull/187), [#188](https://github.com/chrysaor/JayPay/pull/188) |

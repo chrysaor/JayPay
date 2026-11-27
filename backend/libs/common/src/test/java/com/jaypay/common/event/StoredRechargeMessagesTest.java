@@ -1,5 +1,7 @@
 package com.jaypay.common.event;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jaypay.messaging.MessageJsonAutoConfiguration;
 import org.axonframework.serialization.SimpleSerializedObject;
 import org.axonframework.serialization.SimpleSerializedType;
 import org.axonframework.serialization.json.JacksonSerializer;
@@ -14,7 +16,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class StoredRechargeMessagesTest {
 
-    private final JacksonSerializer serializer = JacksonSerializer.defaultSerializer();
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String ROLLBACK_FINISHED_OF_0_4_0 =
+            "{\"rollbackFirmBankingId\":\"b\",\"membershipId\":\"1\",\"rollbackFirmbankingAggregateIdentifier\":\"a\"}";
+
+    private final JacksonSerializer serializer = JacksonSerializer.builder()
+            .objectMapper(new MessageJsonAutoConfiguration().defaultAxonObjectMapper())
+            .build();
 
     static Stream<Arguments> storedPayloads() {
         return Stream.of(
@@ -58,12 +66,18 @@ class StoredRechargeMessagesTest {
     }
 
     @Test
-    void readsARollbackFinishedBeforeTheRefundStatusExistedAsUnconfirmed() {
-        Object message = serializer.deserialize(new SimpleSerializedObject<>(
-                "{\"rollbackFirmBankingId\":\"b\",\"membershipId\":\"1\",\"rollbackFirmbankingAggregateIdentifier\":\"a\"}",
+    void readsTheRollbackFinishedOfBankingService040AsAConfirmedRefund() {
+        Object message = serializer.deserialize(new SimpleSerializedObject<>(ROLLBACK_FINISHED_OF_0_4_0,
                 String.class, new SimpleSerializedType(RollbackFirmBankingFinishedEvent.class.getName(), null)));
 
-        assertThat(((RollbackFirmBankingFinishedEvent) message).getRefundStatus()).isEqualTo(RollbackFirmBankingFinishedEvent.UNCONFIRMED);
+        assertThat(message).isEqualTo(new RollbackFirmBankingFinishedEvent("b", "1", "a"));
+    }
+
+    @Test
+    void writesAConfirmedRefundAsTheEventThatMoneyService040Reads() throws Exception {
+        String written = serializer.serialize(new RollbackFirmBankingFinishedEvent("b", "1", "a"), String.class).getData();
+
+        assertThat(JSON.readTree(written)).isEqualTo(JSON.readTree(ROLLBACK_FINISHED_OF_0_4_0));
     }
 
     @ParameterizedTest

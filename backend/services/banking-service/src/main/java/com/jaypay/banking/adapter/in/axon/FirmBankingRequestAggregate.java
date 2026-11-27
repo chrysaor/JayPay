@@ -7,7 +7,9 @@ import com.jaypay.banking.domain.TransferStatus;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRefusedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.RollbackFirmBankingUnconfirmedEvent;
 import com.jaypay.common.flow.FlowEventPublisher;
 import com.jaypay.common.flow.FlowOutcome;
 import com.jaypay.common.flow.FlowStep;
@@ -63,8 +65,7 @@ public class FirmBankingRequestAggregate {
         } else {
             log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
         }
-        apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id,
-                finishedRefundStatus(refundStatus)));
+        apply(rollbackAnswer(command, refundStatus));
         flowEvents.publish(command.getRechargeRequestId(), FlowStep.CHARGE_ROLLED_BACK, rollbackOutcome(refundStatus), rollbackReason(refundStatus),
                 command.getMembershipId(), command.getMoneyAmount());
     }
@@ -115,11 +116,11 @@ public class FirmBankingRequestAggregate {
         };
     }
 
-    private static int finishedRefundStatus(TransferStatus refund) {
+    private Object rollbackAnswer(RollbackFirmBankingRequestCommand command, TransferStatus refund) {
         return switch (refund) {
-            case SUCCEEDED, CANCELLED -> RollbackFirmBankingFinishedEvent.CONFIRMED;
-            case PENDING -> RollbackFirmBankingFinishedEvent.UNCONFIRMED;
-            case FAILED -> RollbackFirmBankingFinishedEvent.REFUSED;
+            case SUCCEEDED, CANCELLED -> new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id);
+            case PENDING -> new RollbackFirmBankingUnconfirmedEvent(command.getRollbackFirmbankingId(), command.getMembershipId());
+            case FAILED -> new RollbackFirmBankingRefusedEvent(command.getRollbackFirmbankingId(), command.getMembershipId());
         };
     }
 

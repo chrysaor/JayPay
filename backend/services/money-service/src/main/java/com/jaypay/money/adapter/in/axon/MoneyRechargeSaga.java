@@ -7,7 +7,9 @@ import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRefusedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.RollbackFirmBankingUnconfirmedEvent;
 import com.jaypay.common.event.WalletRechargedEvent;
 import com.jaypay.money.adapter.axon.event.RechargeSweptEvent;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
@@ -198,20 +200,22 @@ public class MoneyRechargeSaga {
 
     @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
     public void handle(RollbackFirmBankingFinishedEvent event) {
-        switch (event.getRefundStatus()) {
-            case RollbackFirmBankingFinishedEvent.CONFIRMED -> {
-                cancelRollbackDeadline();
-                log.info("The charge of recharge {} is rolled back", rechargingRequestId);
-                SagaLifecycle.end();
-            }
-            case RollbackFirmBankingFinishedEvent.REFUSED -> {
-                cancelRollbackDeadline();
-                log.error("The bank refused the refund of recharge {}, so the recharge is left with an unconfirmed rollback", rechargingRequestId);
-                changeMoneyUseCase.leaveRollbackUnconfirmed(new RequestId(rechargingRequestId));
-                SagaLifecycle.end();
-            }
-            default -> log.warn("The bank has not confirmed the refund of recharge {}, so the rollback deadline sends it again", rechargingRequestId);
-        }
+        cancelRollbackDeadline();
+        log.info("The charge of recharge {} is rolled back", rechargingRequestId);
+        SagaLifecycle.end();
+    }
+
+    @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
+    public void handle(RollbackFirmBankingRefusedEvent event) {
+        cancelRollbackDeadline();
+        log.error("The bank refused the refund of recharge {}, so the recharge is left with an unconfirmed rollback", rechargingRequestId);
+        changeMoneyUseCase.leaveRollbackUnconfirmed(new RequestId(rechargingRequestId));
+        SagaLifecycle.end();
+    }
+
+    @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
+    public void handle(RollbackFirmBankingUnconfirmedEvent event) {
+        log.warn("The bank has not confirmed the refund of recharge {}, so the rollback deadline sends it again", rechargingRequestId);
     }
 
     @DeadlineHandler(deadlineName = ROLLBACK_DEADLINE)
