@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,6 +54,7 @@ class RemittanceInvariantsTest {
     private static final Set<String> CREDIT_REFUSED = ConcurrentHashMap.newKeySet();
     private static final Map<String, Long> BALANCES = new ConcurrentHashMap<>();
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
+    private static final Map<String, JsonNode> SUCCEEDED_DECREASES = new ConcurrentHashMap<>();
     private static final Map<String, AtomicInteger> UNANSWERED = new ConcurrentHashMap<>();
     private static final Map<String, AtomicInteger> FAILING = new ConcurrentHashMap<>();
     private static final List<String> MONEY_CALLS = new CopyOnWriteArrayList<>();
@@ -383,6 +385,44 @@ class RemittanceInvariantsTest {
     }
 
     @Test
+    void aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderBecomesInvalid() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        unanswered("-decrease", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        INVALID.add(sender);
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void aDebitWhoseAnswerWasLostIsRefundedOnTheRepeatAfterTheReceiverBecomesInvalid(boolean senderToo) throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        unanswered("-decrease", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        INVALID.add(receiver);
+        if (senderToo) {
+            INVALID.add(sender);
+        }
+        JsonNode finished = remit(body);
+
+        assertThat(finished.get("remittanceStatus").asText()).isEqualTo("REFUNDED");
+        assertThat(remit(body)).isEqualTo(finished);
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+        assertThat(BALANCES.get(receiver)).isZero();
+    }
+
+    @Test
     void aCreditMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain() throws Exception {
         String sender = memberWithBalance(10000);
         String receiver = memberWithBalance(0);
@@ -441,6 +481,25 @@ class RemittanceInvariantsTest {
         assertThat(remit(body)).isEqualTo(finished);
         assertThat(BALANCES.get(sender)).isEqualTo(10000);
         assertThat(BALANCES.get(receiver)).isZero();
+    }
+
+    @Test
+    void aRefundMoneyServiceFailedWith5xxIsStillRefundedAfterTheSenderBecomesInvalid() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        CREDIT_REFUSED.add(receiver);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        failing("-refund", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        INVALID.add(sender);
+        HttpResponse<String> repeated = post(body);
+        INVALID.remove(sender);
+        HttpResponse<String> afterValidAgain = post(body);
+
+        assertThat(repeated.statusCode()).as(repeated.body()).isEqualTo(200);
+        assertThat(afterValidAgain.statusCode()).as(afterValidAgain.body()).isEqualTo(200);
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
     }
 
     @Test
@@ -812,6 +871,7 @@ class RemittanceInvariantsTest {
             });
             server.createContext("/money/decrease", exchange -> changeMoney(exchange, -1));
             server.createContext("/money/increase", exchange -> changeMoney(exchange, 1));
+            server.createContext("/money/refund", RemittanceInvariantsTest::refundMoney);
             server.createContext("/banking/info", exchange -> {
                 JsonNode account = JSON.readTree(exchange.getRequestBody().readAllBytes());
                 String number = account.get("bankAccountNumber").asText();
@@ -849,14 +909,33 @@ class RemittanceInvariantsTest {
 
     private static void changeMoney(HttpExchange exchange, int sign) throws IOException {
         JsonNode change = JSON.readTree(exchange.getRequestBody().readAllBytes());
-        String requestId = change.get("requestId").asText();
+        answer(exchange, change.get("requestId").asText(), id -> apply(id, change.get("targetMembershipId").asText(),
+                sign, change.get("amount").asLong()));
+    }
+
+    private static void refundMoney(HttpExchange exchange) throws IOException {
+        JsonNode refund = JSON.readTree(exchange.getRequestBody().readAllBytes());
+        String requestId = refund.get("requestId").asText();
+        JsonNode decrease = SUCCEEDED_DECREASES.get(refund.get("refundedRequestId").asText());
+        if (decrease == null) {
+            MONEY_CALLS.add(requestId);
+            respond(exchange, 409, "{\"error\":\"NOT_REFUNDABLE\",\"message\":\"no decrease\"}");
+            return;
+        }
+        long amount = decrease.get("amount").asLong();
+        answer(exchange, requestId, id -> {
+            BALANCES.merge(decrease.get("member").asText(), amount, Long::sum);
+            return "{\"moneyChangingRequestId\":\"" + id + "\",\"moneyChangingType\":1,\"moneyChangingResultStatus\":1,\"amount\":" + amount + "}";
+        });
+    }
+
+    private static void answer(HttpExchange exchange, String requestId, Function<String, String> firstResult) throws IOException {
         MONEY_CALLS.add(requestId);
         if (FAILING.entrySet().stream().anyMatch(rule -> requestId.endsWith(rule.getKey()) && rule.getValue().getAndDecrement() > 0)) {
             respond(exchange, 500, "{\"status\":500}");
             return;
         }
-        String result = MONEY_RESULTS.computeIfAbsent(requestId, id -> apply(id, change.get("targetMembershipId").asText(),
-                sign, change.get("amount").asLong()));
+        String result = MONEY_RESULTS.computeIfAbsent(requestId, firstResult);
         boolean dropAnswer = UNANSWERED.entrySet().stream()
                 .anyMatch(rule -> requestId.endsWith(rule.getKey()) && rule.getValue().getAndDecrement() > 0);
         respond(exchange, dropAnswer ? 503 : 200, dropAnswer ? "" : result);
@@ -864,6 +943,10 @@ class RemittanceInvariantsTest {
 
     private static String apply(String requestId, String member, int sign, long amount) {
         boolean[] applied = {false};
+        if (INVALID.contains(member)) {
+            return "{\"moneyChangingRequestId\":\"" + requestId + "\",\"moneyChangingType\":" + (sign > 0 ? 1 : 2)
+                    + ",\"moneyChangingResultStatus\":2,\"amount\":" + amount + "}";
+        }
         if (sign > 0 && !CREDIT_REFUSED.contains(member)) {
             BALANCES.merge(member, amount, Long::sum);
             applied[0] = true;
@@ -876,6 +959,9 @@ class RemittanceInvariantsTest {
                 applied[0] = true;
                 return balance - amount;
             });
+            if (applied[0]) {
+                SUCCEEDED_DECREASES.put(requestId, JSON.createObjectNode().put("member", member).put("amount", amount));
+            }
         }
         return "{\"moneyChangingRequestId\":\"" + requestId + "\",\"moneyChangingType\":" + (sign > 0 ? 1 : 2)
                 + ",\"moneyChangingResultStatus\":" + (applied[0] ? 1 : 2) + ",\"amount\":" + amount + "}";

@@ -131,7 +131,7 @@ money-service calls membership-service for the member check of a synchronous top
 
 ### What it does
 
-Every change of a balance takes a JSON body with `requestId`, `targetMembershipId` and `amount`.
+Every change of a balance takes a JSON body with `requestId`, `targetMembershipId` and `amount`, except a refund, which takes `requestId` and `refundedRequestId`.
 
 - `amount` is a whole number from 1 to `money.amount.max`, 10000000 unless `MONEY_AMOUNT_MAX` sets another limit. Any other amount answers 400 with `{"error":"INVALID_AMOUNT"}` and writes nothing.
 - `requestId` is 1 to 64 letters, digits, `-` or `_`, chosen by the caller. The first request with an id records a `wallet_change` row under it. A repeated request answers with the result of the first and changes nothing. A request that reuses an id for another member, direction or amount answers 409 with `{"error":"REQUEST_ID_REUSED"}`. A missing or malformed id answers 400 with `{"error":"INVALID_REQUEST_ID"}`.
@@ -140,6 +140,7 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 
 - `POST /money/increase` checks the member and adds the amount to the balance. A member without a wallet gets one. A member that does not exist or is not valid answers with the status `2`.
 - `POST /money/decrease` checks the member and takes the amount from the balance. A balance lower than the amount answers with the status `2` and stays as it was.
+- `POST /money/refund` gives back a decrease that succeeded, whatever the state of the member is now. `refundedRequestId` is the request id of that decrease, and money-service adds its amount to the wallet of its member without asking membership-service, as the increase `1`. A repeated `requestId` answers with the first result. A refund that names no decrease that succeeded, or a decrease that another `requestId` already refunded, answers 409 with `{"error":"NOT_REFUNDABLE"}` and writes nothing. The `wallet_change` row of a refund keeps the refunded id in the unique column `refunded_request_id`, so a decrease is refunded once. A refund that 0.4.0 refused as an increase for a member that was not valid, and stored under the same `requestId`, is applied when it comes back as a refund.
 - When membership-service does not answer, or answers with neither a member nor 404, `POST /money/increase` and `POST /money/decrease` answer 503 with `{"error":"MEMBERSHIP_NOT_CONFIRMED"}` and record nothing under the request id. Sending the same request again checks the member again and applies the change once.
 - `POST /money/increase-eda` records the request as running and sends `RechargingMoneyRequestCreateCommand` with the request id as `rechargingRequestId`, and answers at once with the wallet change. A repeated request id sends nothing and answers with the current status. A member without a registered bank account, which banking-service answers with 404, fails at once with the status `2`. When banking-service does not answer, or answers with neither an account nor 404, the request answers 503 with `{"error":"REGISTERED_ACCOUNT_NOT_CONFIRMED"}`, records nothing under the request id and starts no saga. Sending the same request again looks the account up again and tops up once.
 - The saga first sends `CheckMembershipCommand` to membership-service, then checks the bank account, requests the firm banking, and adds the amount to the balance once, only when the bank confirmed the charge. After it added the amount, it publishes `WalletRechargedEvent` with the `rechargingRequestId`, the member and the amount, which money-query-service counts. A member that does not exist or is not valid, an account that fails the check, or a charge the bank refuses ends the wallet change as `2` and moves no money. When membership-service does not answer, or the command cannot reach it, the deadline ends the saga. A saga that is not finished within `money.recharge.deadline`, 60 seconds, ends the wallet change as `2` and sends `RollbackFirmBankingRequestCommand`, which refunds the charge if it landed. When the wallet change is no longer running as the charge lands, the saga rolls the charge back too. The saga sends the rollback again when banking-service has not confirmed it after `money.recharge.rollback.retry-after`, 30 seconds, and doubles the wait after each send. The saga ends only on a `RollbackFirmBankingFinishedEvent`, which banking-service sends when the bank confirmed the refund. When the refund is not confirmed yet, the saga waits for its next send. After `money.recharge.rollback.attempts`, five sends, it logs an error, stores the wallet change as `ROLLBACK_UNCONFIRMED`, answered as `3`, and ends. When the bank refused the refund, the saga does the same at once, because sending the rollback again gets the same refusal. banking-service refunds a charge once however many rollbacks arrive.
@@ -152,6 +153,7 @@ Every change of a balance takes a JSON body with `requestId`, `targetMembershipI
 - `POST /money/increase` tops a wallet up synchronously.
 - `POST /money/increase-eda` tops a wallet up through the Axon saga and returns the wallet change.
 - `POST /money/decrease` lowers a wallet synchronously.
+- `POST /money/refund` gives a decrease back to its member.
 - `POST /money/create-member-money` creates a wallet.
 - `POST /money/member-money` returns the wallets of the given members.
 
@@ -180,7 +182,7 @@ Sends money from one member's wallet to another member or to a bank account.
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `SERVICE_BANKING_URL`, `SERVICE_MONEY_URL`, `REMITTANCE_AMOUNT_MAX`. The secret is `SPRING_DATASOURCE_PASSWORD`. |
 
-remittance-service calls `GET /memberships/{membershipId}` on membership-service to check the sender and the receiving member. It calls `POST /money/decrease` and `POST /money/increase` on money-service to take the amount from the sender, to give it to the receiving member, and to refund it. It calls `POST /banking/info` and `POST /banking/firmbanking/request` on banking-service to check the target account and to send the transfer.
+remittance-service calls `GET /memberships/{membershipId}` on membership-service to check the sender and the receiving member. It calls `POST /money/decrease`, `POST /money/increase` and `POST /money/refund` on money-service to take the amount from the sender, to give it to the receiving member, and to refund it. It calls `POST /banking/info` and `POST /banking/firmbanking/request` on banking-service to check the target account and to send the transfer.
 
 ### What it does
 
@@ -197,7 +199,7 @@ Every move of money goes through money-service with a request id made from the r
 | --- | --- | --- |
 | Take the amount from the sender | `POST /money/decrease` | `remittance-<remittanceId>-decrease` |
 | Give it to the receiving member | `POST /money/increase` | `remittance-<remittanceId>-increase` |
-| Give it back to the sender | `POST /money/increase` | `remittance-<remittanceId>-refund` |
+| Give it back to the sender | `POST /money/refund` with `refundedRequestId` `remittance-<remittanceId>-decrease` | `remittance-<remittanceId>-refund` |
 
 The statuses move only this way, and each move is one `UPDATE ... WHERE remittance_id = ? AND remittance_status = ?`, so of two concurrent copies only one makes it:
 
@@ -212,7 +214,7 @@ The statuses move only this way, and each move is one `UPDATE ... WHERE remittan
 | `TRANSFERRING` | `REFUNDING` | the bank reported the transfer as failed |
 | `REFUNDING` | `REFUNDED` | money-service gave the amount back to the sender |
 
-`COMPLETED`, `FAILED` and `REFUNDED` are final and answer 200 with the remittance. When money-service gives no answer, the request answers 503 with `{"error":"REMITTANCE_NOT_CONFIRMED"}` and the remittance stays `REQUESTED`, `DEBITED` or `REFUNDING`. Nothing retries it in the background. Sending the same request again repeats the unanswered call with the same request id and finishes the remittance, so a remittance whose credit failed ends `REFUNDED` with the sender's balance as before.
+`COMPLETED`, `FAILED` and `REFUNDED` are final and answer 200 with the remittance. When money-service gives no answer, the request answers 503 with `{"error":"REMITTANCE_NOT_CONFIRMED"}` and the remittance stays `REQUESTED`, `DEBITED` or `REFUNDING`. Nothing retries it in the background. Sending the same request again repeats the unanswered call with the same request id and finishes the remittance, so a remittance whose credit failed ends `REFUNDED` with the sender's balance as before. The members are checked only on the first request, and money-service refunds whatever the state of the sender, so a remittance that took the sender's money ends `COMPLETED` or `REFUNDED` even after the sender or the receiver stopped being valid, see [0029](decisions/0029-refund-passes-whatever-the-member-state.md).
 
 A bank remittance sends its transfer with the request id `remittance-<remittanceId>-transfer`, after the sender was debited, so the company account never pays out money the sender still holds. banking-service sends a transfer once per request id. When the bank gives no answer, or the service stops between the status change and the call, the remittance stays `TRANSFERRING` and the request answers 503 with `REMITTANCE_NOT_CONFIRMED`. Sending the same request again asks banking-service again under the same id, so the transfer lands once, and a refused transfer ends `REFUNDED`.
 
@@ -230,7 +232,7 @@ Every answer with a remittance carries `remittanceId`, `requestId`, `fromMembers
 ### Known limitations
 
 - The sender comes from the request body, not from a token, so a caller can send money from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)). `GET /remittance/{membershipId}` answers for any member.
-- A remittance left `REQUESTED`, `DEBITED`, `TRANSFERRING` or `REFUNDING` after money-service did not answer stays that way until the same request is sent again. A refund that money-service refuses, because the sender is no longer a valid member, keeps the remittance `REFUNDING`.
+- A remittance left `REQUESTED`, `DEBITED`, `TRANSFERRING` or `REFUNDING` after money-service did not answer stays that way until the same request is sent again.
 - remittance-service trusts any caller and calls money-service and banking-service without service-to-service authentication ([#100](https://github.com/chrysaor/JayPay/issues/100)).
 - Remittances from before the `remittance` table stay in the old `request_remittance` table, which remittance-service no longer reads.
 

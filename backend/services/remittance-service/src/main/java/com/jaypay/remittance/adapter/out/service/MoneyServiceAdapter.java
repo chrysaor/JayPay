@@ -24,19 +24,24 @@ public class MoneyServiceAdapter implements WalletPort {
 
     @Override
     public Outcome decrease(String requestId, String membershipId, long amount) {
-        return change("decrease", requestId, membershipId, amount);
+        return change("decrease", requestId, new MoneyChangingRequest(requestId, membershipId, amount));
     }
 
     @Override
     public Outcome increase(String requestId, String membershipId, long amount) {
-        return change("increase", requestId, membershipId, amount);
+        return change("increase", requestId, new MoneyChangingRequest(requestId, membershipId, amount));
     }
 
-    private Outcome change(String direction, String requestId, String membershipId, long amount) {
+    @Override
+    public Outcome refund(String requestId, String refundedRequestId) {
+        return change("refund", requestId, new RefundRequest(requestId, refundedRequestId));
+    }
+
+    private Outcome change(String direction, String requestId, Object request) {
         try {
             MoneyChangingResult result = commonHttpClient.post(
                     String.join("/", moneyServiceUrl, "money", direction),
-                    new MoneyChangingRequest(requestId, membershipId, amount),
+                    request,
                     MoneyChangingResult.class).body();
             if (result != null && requestId.equals(result.moneyChangingRequestId())) {
                 if (result.moneyChangingResultStatus() == SUCCEEDED) {
@@ -54,6 +59,9 @@ public class MoneyServiceAdapter implements WalletPort {
     }
 
     record MoneyChangingRequest(String requestId, String targetMembershipId, long amount) {
+    }
+
+    record RefundRequest(String requestId, String refundedRequestId) {
     }
 
     record MoneyChangingResult(String moneyChangingRequestId, int moneyChangingResultStatus) {

@@ -1,6 +1,7 @@
 package com.jaypay.money.adapter.in.web;
 
 import com.jaypay.money.application.port.in.ChangeMoneyCommand;
+import com.jaypay.money.application.port.in.RefundMoneyCommand;
 import com.jaypay.money.domain.MoneyAmount;
 import com.jaypay.money.domain.RequestId;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +20,10 @@ class MoneyChangingCommands {
 
     ChangeMoneyCommand parse(MoneyChangingRequestBody body) {
         return new ChangeMoneyCommand(requestId(body.requestId()), membershipId(body.targetMembershipId()), amount(body.amount()));
+    }
+
+    RefundMoneyCommand parse(RefundRequestBody body) {
+        return new RefundMoneyCommand(requestId(body.requestId()), requestId(body.refundedRequestId()));
     }
 
     private static RequestId requestId(String value) {
