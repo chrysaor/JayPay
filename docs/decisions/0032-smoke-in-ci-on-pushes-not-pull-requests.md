@@ -20,7 +20,7 @@ The issue named one option: a CI job that runs `make images`, `make up`, `make s
 
 `.github/workflows/smoke.yml` runs the four targets on every push to `develop` and on `workflow_dispatch`. `release.yml` calls it as a reusable workflow on every push to `release/**` and every `v*` tag, and its `release` job needs it, so no image is pushed, release candidate or final, when the smoke fails. Pull requests do not run it.
 
-The hosted `ubuntu-latest` runner has 15983 MiB. With the whole stack up it used 9372 MiB and had 6610 MiB available, with no swap used, so nothing was trimmed. The job writes `free -m` and `docker stats` before the stack, with the stack up and after the smoke to its summary. A whole job took about 7.5 minutes, of which `make up` took about 3.5 and `make smoke` under 1.5.
+The hosted `ubuntu-latest` runner has 15983 MiB. In four passing runs, the stack used 9307 to 9372 MiB once up and 9751 to 9863 MiB after the smoke, left at least 6119 MiB available and used no swap, so nothing was trimmed. The job writes `free -m` and `docker stats` before the stack, with the stack up and after the smoke to its summary. A whole job took 6 to 7.6 minutes, of which `make up` took 2.8 to 3.8 and `make smoke` 0.9 to 1.3.
 
 When a step fails, `scripts/stack-logs.py` saves the logs of every container and `docker compose ps`, with every value of `infra/docker/.env` replaced by `<redacted NAME>`, and the job uploads them as the `stack-logs` artifact. Vault in dev mode prints its root token and its unseal key at start, so the logs cannot go out unredacted. The unseal key is not in `.env`, so the script also blanks whatever follows `Unseal Key:` and `Root Token:`. The job also masks those values in its own console log.
 
