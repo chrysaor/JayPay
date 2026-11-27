@@ -65,6 +65,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0029](0029-refund-passes-whatever-the-member-state.md) | money-service gives back money it took, whatever the state of the member | 0.5.0 | accepted | [#184](https://github.com/chrysaor/JayPay/issues/184), [retrospective](../retrospectives/2026-11-27-refund-refused-for-an-invalid-sender.md), [changelog 0.5.0](../../CHANGELOG.md#050---2026-11-27) |
 | [0030](0030-releases-do-not-depend-on-the-order-of-the-services.md) | A release does not depend on the order in which the services are upgraded | 0.5.0 | accepted | [#199](https://github.com/chrysaor/JayPay/issues/199), [retrospective](../retrospectives/2026-11-27-upgrade-depended-on-the-order-of-the-services.md), [changelog 0.5.0](../../CHANGELOG.md#050---2026-11-27) |
 | [0031](0031-unfinished-remittances-finished-by-a-sweep.md) | A sweep finishes remittances that were not confirmed | 0.5.0 | accepted | [#201](https://github.com/chrysaor/JayPay/issues/201), [changelog 0.5.0](../../CHANGELOG.md#050---2026-11-27) |
+| [0032](0032-smoke-in-ci-on-pushes-not-pull-requests.md) | CI runs the smoke against the Compose stack on pushes to `develop` and releases, not on pull requests | 0.6.0 (unreleased) | accepted | [#143](https://github.com/chrysaor/JayPay/issues/143) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 
