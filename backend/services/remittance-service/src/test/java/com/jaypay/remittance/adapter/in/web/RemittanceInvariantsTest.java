@@ -59,6 +59,7 @@ class RemittanceInvariantsTest {
     private static final AtomicLong MEMBERS = new AtomicLong(9000);
     private static final Set<String> INVALID = ConcurrentHashMap.newKeySet();
     private static final Set<String> UNKNOWN = ConcurrentHashMap.newKeySet();
+    private static final Set<String> MEMBERSHIP_FAILING = ConcurrentHashMap.newKeySet();
     private static final Set<String> CREDIT_REFUSED = ConcurrentHashMap.newKeySet();
     private static final Set<String> MONEY_SILENT = ConcurrentHashMap.newKeySet();
     private static final Set<String> REFUND_UNKNOWN = ConcurrentHashMap.newKeySet();
@@ -170,6 +171,30 @@ class RemittanceInvariantsTest {
         assertThat(remittance.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
         assertThat(BALANCES.get(sender)).isZero();
         assertThat(BALANCES.get(receiver)).isEqualTo(10_000_000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sender", "receiver"})
+    void aRemittanceMembershipServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce(String unconfirmed) throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+        String failing = unconfirmed.equals("sender") ? sender : receiver;
+        MEMBERSHIP_FAILING.add(failing);
+
+        HttpResponse<String> duringTheOutage = post(toMember(requestId, sender, receiver, "4000"));
+
+        assertThat(duringTheOutage.statusCode()).as(duringTheOutage.body()).isEqualTo(503);
+        assertThat(error(duringTheOutage)).isEqualTo("MEMBERSHIP_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+
+        MEMBERSHIP_FAILING.remove(failing);
+        remit(toMember(requestId, sender, receiver, "4000"));
+
+        assertThat(BALANCES.get(sender)).isEqualTo(6000);
+        assertThat(BALANCES.get(receiver)).isEqualTo(4000);
+        assertThat(flowSteps(requestId, 3)).extracting(RemittanceInvariantsTest::stepAndOutcome)
+                .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "RECEIVER_CREDITED SUCCEEDED");
     }
 
     @Test
@@ -1092,6 +1117,10 @@ class RemittanceInvariantsTest {
                 String member = exchange.getRequestURI().getPath().substring("/memberships/".length());
                 if (UNKNOWN.contains(member)) {
                     respond(exchange, 404, "");
+                    return;
+                }
+                if (MEMBERSHIP_FAILING.contains(member)) {
+                    respond(exchange, 503, "");
                     return;
                 }
                 respond(exchange, 200, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","

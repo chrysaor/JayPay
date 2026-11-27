@@ -27,7 +27,7 @@ The cases:
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
-| Register a bank account | RegisterBankAccountControllerTest | RegisterBankAccountControllerTest (member not confirmed), RegisterBankAccountServiceTest (account not valid) | RegisterBankAccountControllerTest (another account) | - | none ([#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Register a bank account | RegisterBankAccountControllerTest | RegisterBankAccountControllerTest (member not confirmed), RegisterBankAccountServiceTest (account not valid) | RegisterBankAccountControllerTest (another account) | - | RegisterBankAccountControllerTest, MembershipServiceAdapterTest |
 | Register a bank account by event | RegisterBankAccountControllerTest | RegisterBankAccountServiceTest (Axon refuses) | none | - | none |
 | Find the registered account | RegisterBankAccountControllerTest, BankingPersistenceTest | RegisterBankAccountControllerTest | - | - | - |
 | Bank account information | RegisterBankAccountControllerTest | - | - | - | - |
@@ -38,7 +38,7 @@ The cases:
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
 | Open a wallet | WalletInvariantsTest, RechargeSagaTest | MoneyPersistenceTest (second wallet) | WalletInvariantsTest | - | - |
-| Increase | IncreaseMoneyTest | IncreaseMoneyTest (member that is not valid) | WalletInvariantsTest | - | none ([#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Increase | IncreaseMoneyTest | IncreaseMoneyTest (member that is not valid) | WalletInvariantsTest | - | WalletInvariantsTest (membership-service) |
 | Decrease | WalletInvariantsTest | WalletInvariantsTest | WalletInvariantsTest | - | - |
 | Refund | WalletInvariantsTest | WalletInvariantsTest | WalletInvariantsTest | - | - |
 | Recharge through the saga | RechargeSagaTest, RechargeSagaFirstStartTest | RechargeSagaTest | RechargeSagaTest | RechargeSagaTest | RechargeSagaTest |
@@ -48,7 +48,7 @@ The cases:
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
-| Request a payment | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest (money-service), none (membership-service, [#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Request a payment | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest (money-service, membership-service) |
 | Resume unconfirmed payments | PaymentInvariantsTest, SchemaUpgradeTest | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest | PaymentInvariantsTest |
 | List paid payments and finish a settlement | PaymentInvariantsTest, PaymentPersistenceTest | PaymentPersistenceTest | PaymentPersistenceTest | - | - |
 
@@ -56,7 +56,7 @@ The cases:
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
-| Request a remittance | RemittanceInvariantsTest | RemittanceInvariantsTest, RemittancePersistenceTest | RemittanceInvariantsTest | RemittanceInvariantsTest | RemittanceInvariantsTest (money-service, banking-service), none (membership-service, [#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Request a remittance | RemittanceInvariantsTest | RemittanceInvariantsTest, RemittancePersistenceTest | RemittanceInvariantsTest | RemittanceInvariantsTest | RemittanceInvariantsTest (money-service, banking-service, membership-service) |
 | Resume unfinished remittances | RemittanceInvariantsTest, SchemaUpgradeTest | - | RemittanceInvariantsTest | RemittanceInvariantsTest | RemittanceInvariantsTest |
 | Remittances of a member | RemittanceInvariantsTest | - | - | - | - |
 
@@ -70,9 +70,9 @@ The cases:
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
-| Add an increase to the region total | MoneySumByAddressServicesTest, RegionTotalTest | RegionTotalTest (rolled back recharge) | RegionTotalTest, DynamoDBAdapterTest | - | DynamoDBAdapterTest (table), none (membership-service, [#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Add an increase to the region total | MoneySumByAddressServicesTest, RegionTotalTest | RegionTotalTest (rolled back recharge) | RegionTotalTest, DynamoDBAdapterTest | - | DynamoDBAdapterTest (table), none (membership-service, [#228](https://github.com/chrysaor/JayPay/issues/228)) |
 | Read the region total | MoneySumByAddressServicesTest | - | - | - | DynamoDBAdapterTest |
-| Sum the balances at an address | GetMoneySumByAggregationServiceTest | - | - | - | none ([#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Sum the balances at an address | GetMoneySumByAggregationServiceTest, GetMoneySumControllerTest | - | - | - | GetMoneySumControllerTest |
 
 ## event-flow-service, logging-consumer and auth-service
 
@@ -90,7 +90,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 
 | Class | Not reached | What it means |
 | --- | --- | --- |
-| `GetMoneySumByAggregationService`, `GetMoneySumController` | every line | Closed here by GetMoneySumByAggregationServiceTest. The controller is still reached only by the smoke test |
+| `GetMoneySumByAggregationService`, `GetMoneySumController` | every line | Closed here by GetMoneySumByAggregationServiceTest. The controller is covered by GetMoneySumControllerTest |
 | `AuthMembershipService` | 9 of 12 branches | Closed here by AuthMembershipControllerTest, except the answers [#224](https://github.com/chrysaor/JayPay/issues/224) has to decide |
 | `RegisterBankAccountService`, `BankAccountAdapter` | 3 of 6 and 4 of 4 branches | The refusals of a registration are closed by [#225](https://github.com/chrysaor/JayPay/issues/225). The branches of `BankAccountAdapter` are the fake bank's refusal of a transfer, which `BankTransferTest` replaces with its own bank |
 | `FlowRetentionScheduler`, `SettlementBatchScheduler` | every line, 5 each | Each only calls its use case on a schedule. The use cases are tested, the schedule is not |
