@@ -177,6 +177,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make images` | Builds every service image and both frontend images |
 | `make up`, `make down` | Starts the local stack and waits until it is healthy, or stops it |
 | `make smoke` | Drives the running stack end to end |
+| `make e2e` | Drives the customer site and the admin console of the running stack in a browser: sign up, link a bank account, add money, pay, sign in, and as staff sign in through Keycloak and follow the payment in the event flow |
 | `make k8s-up`, `make k8s-smoke`, `make k8s-down` | Runs the same stack on a local minikube cluster, drives it through its ingress, or deletes the cluster, see [deploy/README.md](deploy/README.md#local-cluster) |
 | `make scan`, `make scan-images` | Runs the Trivy and gitleaks scans, or the Trivy image scan |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
