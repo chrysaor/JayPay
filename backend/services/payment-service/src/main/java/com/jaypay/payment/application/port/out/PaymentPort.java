@@ -5,6 +5,7 @@ import com.jaypay.payment.domain.Payment;
 import com.jaypay.payment.domain.PaymentStatus;
 import com.jaypay.payment.domain.RequestId;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,4 +22,9 @@ public interface PaymentPort {
     Optional<Payment> find(long paymentId);
 
     List<Payment> findPaid();
+
+    List<SweptPayment> sweep(Duration retryAfter, int attempts);
+
+    record SweptPayment(Payment payment, int attempt) {
+    }
 }
