@@ -9,7 +9,9 @@ import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRefusedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.RollbackFirmBankingUnconfirmedEvent;
 import com.jaypay.common.event.WalletRechargedEvent;
 import com.jaypay.common.kafka.KafkaTestBroker;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
@@ -22,9 +24,13 @@ import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.deadline.DeadlineManager;
 import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.eventhandling.gateway.EventGateway;
+import org.axonframework.serialization.Serializer;
+import org.axonframework.serialization.SimpleSerializedObject;
+import org.axonframework.serialization.SimpleSerializedType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -102,6 +108,14 @@ class RechargeSagaTest {
     @Autowired
     private RechargeSweeper sweeper;
 
+    @Autowired
+    @Qualifier("eventSerializer")
+    private Serializer eventSerializer;
+
+    @Autowired
+    @Qualifier("messageSerializer")
+    private Serializer messageSerializer;
+
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
         String url = "http://127.0.0.1:" + OTHER_SERVICES.getAddress().getPort();
@@ -113,6 +127,19 @@ class RechargeSagaTest {
     @AfterAll
     static void stopOtherServices() {
         OTHER_SERVICES.stop(0);
+    }
+
+    @Test
+    void readsAnEventAndACommandWithAFieldThisReleaseDoesNotKnow() {
+        Object event = eventSerializer.deserialize(new SimpleSerializedObject<>(
+                "{\"checkMembershipId\":\"m\",\"rechargingRequestId\":\"r\",\"membershipId\":\"1\",\"valid\":true,\"addedLater\":7}",
+                String.class, new SimpleSerializedType(CheckedMembershipEvent.class.getName(), null)));
+        Object command = messageSerializer.deserialize(new SimpleSerializedObject<>(
+                "{\"checkMembershipId\":\"m\",\"rechargingRequestId\":\"r\",\"membershipId\":\"1\",\"addedLater\":7}",
+                String.class, new SimpleSerializedType(CheckMembershipCommand.class.getName(), null)));
+
+        assertThat(event).isEqualTo(new CheckedMembershipEvent("m", "r", "1", true));
+        assertThat(command).isEqualTo(new CheckMembershipCommand("m", "r", "1"));
     }
 
     @Test
@@ -999,10 +1026,10 @@ class RechargeSagaTest {
                 return;
             }
             String account = command.getBankAccountNumber();
-            int refundStatus = refusedRefunds.contains(account) ? RollbackFirmBankingFinishedEvent.REFUSED
-                    : takeOne(unconfirmedRefunds, account) ? RollbackFirmBankingFinishedEvent.UNCONFIRMED : RollbackFirmBankingFinishedEvent.CONFIRMED;
-            eventGateway.publish(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(),
-                    UUID.randomUUID().toString(), refundStatus));
+            String rollbackId = command.getRollbackFirmbankingId();
+            eventGateway.publish(refusedRefunds.contains(account) ? new RollbackFirmBankingRefusedEvent(rollbackId, command.getMembershipId())
+                    : takeOne(unconfirmedRefunds, account) ? new RollbackFirmBankingUnconfirmedEvent(rollbackId, command.getMembershipId())
+                    : new RollbackFirmBankingFinishedEvent(rollbackId, command.getMembershipId(), UUID.randomUUID().toString()));
         }
 
         private static boolean takeOne(Map<String, Integer> remaining, String account) {

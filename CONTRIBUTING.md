@@ -51,6 +51,10 @@ Each backend log line takes the level of what it tells the operator:
 
 Every service runs at the Spring Boot default, `INFO`. [docs/services.md](docs/services.md#log-levels) says how to raise the level of one service.
 
+## Messages between releases
+
+A release must work in any order of the services, because a service of the release before keeps running next to it during the rollout. Every service ignores a field it does not know in an Axon event or command, so a field may be added. A reader of the release before still has to do the right thing without it, and a new meaning that it must not miss, such as a new outcome, goes in a new event type, which the release before skips. Never remove a field that a reader of the release before needs, nor rename a message class.
+
 ## Changelog
 
 `CHANGELOG.md` tells a reader what each release lets them do that the one before did not. Every PR into `develop` that changes behaviour adds a line under `## [Unreleased]`, in the group that fits: `### Added`, `### Changed`, `### Fixed` or `### Security`, in that order. Write what changed for someone who uses or runs JayPay, not the PR title, and end the line with its PR or issue link, for example `([#107](https://github.com/chrysaor/JayPay/pull/107))`.

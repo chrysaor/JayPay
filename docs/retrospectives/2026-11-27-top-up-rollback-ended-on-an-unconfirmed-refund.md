@@ -22,5 +22,5 @@ While fixing [#183](https://github.com/chrysaor/JayPay/issues/183) in [#191](htt
 
 - The fake banking-service in `RechargeSagaTest` can leave a refund unconfirmed or refuse it. `aRollbackWhoseRefundTheBankHasNotConfirmedIsSentAgainUntilTheRefundIsConfirmed`, `aRollbackWhoseRefundIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed` and `aRollbackWhoseRefundTheBankRefusesLeavesTheRechargeRollbackUnconfirmedWithoutSendingItAgain` failed before the fix.
 - `BankTransferTest` reads the refund status of each rollback for a refund the bank does not answer, refuses, a charge it does not answer, and a charge it refused.
-- `StoredRechargeMessagesTest.readsARollbackFinishedBeforeTheRefundStatusExistedAsUnconfirmed` keeps an event stored before the field from reading as confirmed.
+- `StoredRechargeMessagesTest.readsARollbackFinishedBeforeTheRefundStatusExistedAsUnconfirmed` kept an event stored before the field from reading as confirmed. [#199](https://github.com/chrysaor/JayPay/issues/199) replaced the field with event types, see [the upgrade retrospective](2026-11-27-upgrade-depended-on-the-order-of-the-services.md).
 - The failure path table in [docs/architecture.md](../architecture.md#failure-paths-between-services) has a row for the bank's answer to the refund.
