@@ -17,6 +17,8 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Optional;
+
 @UseCase
 @RequiredArgsConstructor
 @Transactional
@@ -51,7 +53,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
         registeredBankAccountAggregatePort.createRegisteredBankAccountAggregate(command.membershipId(), command.bankName(), command.bankAccountNumber())
                 .whenComplete((aggregateIdentifier, throwable) -> {
                     if (throwable != null) {
-                        log.warn("{}", throwable.getMessage());
+                        log.error("The bank account of member {} was not registered", command.membershipId(), throwable);
                     } else {
                         createRegisteredBankAccount(command, aggregateIdentifier);
                     }
@@ -59,10 +61,9 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
     }
 
     @Override
-    public RegisteredBankAccount getRegisteredBankAccount(GetRegisteredBankAccountCommand command) {
-        log.info("getRegisteredBankAccount");
-        log.info("{}", command);
-        return getRegisteredBankAccountPort.getRegisteredBankAccount(command.membershipId()).orElseThrow();
+    public Optional<RegisteredBankAccount> getRegisteredBankAccount(GetRegisteredBankAccountCommand command) {
+        log.debug("Looking up the registered bank account of member {}", command.membershipId());
+        return getRegisteredBankAccountPort.getRegisteredBankAccount(command.membershipId());
     }
 
     private RegisteredBankAccount createRegisteredBankAccount(RegisterBankAccountCommand command, String aggregateIdentifier) {

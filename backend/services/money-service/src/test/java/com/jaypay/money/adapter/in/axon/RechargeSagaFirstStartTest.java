@@ -5,6 +5,7 @@ import com.jaypay.common.kafka.KafkaTestBroker;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import org.axonframework.commandhandling.CommandHandler;
 import org.axonframework.config.EventProcessingConfiguration;
+import org.axonframework.eventhandling.EventTrackerStatus;
 import org.axonframework.eventhandling.TrackingEventProcessor;
 import org.axonframework.eventhandling.gateway.EventGateway;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,9 @@ class RechargeSagaFirstStartTest {
     @Test
     void aRechargeRequestedBeforeTheSagaProcessorFirstStartsIsStillProcessed() throws Exception {
         TrackingEventProcessor processor = processors.eventProcessor(PROCESSOR, TrackingEventProcessor.class).orElseThrow();
-        assertThat(eventually(() -> !processor.processingStatus().isEmpty())).as("the processor claimed its segment").isTrue();
+        assertThat(eventually(() -> processor.processingStatus().values().stream().anyMatch(EventTrackerStatus::isCaughtUp)))
+                .as(() -> "the worker of the processor never caught up: " + progress(processor, null))
+                .isTrue();
         processor.shutDown();
         database.update("delete from token_entry where processor_name = ?", PROCESSOR);
         String requestId = UUID.randomUUID().toString();
@@ -61,8 +64,28 @@ class RechargeSagaFirstStartTest {
         processor.start();
 
         assertThat(eventually(() -> membershipChecks.contains(requestId)))
-                .as("events %s, sagas %s", count("domain_event_entry"), count("saga_entry"))
+                .as(() -> "no membership check for recharge %s within %s: %s".formatted(requestId, PATIENCE, progress(processor, requestId)))
                 .isTrue();
+    }
+
+    private String progress(TrackingEventProcessor processor, String requestId) {
+        return String.join("; ",
+                "recharge events stored at " + database.queryForList(
+                        "select global_index from domain_event_entry where payload_type = ?", Long.class,
+                        RechargingRequestCreatedEvent.class.getName()),
+                "processor running " + processor.isRunning() + ", in error " + processor.isError(),
+                "segments " + processor.processingStatus().values().stream().map(RechargeSagaFirstStartTest::describe).toList(),
+                "token rows " + database.queryForList(
+                        "select segment, owner, timestamp from token_entry where processor_name = ?", PROCESSOR),
+                "sagas of the recharge " + database.queryForObject(
+                        "select count(*) from association_value_entry where association_key = 'rechargingRequestId' and association_value = ?",
+                        Integer.class, requestId),
+                "membership checks " + membershipChecks.checked);
+    }
+
+    private static String describe(EventTrackerStatus status) {
+        return "%s at %s, caught up %s, error %s".formatted(
+                status.getSegment(), status.getCurrentPosition(), status.isCaughtUp(), status.getError());
     }
 
     private static boolean eventually(BooleanSupplier condition) throws InterruptedException {
@@ -74,10 +97,6 @@ class RechargeSagaFirstStartTest {
             Thread.sleep(100);
         }
         return false;
-    }
-
-    private Integer count(String table) {
-        return database.queryForObject("select count(*) from " + table, Integer.class);
     }
 
     @TestConfiguration

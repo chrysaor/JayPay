@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
 plugins {
     `java-library`
     jacoco
@@ -8,7 +11,7 @@ val libs = the<VersionCatalogsExtension>().named("libs")
 fun lib(alias: String) = libs.findLibrary(alias).get()
 
 group = "com.jaypay"
-version = "0.4.0"
+version = "0.5.0"
 
 java {
     toolchain {
@@ -56,6 +59,10 @@ val dockerContextHost: String? = if (System.getenv("DOCKER_HOST") != null) null 
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    testLogging {
+        events(TestLogEvent.FAILED)
+        exceptionFormat = TestExceptionFormat.FULL
+    }
     if (dockerContextHost != null && dockerContextHost.startsWith("unix://") && dockerContextHost != "unix:///var/run/docker.sock") {
         environment("DOCKER_HOST", dockerContextHost)
         environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")

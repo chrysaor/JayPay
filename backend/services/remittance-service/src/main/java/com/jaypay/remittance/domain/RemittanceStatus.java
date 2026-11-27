@@ -7,5 +7,9 @@ public enum RemittanceStatus {
     COMPLETED,
     FAILED,
     REFUNDING,
-    REFUNDED
+    REFUNDED;
+
+    public boolean finished() {
+        return this == COMPLETED || this == FAILED || this == REFUNDED;
+    }
 }

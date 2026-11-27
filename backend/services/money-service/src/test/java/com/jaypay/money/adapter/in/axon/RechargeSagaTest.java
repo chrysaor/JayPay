@@ -9,7 +9,10 @@ import com.jaypay.common.event.CheckedRegisteredBankAccountEvent;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRefusedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.RollbackFirmBankingUnconfirmedEvent;
+import com.jaypay.common.event.WalletRechargedEvent;
 import com.jaypay.common.kafka.KafkaTestBroker;
 import com.jaypay.money.adapter.out.persistence.MemberMoneyJpaEntity;
 import com.jaypay.money.adapter.out.persistence.MoneyChangingRequestJpaEntity;
@@ -18,15 +21,22 @@ import com.jaypay.money.adapter.out.persistence.SpringDataMoneyChangingRequestRe
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
 import com.sun.net.httpserver.HttpServer;
 import org.axonframework.commandhandling.CommandHandler;
+import org.axonframework.deadline.DeadlineManager;
+import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.eventhandling.gateway.EventGateway;
+import org.axonframework.serialization.Serializer;
+import org.axonframework.serialization.SimpleSerializedObject;
+import org.axonframework.serialization.SimpleSerializedType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -40,11 +50,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -52,7 +64,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "money.recharge.deadline=3s")
+@SpringBootTest(properties = {
+        "money.recharge.deadline=3s",
+        "money.recharge.rollback.retry-after=2s",
+        "money.recharge.rollback.attempts=2",
+        "money.recharge.sweep.every=1s"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class RechargeSagaTest {
@@ -61,6 +77,8 @@ class RechargeSagaTest {
     private static final Duration PATIENCE = Duration.ofSeconds(20);
     private static final AtomicInteger MEMBERS = new AtomicInteger(500);
     private static final Set<String> WITHOUT_ACCOUNT = ConcurrentHashMap.newKeySet();
+    private static final Set<String> ACCOUNT_LOOKUP_DROPPED = ConcurrentHashMap.newKeySet();
+    private static final Set<String> ACCOUNT_LOOKUP_FAILING = ConcurrentHashMap.newKeySet();
     private static final HttpServer OTHER_SERVICES = startOtherServices();
 
     @Autowired
@@ -78,6 +96,26 @@ class RechargeSagaTest {
     @Autowired
     private FakeMembership membership;
 
+    @Autowired
+    private WalletRecharges walletRecharges;
+
+    @Autowired
+    private DeadlineManager deadlines;
+
+    @Autowired
+    private JdbcTemplate database;
+
+    @Autowired
+    private RechargeSweeper sweeper;
+
+    @Autowired
+    @Qualifier("eventSerializer")
+    private Serializer eventSerializer;
+
+    @Autowired
+    @Qualifier("messageSerializer")
+    private Serializer messageSerializer;
+
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
         String url = "http://127.0.0.1:" + OTHER_SERVICES.getAddress().getPort();
@@ -92,6 +130,19 @@ class RechargeSagaTest {
     }
 
     @Test
+    void readsAnEventAndACommandWithAFieldThisReleaseDoesNotKnow() {
+        Object event = eventSerializer.deserialize(new SimpleSerializedObject<>(
+                "{\"checkMembershipId\":\"m\",\"rechargingRequestId\":\"r\",\"membershipId\":\"1\",\"valid\":true,\"addedLater\":7}",
+                String.class, new SimpleSerializedType(CheckedMembershipEvent.class.getName(), null)));
+        Object command = messageSerializer.deserialize(new SimpleSerializedObject<>(
+                "{\"checkMembershipId\":\"m\",\"rechargingRequestId\":\"r\",\"membershipId\":\"1\",\"addedLater\":7}",
+                String.class, new SimpleSerializedType(CheckMembershipCommand.class.getName(), null)));
+
+        assertThat(event).isEqualTo(new CheckedMembershipEvent("m", "r", "1", true));
+        assertThat(command).isEqualTo(new CheckMembershipCommand("m", "r", "1"));
+    }
+
+    @Test
     void aRechargeTheBankConfirmsCreditsTheWalletOnce() throws Exception {
         String member = memberWithWallet();
         String requestId = UUID.randomUUID().toString();
@@ -103,6 +154,36 @@ class RechargeSagaTest {
         assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
         assertThat(banking.charges(requestId)).isEqualTo(1);
         assertThat(membership.checks(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRechargeTheBankConfirmsTellsOtherServicesOnceThatTheWalletWasIncreased() throws Exception {
+        String member = memberWithWallet();
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> Optional.of(walletRecharges.of(requestId)).filter(seen -> !seen.isEmpty())))
+                .containsExactly(new WalletRechargedEvent(requestId, member, 700));
+    }
+
+    @Test
+    void aRechargeWhoseChargeTheBankConfirmsAfterTheDeadlineIsRolledBackWithoutTellingThatTheWalletWasIncreased() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 0))).isEqualTo(1);
+        banking.confirmHeld(requestId);
+        String laterMember = memberWithWallet();
+        String laterRequestId = UUID.randomUUID().toString();
+        recharge(laterRequestId, laterMember, 300);
+        eventually(() -> Optional.of(walletRecharges.of(laterRequestId)).filter(seen -> !seen.isEmpty()));
+
+        assertThat(walletRecharges.of(requestId)).isEmpty();
+        assertThat(balanceOf(member)).isZero();
     }
 
     @Test
@@ -292,6 +373,302 @@ class RechargeSagaTest {
         assertThat(wallets.findByMembershipId(Long.parseLong(member)).orElseThrow().getAggregateIdentifier()).isEqualTo(first);
     }
 
+    @Test
+    void aRepeatOfARechargeTheMemberCheckRefusedStaysFailedAfterTheMemberIsConfirmedAgain() throws Exception {
+        String member = memberWithWallet();
+        membership.refuse(member);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        membership.confirmAgain(member);
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(membership.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain() throws Exception {
+        String member = memberWithWallet();
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
+        membership.refuse(member);
+        banking.refuse(account(member));
+        WITHOUT_ACCOUNT.add(member);
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
+        assertThat(membership.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(700);
+    }
+
+    @Test
+    void aRechargeWhoseAccountCheckIsNeverAnsweredFailsAtTheDeadlineWithoutACharge() throws Exception {
+        String member = memberWithWallet();
+        banking.silenceCheckOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(banking.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+    }
+
+    @Test
+    void aRechargeWhoseAccountCheckCannotBeDeliveredFailsAtTheDeadlineWithoutACharge() throws Exception {
+        String member = memberWithWallet();
+        banking.disconnectCheckOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRepeatOfARechargeTheAccountCheckRefusedStaysFailedAfterTheAccountPasses() throws Exception {
+        String member = memberWithWallet();
+        banking.failCheckOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        banking.passCheckOf(account(member));
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(banking.checks(requestId)).isEqualTo(1);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseChargeCannotBeDeliveredFailsAtTheDeadlineWithoutCreditingTheWallet() throws Exception {
+        String member = memberWithWallet();
+        banking.disconnectChargeOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(banking.charges(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+        assertThat(walletRecharges.of(requestId)).isEmpty();
+    }
+
+    @Test
+    void aRepeatWhileTheChargeIsUnansweredChargesNothingAgainAndTheDeadlineRollsTheChargeBackOnce() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> Optional.of(banking.charges(requestId)).filter(count -> count > 0));
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.PENDING.code());
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 0))).isEqualTo(1);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseRollbackAnswerIsLostIsRolledBackAgainAndIsNotChargedAgain() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.silenceRollbacksOf(account(member), 1);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 1))).isEqualTo(2);
+        banking.answerAgain(account(member));
+
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.FAILED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+        assertThat(walletRecharges.of(requestId)).isEmpty();
+    }
+
+    @Test
+    void aRollbackBankingServiceRefusesIsSentAgainUntilBankingServiceTakesIt() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.failRollbacksOf(account(member), 1);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 0))).isEqualTo(1);
+        assertThat(banking.failedRollbacks(requestId)).isEqualTo(1);
+        assertThat(statusOf(requestId)).contains(MoneyChangingStatus.FAILED);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRollbackThatIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.failRollbacksOf(account(member), Integer.MAX_VALUE);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        assertThat(banking.failedRollbacks(requestId)).isEqualTo(2);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.ROLLBACK_UNCONFIRMED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRollbackWhoseRefundTheBankHasNotConfirmedIsSentAgainUntilTheRefundIsConfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.leaveRefundsUnconfirmed(account(member), 1);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 1))).isEqualTo(2);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(statusOf(requestId)).contains(MoneyChangingStatus.FAILED);
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRollbackWhoseRefundIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.leaveRefundsUnconfirmed(account(member), Integer.MAX_VALUE);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        assertThat(banking.rollbacks(requestId)).isEqualTo(2);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+    }
+
+    @Test
+    void aRollbackWhoseRefundTheBankRefusesLeavesTheRechargeRollbackUnconfirmedWithoutSendingItAgain() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.refuseRefundsOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRechargeWaitingForTheBankWhoseDeadlineIsLostStillFailsAndIsRolledBackOnce() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> Optional.of(banking.charges(requestId)).filter(count -> count > 0));
+        deadlines.cancelAll("recharge-deadline");
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseDeadlineIsLostIsRolledBackOnceWhileSeveralInstancesSweepAtOnce() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> Optional.of(banking.charges(requestId)).filter(count -> count > 0));
+        deadlines.cancelAll("recharge-deadline");
+        List<Thread> instances = List.of(
+                Thread.ofVirtual().start(() -> sweepUntilSettled(requestId)),
+                Thread.ofVirtual().start(() -> sweepUntilSettled(requestId)));
+        for (Thread instance : instances) {
+            instance.join(PATIENCE);
+        }
+
+        assertThat(statusOf(requestId)).contains(MoneyChangingStatus.FAILED);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRollbackWhoseRetryIsLostIsStillSentUpToItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.silenceRollbacksOf(account(member), Integer.MAX_VALUE);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.FAILED));
+        deadlines.cancelAll("rollback-deadline");
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        assertThat(banking.rollbacks(requestId)).isEqualTo(2);
+        assertThat(sagaEnded(requestId)).isTrue();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseAccountLookupAnswerIsLostStoresNothingAndTheRepeatCreditsOnce() throws Exception {
+        String member = memberWithWallet();
+        ACCOUNT_LOOKUP_DROPPED.add(member);
+        String requestId = UUID.randomUUID().toString();
+
+        assertThat(unconfirmedRecharge(requestId, member, 700).get("error").asText()).isEqualTo("REGISTERED_ACCOUNT_NOT_CONFIRMED");
+        assertThat(statusOf(requestId)).isEmpty();
+        assertThat(banking.checks(requestId)).isZero();
+
+        ACCOUNT_LOOKUP_DROPPED.remove(member);
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(700);
+    }
+
+    @Test
+    void aRechargeWhoseAccountLookupFailsWith5xxStoresNothingAndTheRepeatCreditsOnce() throws Exception {
+        String member = memberWithWallet();
+        ACCOUNT_LOOKUP_FAILING.add(member);
+        String requestId = UUID.randomUUID().toString();
+
+        assertThat(unconfirmedRecharge(requestId, member, 700).get("error").asText()).isEqualTo("REGISTERED_ACCOUNT_NOT_CONFIRMED");
+        assertThat(unconfirmedRecharge(requestId, member, 700).get("error").asText()).isEqualTo("REGISTERED_ACCOUNT_NOT_CONFIRMED");
+        assertThat(statusOf(requestId)).isEmpty();
+        assertThat(banking.checks(requestId)).isZero();
+        assertThat(balanceOf(member)).isZero();
+
+        ACCOUNT_LOOKUP_FAILING.remove(member);
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.SUCCEEDED);
+        assertThat(recharge(requestId, member, 700).get("moneyChangingResultStatus").asInt()).isEqualTo(MoneyChangingStatus.SUCCEEDED.code());
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(700);
+    }
+
     private String memberWithWallet() throws Exception {
         String member = String.valueOf(MEMBERS.incrementAndGet());
         mockMvc.perform(post("/money/create-member-money").contentType(MediaType.APPLICATION_JSON)
@@ -309,8 +686,35 @@ class RechargeSagaTest {
         return JSON.readTree(body);
     }
 
+    private JsonNode unconfirmedRecharge(String requestId, String member, long amount) throws Exception {
+        String body = mockMvc.perform(post("/money/increase-eda").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member + "\",\"amount\":" + amount + "}"))
+                .andExpect(status().isServiceUnavailable())
+                .andReturn().getResponse().getContentAsString();
+        return JSON.readTree(body);
+    }
+
     private Optional<MoneyChangingStatus> statusOf(String requestId) {
         return changes.findById(requestId).map(MoneyChangingRequestJpaEntity::getStatus);
+    }
+
+    private void sweepUntilSettled(String requestId) {
+        long until = System.nanoTime() + PATIENCE.toNanos();
+        while (System.nanoTime() < until && statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING).isEmpty()) {
+            sweeper.sweep();
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    private boolean sagaEnded(String requestId) {
+        return database.queryForObject(
+                "select count(*) from association_value_entry where association_key = 'rechargingRequestId' and association_value = ?",
+                Integer.class, requestId) == 0;
     }
 
     private long balanceOf(String member) {
@@ -366,6 +770,14 @@ class RechargeSagaTest {
                     respond(exchange, 404, "{\"status\":404}");
                     return;
                 }
+                if (ACCOUNT_LOOKUP_DROPPED.contains(member)) {
+                    exchange.close();
+                    return;
+                }
+                if (ACCOUNT_LOOKUP_FAILING.contains(member)) {
+                    respond(exchange, 503, "{\"status\":503}");
+                    return;
+                }
                 respond(exchange, 200, "{\"registeredBankAccountId\":\"3\",\"membershipId\":\"" + member + "\",\"bankName\":\"jay-bank\","
                         + "\"bankAccountNumber\":\"" + account(member) + "\",\"linkedStatusIsValid\":true,\"aggregateIdentifier\":\"bank-" + member + "\"}");
             });
@@ -395,6 +807,24 @@ class RechargeSagaTest {
         FakeMembership fakeMembership(EventGateway eventGateway) {
             return new FakeMembership(eventGateway);
         }
+
+        @Bean
+        WalletRecharges walletRecharges() {
+            return new WalletRecharges();
+        }
+    }
+
+    static final class WalletRecharges {
+        private final List<WalletRechargedEvent> seen = new CopyOnWriteArrayList<>();
+
+        List<WalletRechargedEvent> of(String rechargeId) {
+            return seen.stream().filter(event -> event.rechargingRequestId().equals(rechargeId)).toList();
+        }
+
+        @EventHandler
+        public void on(WalletRechargedEvent event) {
+            seen.add(event);
+        }
     }
 
     static final class FakeMembership {
@@ -418,6 +848,10 @@ class RechargeSagaTest {
 
         void disconnect(String member) {
             disconnectedMembers.add(member);
+        }
+
+        void confirmAgain(String member) {
+            refusedMembers.remove(member);
         }
 
         long checks(String rechargeId) {
@@ -446,9 +880,19 @@ class RechargeSagaTest {
         private final Set<String> uncheckedAccounts = ConcurrentHashMap.newKeySet();
         private final Set<String> refusedAccounts = ConcurrentHashMap.newKeySet();
         private final Set<String> silentAccounts = ConcurrentHashMap.newKeySet();
+        private final Set<String> heldAccounts = ConcurrentHashMap.newKeySet();
+        private final Set<String> silentChecks = ConcurrentHashMap.newKeySet();
+        private final Set<String> disconnectedChecks = ConcurrentHashMap.newKeySet();
+        private final Set<String> disconnectedCharges = ConcurrentHashMap.newKeySet();
+        private final Map<String, Integer> silentRollbacks = new ConcurrentHashMap<>();
+        private final Map<String, Integer> failingRollbacks = new ConcurrentHashMap<>();
+        private final Map<String, Integer> unconfirmedRefunds = new ConcurrentHashMap<>();
+        private final Set<String> refusedRefunds = ConcurrentHashMap.newKeySet();
+        private final Map<String, RequestFirmBankingFinishedEvent> heldConfirmations = new ConcurrentHashMap<>();
         private final List<String> checked = new CopyOnWriteArrayList<>();
         private final List<String> charged = new CopyOnWriteArrayList<>();
         private final List<String> rolledBack = new CopyOnWriteArrayList<>();
+        private final List<String> refusedRollbacks = new CopyOnWriteArrayList<>();
 
         FakeBanking(EventGateway eventGateway) {
             this.eventGateway = eventGateway;
@@ -458,12 +902,56 @@ class RechargeSagaTest {
             uncheckedAccounts.add(account);
         }
 
+        void passCheckOf(String account) {
+            uncheckedAccounts.remove(account);
+        }
+
+        void silenceCheckOf(String account) {
+            silentChecks.add(account);
+        }
+
+        void disconnectCheckOf(String account) {
+            disconnectedChecks.add(account);
+        }
+
+        void disconnectChargeOf(String account) {
+            disconnectedCharges.add(account);
+        }
+
+        void silenceRollbacksOf(String account, int times) {
+            silentRollbacks.put(account, times);
+        }
+
+        void failRollbacksOf(String account, int times) {
+            failingRollbacks.put(account, times);
+        }
+
+        void leaveRefundsUnconfirmed(String account, int times) {
+            unconfirmedRefunds.put(account, times);
+        }
+
+        void refuseRefundsOf(String account) {
+            refusedRefunds.add(account);
+        }
+
+        void answerAgain(String account) {
+            silentAccounts.remove(account);
+        }
+
         void refuse(String account) {
             refusedAccounts.add(account);
         }
 
         void silence(String account) {
             silentAccounts.add(account);
+        }
+
+        void hold(String account) {
+            heldAccounts.add(account);
+        }
+
+        void confirmHeld(String rechargeId) {
+            eventGateway.publish(heldConfirmations.remove(rechargeId));
         }
 
         long checks(String rechargeId) {
@@ -478,9 +966,19 @@ class RechargeSagaTest {
             return rolledBack.stream().filter(rechargeId::equals).count();
         }
 
+        long failedRollbacks(String rechargeId) {
+            return refusedRollbacks.stream().filter(rechargeId::equals).count();
+        }
+
         @CommandHandler
         public void check(CheckRegisteredBankAccountCommand command) {
+            if (disconnectedChecks.contains(command.getBankAccountNumber())) {
+                throw new IllegalStateException("banking-service is not connected");
+            }
             checked.add(command.getRechargeRequestId());
+            if (silentChecks.contains(command.getBankAccountNumber())) {
+                return;
+            }
             eventGateway.publish(new CheckedRegisteredBankAccountEvent(
                     command.getRechargeRequestId(),
                     command.getCheckRegisteredBankAccountId(),
@@ -494,26 +992,53 @@ class RechargeSagaTest {
 
         @CommandHandler
         public void charge(RequestFirmBankingCommand command) {
-            charged.add(command.getRechargeRequestId());
             String account = command.getFromBankAccountNumber();
+            if (disconnectedCharges.contains(account)) {
+                throw new IllegalStateException("banking-service is not connected");
+            }
+            charged.add(command.getRechargeRequestId());
             int status = silentAccounts.contains(account) ? RequestFirmBankingFinishedEvent.UNCONFIRMED
                     : refusedAccounts.contains(account) ? RequestFirmBankingFinishedEvent.REFUSED : RequestFirmBankingFinishedEvent.SUCCEEDED;
-            eventGateway.publish(new RequestFirmBankingFinishedEvent(
+            RequestFirmBankingFinishedEvent finished = new RequestFirmBankingFinishedEvent(
                     command.getRequestFirmBankingId(),
                     command.getRechargeRequestId(),
                     command.getMembershipId(),
-                    command.getToBankName(),
-                    command.getToBankAccountNumber(),
+                    "Company bank",
+                    "000",
                     command.getMoneyAmount(),
                     status,
-                    command.getAggregateIdentifier()));
+                    command.getAggregateIdentifier());
+            if (heldAccounts.contains(account)) {
+                heldConfirmations.put(command.getRechargeRequestId(), finished);
+                return;
+            }
+            eventGateway.publish(finished);
         }
 
         @CommandHandler
         public void rollback(RollbackFirmBankingRequestCommand command) {
+            if (takeOne(failingRollbacks, command.getBankAccountNumber())) {
+                refusedRollbacks.add(command.getRechargeRequestId());
+                throw new IllegalStateException("banking-service refused the rollback");
+            }
             rolledBack.add(command.getRechargeRequestId());
-            eventGateway.publish(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(),
-                    UUID.randomUUID().toString()));
+            if (takeOne(silentRollbacks, command.getBankAccountNumber())) {
+                return;
+            }
+            String account = command.getBankAccountNumber();
+            String rollbackId = command.getRollbackFirmbankingId();
+            eventGateway.publish(refusedRefunds.contains(account) ? new RollbackFirmBankingRefusedEvent(rollbackId, command.getMembershipId())
+                    : takeOne(unconfirmedRefunds, account) ? new RollbackFirmBankingUnconfirmedEvent(rollbackId, command.getMembershipId())
+                    : new RollbackFirmBankingFinishedEvent(rollbackId, command.getMembershipId(), UUID.randomUUID().toString()));
+        }
+
+        private static boolean takeOne(Map<String, Integer> remaining, String account) {
+            AtomicBoolean taken = new AtomicBoolean();
+            remaining.computeIfPresent(account, (key, left) -> {
+                taken.set(true);
+                return left > 1 ? left - 1 : null;
+            });
+            return taken.get();
         }
     }
 }

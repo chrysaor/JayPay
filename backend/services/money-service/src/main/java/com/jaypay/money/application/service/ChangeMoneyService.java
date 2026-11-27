@@ -6,6 +6,7 @@ import com.jaypay.money.application.port.in.ChangeMoneyCommand;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
 import com.jaypay.money.application.port.in.CreateMemberMoneyCommand;
 import com.jaypay.money.application.port.in.CreateMemberMoneyUseCase;
+import com.jaypay.money.application.port.in.RefundMoneyCommand;
 import com.jaypay.money.application.port.out.ChangeMoneyPort;
 import com.jaypay.money.application.port.out.CreateMemberMoneyAggregatePort;
 import com.jaypay.money.application.port.out.CreateMemberMoneyPort;
@@ -19,6 +20,7 @@ import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingType;
+import com.jaypay.money.domain.NotRefundableException;
 import com.jaypay.money.domain.RechargeFailure;
 import com.jaypay.money.domain.RequestId;
 import com.jaypay.money.domain.RequestIdReusedException;
@@ -53,6 +55,25 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
     }
 
     @Override
+    public MoneyChangingRequest refundMoney(RefundMoneyCommand command) {
+        MoneyChangingRequest refunded = changeMoneyPort.findForUpdate(command.refundedRequestId())
+                .filter(request -> request.type() == MoneyChangingType.DECREASE && request.status() == MoneyChangingStatus.SUCCEEDED)
+                .filter(decrease -> changeMoneyPort.findRefundOf(decrease.requestId()).map(command.requestId()::equals).orElse(true))
+                .orElseThrow(() -> {
+                    log.info("Refund {} is refused because {} names no decrease that can still be refunded",
+                            command.requestId().value(), command.refundedRequestId().value());
+                    return new NotRefundableException(command.refundedRequestId());
+                });
+        MoneyChangingRequest pending = MoneyChangingRequest.pending(command.requestId(), refunded.targetMembershipId(), MoneyChangingType.INCREASE, refunded.amount());
+        Optional<MoneyChangingRequest> earlier = findEarlier(pending);
+        if (earlier.isPresent() && earlier.get().status() != MoneyChangingStatus.FAILED) {
+            return earlier.get();
+        }
+        changeMoneyPort.increaseBalance(new MemberMoney.MembershipId(pending.targetMembershipId()), pending.amount());
+        return changeMoneyPort.settleRefund(pending.settled(true), refunded.requestId());
+    }
+
+    @Override
     public void createMemberMoney(CreateMemberMoneyCommand command) {
         walletOf(new MemberMoney.MembershipId(command.membershipId()));
     }
@@ -64,15 +85,16 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
         if (earlier.isPresent()) {
             return earlier.get();
         }
-        RegisteredBankAccount account = getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId());
-        if (account == null || account.bankAccountNumber() == null || account.bankAccountNumber().isBlank()) {
-            log.warn("Member {} has no registered bank account, so recharge {} fails", command.targetMembershipId(), command.requestId().value());
+        Optional<RegisteredBankAccount> account = getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId())
+                .filter(registered -> registered.bankAccountNumber() != null && !registered.bankAccountNumber().isBlank());
+        if (account.isEmpty()) {
+            log.info("Member {} has no registered bank account, so recharge {} fails", command.targetMembershipId(), command.requestId().value());
             rechargeFlowPort.requestFailed(pending, RechargeFailure.NO_BANK_ACCOUNT);
             return changeMoneyPort.settle(pending.settled(false));
         }
         rechargeFlowPort.requested(pending);
         MemberMoney.MembershipId membershipId = new MemberMoney.MembershipId(command.targetMembershipId());
-        requestMoneyRechargingPort.requestMoneyRecharging(command.requestId(), walletOf(membershipId), membershipId, command.amount(), account);
+        requestMoneyRechargingPort.requestMoneyRecharging(command.requestId(), walletOf(membershipId), membershipId, command.amount(), account.get());
         return pending;
     }
 
@@ -86,6 +108,13 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
             rechargeFlowPort.failed(request, failure);
             return true;
         }).orElse(true);
+    }
+
+    @Override
+    public void leaveRollbackUnconfirmed(RequestId requestId) {
+        changeMoneyPort.findForUpdate(requestId)
+                .filter(request -> request.status() == MoneyChangingStatus.FAILED)
+                .ifPresent(request -> changeMoneyPort.settle(request.withRollbackUnconfirmed()));
     }
 
     private MemberMoney.MoneyAggregateIdentifier walletOf(MemberMoney.MembershipId membershipId) {

@@ -1,13 +1,15 @@
 package com.jaypay.banking.adapter.in.axon;
 
 import com.jaypay.banking.application.port.in.TransferMoneyUseCase;
-import com.jaypay.banking.domain.BankTransfer;
+import com.jaypay.banking.domain.CompanyAccount;
 import com.jaypay.banking.domain.RecordedTransfer;
 import com.jaypay.banking.domain.TransferStatus;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRefusedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.RollbackFirmBankingUnconfirmedEvent;
 import com.jaypay.common.flow.FlowEventPublisher;
 import com.jaypay.common.flow.FlowOutcome;
 import com.jaypay.common.flow.FlowStep;
@@ -18,7 +20,6 @@ import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
@@ -28,29 +29,24 @@ import static org.axonframework.modelling.command.AggregateLifecycle.apply;
 @Slf4j
 public class FirmBankingRequestAggregate {
 
-    private static final String COMPANY_BANK_NAME = "jaypay-company";
-    private static final String COMPANY_BANK_ACCOUNT_NUMBER = "123-333-9999";
-
     @AggregateIdentifier
     private String id;
 
     @CommandHandler
     public FirmBankingRequestAggregate(RequestFirmBankingCommand command, TransferMoneyUseCase transferMoneyUseCase,
-                                       FlowEventPublisher flowEvents) {
+                                       CompanyAccount companyAccount, FlowEventPublisher flowEvents) {
         id = command.getAggregateIdentifier();
-        RecordedTransfer charge = transferMoneyUseCase.transfer(new BankTransfer(
+        RecordedTransfer charge = transferMoneyUseCase.transfer(companyAccount.receive(
                 chargeRequestId(command.getRechargeRequestId()),
                 command.getFromBankName(),
                 command.getFromBankAccountNumber(),
-                COMPANY_BANK_NAME,
-                COMPANY_BANK_ACCOUNT_NUMBER,
                 command.getMoneyAmount()));
         apply(new RequestFirmBankingFinishedEvent(
                 command.getRequestFirmBankingId(),
                 command.getRechargeRequestId(),
                 command.getMembershipId(),
-                command.getToBankName(),
-                command.getToBankAccountNumber(),
+                companyAccount.bankName(),
+                companyAccount.bankAccountNumber(),
                 command.getMoneyAmount(),
                 finishedStatus(charge.status()),
                 id));
@@ -63,10 +59,13 @@ public class FirmBankingRequestAggregate {
                                        FlowEventPublisher flowEvents) {
         id = UUID.randomUUID().toString();
         String chargeRequestId = chargeRequestId(command.getRechargeRequestId());
-        Optional<RecordedTransfer> refund = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
-        TransferStatus refundStatus = refund.map(RecordedTransfer::status).orElse(TransferStatus.CANCELLED);
-        log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
-        apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id));
+        TransferStatus refundStatus = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
+        if (refundStatus == TransferStatus.FAILED) {
+            log.error("The bank refused the refund of recharge {}, so the charge is not returned", command.getRechargeRequestId());
+        } else {
+            log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
+        }
+        apply(rollbackAnswer(command, refundStatus));
         flowEvents.publish(command.getRechargeRequestId(), FlowStep.CHARGE_ROLLED_BACK, rollbackOutcome(refundStatus), rollbackReason(refundStatus),
                 command.getMembershipId(), command.getMoneyAmount());
     }
@@ -114,6 +113,14 @@ public class FirmBankingRequestAggregate {
             case SUCCEEDED, CANCELLED -> null;
             case PENDING -> "The bank has not confirmed the refund yet";
             case FAILED -> "The bank refused the refund";
+        };
+    }
+
+    private Object rollbackAnswer(RollbackFirmBankingRequestCommand command, TransferStatus refund) {
+        return switch (refund) {
+            case SUCCEEDED, CANCELLED -> new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id);
+            case PENDING -> new RollbackFirmBankingUnconfirmedEvent(command.getRollbackFirmbankingId(), command.getMembershipId());
+            case FAILED -> new RollbackFirmBankingRefusedEvent(command.getRollbackFirmbankingId(), command.getMembershipId());
         };
     }
 

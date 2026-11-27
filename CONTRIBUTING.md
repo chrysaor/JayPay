@@ -31,6 +31,30 @@ Who merges:
 7. Merge after CI passes.
 8. Close the issue. `Closes` only fires on `master`, so merging into `develop` leaves it open.
 
+## Logging
+
+Each backend log line takes the level of what it tells the operator:
+
+| Level | Meaning | Example |
+| --- | --- | --- |
+| `ERROR` | An operator has to act: money may be wrong, or the system gave up | The rollback of a top-up failed, a bank account registration was lost, a merchant cannot be paid |
+| `WARN` | Something outside the service failed, and the system recovers by itself through a retry, a deadline or the next run | banking-service did not answer the transfer |
+| `INFO` | One line for each business state change, and for each expected refusal with its reason | Member 7 has no registered account, banking-service refused the transfer as invalid |
+| `DEBUG` | Detail of one call, off by default | The command a handler received, each record sent to the logging topic |
+
+- An expected refusal, such as a member that is not valid, no registered account, a charge the bank refused or a transfer refused as invalid, is `INFO`, not `WARN`, so the count of `WARN` lines says that something is broken.
+- A refusal is expected only when the caller who asked gets it as the answer. A refusal inside a scheduled run, such as a payout the bank refused or a merchant without a bank account, reaches nobody, so it is `ERROR`.
+- Every line names the id of what it is about. The backend build fails on a log call with a fixed text and no argument.
+- A caught exception goes in as the last argument, so the line keeps its class and stack trace. Never log only its `getMessage()`.
+- Never log a bank account number, or a whole request or command object.
+- A failure is logged once, where it is caught. A web error handler that turns an exception into 4xx or 503 logs nothing more.
+
+Every service runs at the Spring Boot default, `INFO`. [docs/services.md](docs/services.md#log-levels) says how to raise the level of one service.
+
+## Messages between releases
+
+A release must work in any order of the services, because a service of the release before keeps running next to it during the rollout. Every service ignores a field it does not know in an Axon event or command, so a field may be added. A reader of the release before still has to do the right thing without it, and a new meaning that it must not miss, such as a new outcome, goes in a new event type, which the release before skips. Never remove a field that a reader of the release before needs, nor rename a message class.
+
 ## Changelog
 
 `CHANGELOG.md` tells a reader what each release lets them do that the one before did not. Every PR into `develop` that changes behaviour adds a line under `## [Unreleased]`, in the group that fits: `### Added`, `### Changed`, `### Fixed` or `### Security`, in that order. Write what changed for someone who uses or runs JayPay, not the PR title, and end the line with its PR or issue link, for example `([#107](https://github.com/chrysaor/JayPay/pull/107))`.
@@ -41,7 +65,7 @@ The `changelog` step of `make verify` checks the format. On a PR into `develop`,
 
 ## Releasing
 
-1. `make release-branch VERSION=X.Y.Z`, then `git push -u origin release/X.Y.Z`. It fails when Unreleased is empty. Otherwise the branch starts with one commit, `chore: release X.Y.Z`, that sets the backend version and turns Unreleased into `## [X.Y.Z] - <today>` with an empty Unreleased above it.
+1. `make release-branch VERSION=X.Y.Z`, then `git push -u origin release/X.Y.Z`. It stops before it does anything when the working tree or the index holds uncommitted changes, which would end up in the release commit, and it fails when Unreleased is empty. Otherwise the branch starts with one commit, `chore: release X.Y.Z`, that sets the backend version and turns Unreleased into `## [X.Y.Z] - <today>` with an empty Unreleased above it.
 2. On the release branch, turn `## X.Y.Z (unreleased)` in [docs/news.md](docs/news.md) into `## X.Y.Z (<today>)` and complete that section and the In progress table, and drop `(unreleased)` from the decision records of the release and from the index in `docs/decisions/README.md`. `make release-branch` does not change these files. Commit and push.
 3. Each push to the release branch runs `release.yml`. It verifies, builds every image, fails on HIGH or CRITICAL findings, and publishes `ghcr.io/chrysaor/jaypay-<name>:X.Y.Z-rc.<sha>`. Deploy the candidate and check it.
 4. Open a PR from `release/X.Y.Z` into `master`, and merge it once the owner confirms.

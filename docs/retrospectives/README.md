@@ -35,3 +35,19 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-26 | [An existing event flow database refused the steps of new flows](2026-11-26-event-flow-schema-refuses-new-steps.md) | [#145](https://github.com/chrysaor/JayPay/pull/145) |
 | 2026-11-26 | [Two tests that passed or failed by timing](2026-11-26-tests-that-depend-on-timing.md) | [#133](https://github.com/chrysaor/JayPay/pull/133), [#145](https://github.com/chrysaor/JayPay/pull/145) |
 | 2026-11-26 | [event-flow-service was killed at its memory limit on the cluster](2026-11-26-event-flow-service-killed-at-its-memory-limit.md) | [#157](https://github.com/chrysaor/JayPay/pull/157) |
+| 2026-11-27 | [The 0.4.0 release branch failed its own checks three times](2026-11-27-release-branch-failed-its-own-checks.md) | [#158](https://github.com/chrysaor/JayPay/pull/158) |
+| 2026-11-27 | [A payment whose debit answer was lost could never finish](2026-11-27-payment-checks-parties-before-resuming.md) | [#170](https://github.com/chrysaor/JayPay/pull/170) |
+| 2026-11-27 | [A wallet change asked during a membership-service outage failed for good](2026-11-27-membership-outage-read-as-missing-member.md) | [#175](https://github.com/chrysaor/JayPay/pull/175) |
+| 2026-11-27 | [A top-up asked during a banking-service outage failed for good](2026-11-27-banking-outage-read-as-missing-account.md) | [#186](https://github.com/chrysaor/JayPay/pull/186) |
+| 2026-11-27 | [A refused payout could not be sent again after the merchant changed the account](2026-11-27-refused-payout-bound-to-one-request-id.md) | [#174](https://github.com/chrysaor/JayPay/pull/174) |
+| 2026-11-27 | [The region total kept top-ups the saga rolled back](2026-11-27-region-total-kept-rolled-back-top-ups.md) | [#178](https://github.com/chrysaor/JayPay/pull/178) |
+| 2026-11-27 | [The company bank account had four definitions in four services](2026-11-27-company-account-defined-in-four-services.md) | [#177](https://github.com/chrysaor/JayPay/pull/177) |
+| 2026-11-27 | [One negative Kafka counter took logging-consumer out of Prometheus](2026-11-27-negative-kafka-counter-failed-every-scrape.md) | [#179](https://github.com/chrysaor/JayPay/pull/179) |
+| 2026-11-27 | [The status columns of four released services would refuse a value added later](2026-11-27-status-columns-refuse-later-values.md) | [#180](https://github.com/chrysaor/JayPay/pull/180) |
+| 2026-11-27 | [A top-up rollback that failed was never sent again](2026-11-27-top-up-rollback-sent-once.md) | [#191](https://github.com/chrysaor/JayPay/pull/191) |
+| 2026-11-27 | [A restart of money-service dropped the deadlines of running top-ups](2026-11-27-saga-deadlines-lost-on-restart.md) | [#193](https://github.com/chrysaor/JayPay/issues/193) |
+| 2026-11-27 | [A top-up rollback ended while the bank had not confirmed the refund](2026-11-27-top-up-rollback-ended-on-an-unconfirmed-refund.md) | [#194](https://github.com/chrysaor/JayPay/issues/194) |
+| 2026-11-27 | [The upgrade to 0.5.0 depended on the order of the services](2026-11-27-upgrade-depended-on-the-order-of-the-services.md) | [#199](https://github.com/chrysaor/JayPay/issues/199) |
+| 2026-11-27 | [The first-start saga test stopped the processor before its worker ran](2026-11-27-first-start-saga-test-failed-without-a-reason.md) | [#187](https://github.com/chrysaor/JayPay/pull/187), [#188](https://github.com/chrysaor/JayPay/pull/188) |
+| 2026-11-27 | [A remittance refund asked after the sender became invalid never landed](2026-11-27-refund-refused-for-an-invalid-sender.md) | [#184](https://github.com/chrysaor/JayPay/issues/184) |
+| 2026-11-27 | [Checks that passed without checking](2026-11-27-checks-that-passed-without-checking.md) | [#208](https://github.com/chrysaor/JayPay/issues/208) |

@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -60,4 +61,8 @@ public class PaymentJpaEntity {
     private Instant approvedAt;
 
     private Instant settledAt;
+
+    @Column(nullable = false)
+    @ColumnDefault("0")
+    private int sweepAttempts;
 }

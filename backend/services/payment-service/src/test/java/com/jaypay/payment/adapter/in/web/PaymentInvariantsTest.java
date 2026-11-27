@@ -3,15 +3,21 @@ package com.jaypay.payment.adapter.in.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.kafka.KafkaTestBroker;
+import com.jaypay.payment.application.port.in.ResumeUnconfirmedPaymentsUseCase;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -37,13 +43,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"payment.fee-rate-basis-points=250", "payment.amount.max=10000000"})
+        properties = {"payment.fee-rate-basis-points=250", "payment.amount.max=10000000",
+                "payment.sweep.every=1h", "payment.sweep.retry-after=0s", "payment.sweep.attempts=3"})
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class PaymentInvariantsTest {
 
     private static final int CONCURRENT_REQUESTS = 16;
@@ -53,12 +62,21 @@ class PaymentInvariantsTest {
     private static final Map<String, Long> BALANCES = new ConcurrentHashMap<>();
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
     private static final List<String> DECREASES = new CopyOnWriteArrayList<>();
+    private static final Set<String> LOSE_NEXT_DEBIT_ANSWER = ConcurrentHashMap.newKeySet();
+    private static final Set<String> FAIL_NEXT_DEBIT = ConcurrentHashMap.newKeySet();
+    private static final Set<String> MONEY_SILENT = ConcurrentHashMap.newKeySet();
     private static final HttpServer JAYPAY = startFakeJayPay();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private ResumeUnconfirmedPaymentsUseCase sweep;
+
+    @Autowired
+    private JdbcTemplate database;
 
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
@@ -225,6 +243,143 @@ class PaymentInvariantsTest {
         assertThat(BALANCES.get(payer)).isEqualTo(7000);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"payer becomes invalid", "merchant becomes invalid", "merchant loses corp"})
+    void aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange(String change) throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+
+        HttpResponse<String> lost = request(requestId, payer, merchant, "3000");
+        switch (change) {
+            case "payer becomes invalid" -> INVALID.add(payer);
+            case "merchant becomes invalid" -> INVALID.add(merchant);
+            default -> CORPORATE.remove(merchant);
+        }
+        JsonNode repeat = pay(requestId, payer, merchant, "3000");
+
+        assertThat(lost.statusCode()).isEqualTo(503);
+        assertThat(JSON.readTree(lost.body()).get("error").asText()).isEqualTo("PAYMENT_NOT_CONFIRMED");
+        assertThat(repeat.get("paymentStatus").asText()).isEqualTo("PAID");
+        assertThat(pay(requestId, payer, merchant, "3000")).isEqualTo(repeat);
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+        assertThat(paidPaymentIds()).contains(repeat.get("paymentId").asLong());
+    }
+
+    @Test
+    void aPaymentWhoseRefusedDebitAnswerWasLostFailsOnTheRepeatAndKeepsTheBalance() throws Exception {
+        String payer = memberWithBalance(1000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+
+        assertThat(request(requestId, payer, merchant, "3000").statusCode()).isEqualTo(503);
+        INVALID.add(payer);
+        JsonNode repeat = pay(requestId, payer, merchant, "3000");
+
+        assertThat(repeat.get("paymentStatus").asText()).isEqualTo("FAILED");
+        assertThat(BALANCES.get(payer)).isEqualTo(1000);
+        assertThat(paidPaymentIds()).doesNotContain(repeat.get("paymentId").asLong());
+    }
+
+    @Test
+    void aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatDebitsOnce() throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        FAIL_NEXT_DEBIT.add(payer);
+
+        HttpResponse<String> failed = request(requestId, payer, merchant, "3000");
+
+        assertThat(failed.statusCode()).isEqualTo(503);
+        assertThat(JSON.readTree(failed.body()).get("error").asText()).isEqualTo("PAYMENT_NOT_CONFIRMED");
+        assertThat(BALANCES.get(payer)).isEqualTo(10000);
+
+        JsonNode repeat = pay(requestId, payer, merchant, "3000");
+
+        assertThat(repeat.get("paymentStatus").asText()).isEqualTo("PAID");
+        assertThat(pay(requestId, payer, merchant, "3000")).isEqualTo(repeat);
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+        assertThat(paidPaymentIds()).contains(repeat.get("paymentId").asLong());
+    }
+
+    @Test
+    void aPaymentWhoseDebitAnswerWasLostIsPaidByTheSweepWithoutARepeat() throws Exception {
+        String payer = memberWithBalance(10000);
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+        assertThat(request(requestId, payer, corporateMember(), "3000").statusCode()).isEqualTo(503);
+
+        sweep.resumeUnconfirmedPayments();
+
+        assertThat(storedStatus(requestId)).isEqualTo("PAID");
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+        assertThat(paidPaymentIds()).contains(storedPaymentId(requestId));
+        assertThat(flowSteps(requestId, 2)).extracting(PaymentInvariantsTest::stepAndOutcome)
+                .containsExactly("PAYMENT_REQUESTED SUCCEEDED", "PAYER_DEBITED SUCCEEDED");
+    }
+
+    @Test
+    void aPaymentWhoseRefusedDebitAnswerWasLostIsFailedByTheSweepAndKeepsTheBalance() throws Exception {
+        String payer = memberWithBalance(1000);
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+        assertThat(request(requestId, payer, corporateMember(), "3000").statusCode()).isEqualTo(503);
+
+        sweep.resumeUnconfirmedPayments();
+
+        assertThat(storedStatus(requestId)).isEqualTo("FAILED");
+        assertThat(BALANCES.get(payer)).isEqualTo(1000);
+        assertThat(paidPaymentIds()).doesNotContain(storedPaymentId(requestId));
+    }
+
+    @Test
+    void theSweepGivesUpAfterItsAttemptsWithAnErrorAndARepeatStillFinishesThePayment(CapturedOutput output) throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        MONEY_SILENT.add(payer);
+        assertThat(request(requestId, payer, merchant, "3000").statusCode()).isEqualTo(503);
+        String debitId = "payment-" + storedPaymentId(requestId) + "-decrease";
+
+        for (int sweeps = 0; sweeps < 5; sweeps++) {
+            sweep.resumeUnconfirmedPayments();
+        }
+
+        assertThat(DECREASES.stream().filter(debitId::equals)).hasSize(1 + 3);
+        assertThat(storedStatus(requestId)).isEqualTo("REQUESTED");
+        assertThat(output.getOut().lines().filter(line -> line.contains("ERROR") && line.contains(debitId))).hasSize(1);
+
+        MONEY_SILENT.remove(payer);
+        assertThat(pay(requestId, payer, merchant, "3000").get("paymentStatus").asText()).isEqualTo("PAID");
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+    }
+
+    @RepeatedTest(5)
+    void sweepsAndRepeatsOfALostPaymentAtOnceDebitItOnce() throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        LOSE_NEXT_DEBIT_ANSWER.add(payer);
+        assertThat(request(requestId, payer, merchant, "3000").statusCode()).isEqualTo(503);
+        AtomicInteger turn = new AtomicInteger();
+
+        List<JsonNode> results = concurrently(() -> {
+            if (turn.getAndIncrement() % 2 == 0) {
+                sweep.resumeUnconfirmedPayments();
+                return null;
+            }
+            return pay(requestId, payer, merchant, "3000");
+        });
+
+        assertThat(results.stream().filter(result -> result != null))
+                .hasSize(CONCURRENT_REQUESTS / 2)
+                .allSatisfy(result -> assertThat(result.get("paymentStatus").asText()).isEqualTo("PAID"));
+        assertThat(storedStatus(requestId)).isEqualTo("PAID");
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+    }
+
     @Test
     void refusesARequestIdReusedForADifferentPayment() throws Exception {
         String payer = memberWithBalance(10000);
@@ -325,6 +480,14 @@ class PaymentInvariantsTest {
         assertThat(step.get("membershipId").asText()).isEqualTo(payer);
     }
 
+    private String storedStatus(String requestId) {
+        return database.queryForObject("SELECT payment_status FROM payment WHERE request_id = ?", String.class, requestId);
+    }
+
+    private long storedPaymentId(String requestId) {
+        return database.queryForObject("SELECT payment_id FROM payment WHERE request_id = ?", Long.class, requestId);
+    }
+
     private static List<JsonNode> flowSteps(String requestId, int count) {
         return KafkaTestBroker.awaitValues("jaypay.flow.events", requestId, values -> values.size() >= count, Duration.ofSeconds(30))
                 .stream().map(PaymentInvariantsTest::readJson).toList();
@@ -418,15 +581,24 @@ class PaymentInvariantsTest {
             server.setExecutor(Executors.newFixedThreadPool(CONCURRENT_REQUESTS * 2));
             server.createContext("/memberships/", exchange -> {
                 String member = exchange.getRequestURI().getPath().substring("/memberships/".length());
-                respond(exchange, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
+                respond(exchange, 200, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
                         + "\"address\":\"Seocho\",\"valid\":" + !INVALID.contains(member) + ",\"corp\":" + CORPORATE.contains(member) + "}");
             });
             server.createContext("/money/decrease", exchange -> {
                 JsonNode change = JSON.readTree(exchange.getRequestBody().readAllBytes());
                 String requestId = change.get("requestId").asText();
+                String payer = change.get("targetMembershipId").asText();
                 DECREASES.add(requestId);
-                respond(exchange, MONEY_RESULTS.computeIfAbsent(requestId, id -> decrease(id,
-                        change.get("targetMembershipId").asText(), change.get("amount").asLong())));
+                if (FAIL_NEXT_DEBIT.remove(payer) || MONEY_SILENT.contains(payer)) {
+                    respond(exchange, 500, "{\"status\":500}");
+                    return;
+                }
+                String answer = MONEY_RESULTS.computeIfAbsent(requestId, id -> decrease(id, payer, change.get("amount").asLong()));
+                if (LOSE_NEXT_DEBIT_ANSWER.remove(payer)) {
+                    respond(exchange, 503, "{}");
+                } else {
+                    respond(exchange, 200, answer);
+                }
             });
             server.start();
             return server;
@@ -448,10 +620,10 @@ class PaymentInvariantsTest {
                 + status[0] + ",\"amount\":" + amount + "}";
     }
 
-    private static void respond(HttpExchange exchange, String json) throws IOException {
+    private static void respond(HttpExchange exchange, int status, String json) throws IOException {
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, body.length);
+        exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
     }

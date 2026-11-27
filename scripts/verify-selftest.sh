@@ -54,6 +54,10 @@ changelog() {
   python3 "$root/scripts/changelog.py" "$@"
 }
 
+steps_of() { sed -nE "s/$1/\\1/p" "$2" | tr ' ' '\n' | sort -u; }
+expect_run "CI runs every step of verify.sh" pass "" diff <(steps_of '^ALL_STEPS=\((.*)\)$' "$root/scripts/verify.sh") \
+  <(steps_of '.*make verify STEPS="?([^"]*)"?$' "$root/.github/workflows/ci.yml")
+
 clean=$(copy_repo clean)
 expect changelog pass "$clean"
 expect contract pass "$clean"

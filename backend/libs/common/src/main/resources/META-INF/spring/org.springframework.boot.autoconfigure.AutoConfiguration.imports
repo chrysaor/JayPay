@@ -1,1 +1,3 @@
 com.jaypay.observability.LogExportAutoConfiguration
+com.jaypay.persistence.EnumValueChecksAutoConfiguration
+com.jaypay.messaging.MessageJsonAutoConfiguration

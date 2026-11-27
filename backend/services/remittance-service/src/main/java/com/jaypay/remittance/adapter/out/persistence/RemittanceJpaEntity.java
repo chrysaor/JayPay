@@ -11,6 +11,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -63,4 +64,8 @@ public class RemittanceJpaEntity {
 
     @Column(nullable = false)
     private Instant updatedAt;
+
+    @Column(nullable = false)
+    @ColumnDefault("0")
+    private int sweepAttempts;
 }

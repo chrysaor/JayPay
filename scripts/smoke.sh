@@ -167,10 +167,12 @@ PY
 
 cluster() { kubectl --context jaypay --namespace "${SMOKE_NAMESPACE:?scripts/k8s.sh sets it}" "$@"; }
 
+pod_exists() { cluster get pod "$1" >"$work/last" 2>&1; }
+
 recreate_dynamodb() {
   if [ "$stack" = kubernetes ]; then
     cluster delete pod dynamodb-0 >"$work/recreate" 2>&1 &&
-      until cluster get pod dynamodb-0 >/dev/null 2>&1; do sleep 1; done &&
+      eventually 60 "the pod dynamodb-0 did not come back" pod_exists dynamodb-0 &&
       cluster wait --for=condition=Ready pod/dynamodb-0 --timeout=120s >>"$work/recreate" 2>&1
   else
     docker compose -f "$compose_file" rm --stop --force dynamodb >"$work/recreate" 2>&1 &&
@@ -408,17 +410,19 @@ request "repeated bank remittance" POST "$web/api/remittance/remittance/request"
 wallet_balance_is "$receiver" 4000 || fail "a repeated bank remittance moved the receiver's wallet: $(cat "$work/last")"
 
 log "banking-service sends a transfer once per request id and answers a repeat with the first result"
-bank_transfer='{"requestId":"smoke-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":700}'
+bank_transfer='{"requestId":"smoke-transfer-'$run'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":700}'
 request "bank transfer" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$bank_transfer"
 [ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank transfer answered $(response)"
+company_account=$(json_field fromBankAccountNumber)
+[ -n "$company_account" ] || fail "the bank transfer names no company account: $(response)"
 first_transfer=$(cat "$work/body")
 request "repeated bank transfer" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$bank_transfer"
 [ "$(cat "$work/body")" = "$first_transfer" ] || fail "the repeated bank transfer answered $(response) instead of $first_transfer"
 expect "a reused transfer request id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
-  '{"requestId":"smoke-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":701}'
+  '{"requestId":"smoke-transfer-'$run'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'","moneyAmount":701}'
 [ "$(json_field error)" = REQUEST_ID_REUSED ] || fail "a reused transfer request id answered $(response)"
 request "transfer to an account the bank refuses" POST "$banking/banking/firmbanking/request" "$(hex 16)" \
-  '{"requestId":"smoke-refused-transfer-'$run'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'-refused","moneyAmount":700}'
+  '{"requestId":"smoke-refused-transfer-'$run'","toBankName":"Jay Bank","toBankAccountNumber":"4002-'$run'-refused","moneyAmount":700}'
 [ "$(json_field transferStatus)" = FAILED ] || fail "a refused transfer answered $(response)"
 
 log "register a second member's bank account synchronously, the way the web site does, and top it up through the saga"
@@ -499,6 +503,12 @@ staff_setting() { sed -n "s/^STAFF_$1=//p" "$env_file"; }
 
 sign_in_staff() {
   python3 "$root/scripts/staff_sign_in.py" "$admin" "$1" "$2" >"$work/staff-tokens" 2>"$work/staff-refusal"
+}
+
+staff_sign_in_refused() {
+  local status=0
+  sign_in_staff "$1" "$2" || status=$?
+  [ "$status" = 3 ] || fail "$3, the sign in exited $status: $(cat "$work/staff-refusal")"
 }
 
 staff_token() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$work/staff-tokens" "$1"; }
@@ -658,15 +668,16 @@ as_staff VIEWER expect "the event flows of a type nobody knows" 400 GET "$flows?
 
 log "the settlement job settles the payment once the bank confirms its payout"
 as_staff VIEWER eventually 90 "the settlement job never settled payment $payment_id" payment_settled "$payment_id"
-payout='{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2910}'
+payout='{"requestId":"settlement-'$payment_id'","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2910}'
 request "the payout the settlement job sent, sent again" POST "$banking/banking/firmbanking/request" "$(hex 16)" "$payout"
 [ "$(json_field transferStatus)" = SUCCEEDED ] || fail "the bank holds no settled payout for payment $payment_id: $(response)"
+[ "$(json_field fromBankAccountNumber)" = "$company_account" ] || fail "the payout of payment $payment_id left another account than the bank transfer: $(response)"
 expect "the payout id of payment $payment_id for another amount" 409 POST "$banking/banking/firmbanking/request" "$(hex 16)" \
-  '{"requestId":"settlement-'$payment_id'","fromBankName":"jaypay","fromBankAccountNumber":"111-222-333","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
+  '{"requestId":"settlement-'$payment_id'","toBankName":"Jay Bank","toBankAccountNumber":"3002-'$run'","moneyAmount":2911}'
 as_staff VIEWER eventually 60 "the settlement of payment $payment_id never showed every step as SUCCEEDED" flow_is SETTLEMENT "settlement-$payment_id" SUCCEEDED "" \
   "SETTLEMENT_STARTED MERCHANT_PAID_OUT PAYMENT_SETTLED"
 [ "$(json_field membershipId)" = "$merchant" ] && [ "$(json_field amount)" = 2910 ] || fail "the flow settlement-$payment_id names $(response)"
-! grep -q -e "3002-$run" -e "111-222-333" "$work/body" || fail "the flow settlement-$payment_id shows a bank account: $(response)"
+! grep -q -e "3002-$run" -e "$company_account" "$work/body" || fail "the flow settlement-$payment_id shows a bank account: $(response)"
 
 log "a viewer reads the saga top-ups of region $region, and the total survives a new DynamoDB container"
 as_staff VIEWER eventually 60 "the region total never reached 19000" region_total_is 19000
@@ -710,7 +721,7 @@ new_token=$(staff_token access_token)
 new_refresh=$(staff_token refresh_token)
 as "$new_token" request "member lookup by the new staff account" GET "$member_url" "$(hex 16)"
 as_keycloak_admin expect "disabling the new staff account" 204 PUT "$keycloak/admin/realms/staff/users/$new_id" "$(hex 16)" '{"enabled":false}'
-! sign_in_staff "$new_staff" "$new_password" || fail "the disabled staff account signed in"
+staff_sign_in_refused "$new_staff" "$new_password" "the disabled staff account was not refused"
 [ "$(refresh_status "$new_refresh")" = 400 ] || fail "the disabled staff account refreshed its token: $(response)"
 as "$new_token" call GET "$member_url" "$(hex 16)"
 log "the access token of the disabled account still answers HTTP $http_status and expires in $(($(token_claim "$new_token" exp) - $(date +%s)))s"
@@ -722,9 +733,9 @@ create_staff "$locked_staff" "$locked_password" viewer
 locked_id=$created_staff
 for attempt in 1 2 3 4 5; do
   sleep 2
-  ! sign_in_staff "$locked_staff" "Wrong-$(hex 8)-Pass-$attempt!" || fail "a wrong password signed in"
+  staff_sign_in_refused "$locked_staff" "Wrong-$(hex 8)-Pass-$attempt!" "a wrong password was not refused"
 done
-! sign_in_staff "$locked_staff" "$locked_password" || fail "the right password signed in to a locked account"
+staff_sign_in_refused "$locked_staff" "$locked_password" "the right password was not refused on a locked account"
 keycloak_admin_sign_in
 as_keycloak_admin request "brute force status of $locked_staff" GET "$keycloak/admin/realms/staff/attack-detection/brute-force/users/$locked_id" "$(hex 16)"
 [ "$(json_field disabled)" = True ] || fail "Keycloak does not report $locked_staff as locked: $(response)"
@@ -737,8 +748,8 @@ as_staff ADMIN expect "a path that climbs out of its segment" 403 GET "$member_u
 
 log "a staff token means nothing to the customer site"
 sign_in_default_staff ADMIN
-call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$signed_in'"}'
-[ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
+expect "token validation of a staff token on the web site" 200 POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$signed_in'"}'
+[ "$(cat "$work/body")" = false ] || fail "the web site did not reject a staff token: $(response)"
 
 log "every service shipped its logs to ClickHouse"
 for service in "${services[@]}"; do
@@ -777,7 +788,7 @@ log "the ClickHouse user behind Grafana reads the telemetry but cannot change it
   fail "the grafana user could not read otel_logs: $(response)"
 for statement in "CREATE TABLE otel.smoke_$run (id UInt8) ENGINE = Memory" "DROP TABLE otel.otel_logs" \
   "INSERT INTO otel.otel_logs (ServiceName) VALUES ('smoke')" "SELECT count() FROM system.users"; do
-  [ "$(as_grafana_reader "$statement")" != 200 ] || fail "the grafana user ran $statement"
+  [ "$(as_grafana_reader "$statement")" = 403 ] && grep -q '(ACCESS_DENIED)' "$work/body" || fail "the grafana user was not refused $statement: $(response)"
 done
 
 log "the Vault token of membership-service reads its key and nothing else"

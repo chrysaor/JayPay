@@ -49,6 +49,20 @@ public class MoneyChangingRequestPersistenceAdapter implements ChangeMoneyPort, 
     }
 
     @Override
+    public Optional<RequestId> findRefundOf(RequestId refundedRequestId) {
+        return moneyChangingRequestRepository.findByRefundedRequestId(refundedRequestId.value())
+                .map(refund -> new RequestId(refund.getRequestId()));
+    }
+
+    @Override
+    public MoneyChangingRequest settleRefund(MoneyChangingRequest settled, RequestId refundedRequestId) {
+        MoneyChangingRequestJpaEntity entity = moneyChangingRequestRepository.findById(settled.requestId().value()).orElseThrow();
+        entity.setStatus(settled.status());
+        entity.setRefundedRequestId(refundedRequestId.value());
+        return toDomain(entity);
+    }
+
+    @Override
     public void increaseBalance(MemberMoney.MembershipId membershipId, MoneyAmount amount) {
         memberMoneyRepository.increaseBalance(Long.parseLong(membershipId.getMembershipId()), amount.value());
     }

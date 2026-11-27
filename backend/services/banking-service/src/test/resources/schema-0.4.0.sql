@@ -1,0 +1,2 @@
+create table bank_transfer (amount bigint not null, requested_at timestamp(6) with time zone not null, request_id varchar(64) not null, from_bank_account_number varchar(255), from_bank_name varchar(255), status varchar(255) not null check ((status in ('PENDING','SUCCEEDED','FAILED','CANCELLED'))), to_bank_account_number varchar(255), to_bank_name varchar(255), primary key (request_id));
+insert into bank_transfer (amount, requested_at, request_id, status) values (1000, now(), 'upgrade-1', 'SUCCEEDED');

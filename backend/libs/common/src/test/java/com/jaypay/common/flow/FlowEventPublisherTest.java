@@ -2,6 +2,7 @@ package com.jaypay.common.flow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jaypay.common.logging.LogRecorder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -118,5 +119,17 @@ class FlowEventPublisherTest {
         assertThatCode(() -> publisher.publish("recharge-12", FlowStep.BANK_CHARGED, FlowOutcome.SUCCEEDED, null, "12", 700L))
                 .doesNotThrowAnyException();
         verify(kafka).send(any(), any(), any());
+    }
+
+    @Test
+    void logsAFailedSendAsWarnWithTheStepTheFlowAndTheException() {
+        when(kafka.send(anyString(), anyString(), anyString())).thenThrow(new KafkaException("broker down"));
+
+        try (LogRecorder logs = LogRecorder.of(FlowEventPublisher.class)) {
+            publisher.publish("recharge-13", FlowStep.BANK_CHARGED, FlowOutcome.SUCCEEDED, null, "12", 700L);
+
+            assertThat(logs.lines()).containsExactly(
+                    "WARN Could not publish step BANK_CHARGED of flow recharge-13 [org.springframework.kafka.KafkaException]");
+        }
     }
 }

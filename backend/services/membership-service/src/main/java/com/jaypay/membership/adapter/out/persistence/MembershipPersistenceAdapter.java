@@ -8,6 +8,7 @@ import com.jaypay.membership.domain.Membership;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
+import java.util.Optional;
 
 @PersistenceAdapter
 @RequiredArgsConstructor
@@ -29,8 +30,12 @@ public class MembershipPersistenceAdapter implements RegisterMembershipPort, Fin
     }
 
     @Override
-    public Membership findMembership(Membership.MembershipId membershipId) {
-        return toDomain(membershipRepository.getReferenceById(Long.parseLong(membershipId.getMembershipId())));
+    public Optional<Membership> findMembership(Membership.MembershipId membershipId) {
+        try {
+            return membershipRepository.findById(Long.parseLong(membershipId.getMembershipId())).map(MembershipPersistenceAdapter::toDomain);
+        } catch (NumberFormatException notAnId) {
+            return Optional.empty();
+        }
     }
 
     @Override

@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 
 import jakarta.transaction.Transactional;
 import java.util.List;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @UseCase
@@ -21,9 +22,9 @@ public class FindMembershipService implements FindMembershipUseCase {
     private final EncryptionPort encryptionPort;
 
     @Override
-    public Membership findMembership(FindMembershipCommand command) {
-        Membership stored = findMembershipPort.findMembership(new Membership.MembershipId(command.membershipId()));
-        return stored.withEmail(encryptionPort.decrypt(stored.getEmail()));
+    public Optional<Membership> findMembership(FindMembershipCommand command) {
+        return findMembershipPort.findMembership(new Membership.MembershipId(command.membershipId()))
+                .map(stored -> stored.withEmail(encryptionPort.decrypt(stored.getEmail())));
     }
 
     @Override

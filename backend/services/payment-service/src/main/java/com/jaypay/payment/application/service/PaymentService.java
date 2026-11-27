@@ -4,77 +4,115 @@ import com.jaypay.common.UseCase;
 import com.jaypay.payment.application.port.in.FinishSettlementUseCase;
 import com.jaypay.payment.application.port.in.RequestPaymentCommand;
 import com.jaypay.payment.application.port.in.RequestPaymentUseCase;
+import com.jaypay.payment.application.port.in.ResumeUnconfirmedPaymentsUseCase;
 import com.jaypay.payment.application.port.in.SettlementOutcome;
 import com.jaypay.payment.application.port.out.DecreaseMoneyPort;
 import com.jaypay.payment.application.port.out.GetMembershipPort;
 import com.jaypay.payment.application.port.out.MembershipStatus;
 import com.jaypay.payment.application.port.out.PaymentFlowPort;
 import com.jaypay.payment.application.port.out.PaymentPort;
+import com.jaypay.payment.application.port.out.PaymentPort.SweptPayment;
 import com.jaypay.payment.domain.FeeRate;
 import com.jaypay.payment.domain.NewPayment;
 import com.jaypay.payment.domain.Payment;
 import com.jaypay.payment.domain.PaymentRejectedException;
 import com.jaypay.payment.domain.PaymentRejectedException.Reason;
 import com.jaypay.payment.domain.PaymentStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
 @UseCase
-public class PaymentService implements RequestPaymentUseCase, FinishSettlementUseCase {
+@Slf4j
+public class PaymentService implements RequestPaymentUseCase, FinishSettlementUseCase, ResumeUnconfirmedPaymentsUseCase {
 
     private final PaymentPort paymentPort;
     private final GetMembershipPort getMembershipPort;
     private final DecreaseMoneyPort decreaseMoneyPort;
     private final PaymentFlowPort paymentFlowPort;
     private final FeeRate feeRate;
+    private final Duration sweepRetryAfter;
+    private final int sweepAttempts;
 
     public PaymentService(PaymentPort paymentPort,
                           GetMembershipPort getMembershipPort,
                           DecreaseMoneyPort decreaseMoneyPort,
                           PaymentFlowPort paymentFlowPort,
-                          @Value("${payment.fee-rate-basis-points}") int feeRateBasisPoints) {
+                          @Value("${payment.fee-rate-basis-points}") int feeRateBasisPoints,
+                          @Value("${payment.sweep.retry-after}") Duration sweepRetryAfter,
+                          @Value("${payment.sweep.attempts}") int sweepAttempts) {
         this.paymentPort = paymentPort;
         this.getMembershipPort = getMembershipPort;
         this.decreaseMoneyPort = decreaseMoneyPort;
         this.paymentFlowPort = paymentFlowPort;
         this.feeRate = new FeeRate(feeRateBasisPoints);
+        this.sweepRetryAfter = sweepRetryAfter;
+        this.sweepAttempts = sweepAttempts;
     }
 
     @Override
     public Payment requestPayment(RequestPaymentCommand command) {
         NewPayment requested = NewPayment.of(command.requestId(), command.requestMembershipId(), command.franchiseId(),
                 command.requestPrice(), feeRate);
-        Optional<Reason> refusal = refusal(command);
-        if (refusal.isPresent()) {
-            paymentFlowPort.refused(requested, refusal.get());
-            throw new PaymentRejectedException(refusal.get());
-        }
-
-        Payment payment = paymentPort.claim(requested);
+        Payment payment = paymentPort.findByRequestId(requested.requestId()).orElseGet(() -> claim(requested));
         if (!payment.sameRequestAs(requested)) {
             throw new PaymentRejectedException(Reason.REQUEST_ID_REUSED);
         }
         if (payment.paymentStatus() != PaymentStatus.REQUESTED) {
             return payment;
         }
-        paymentFlowPort.requested(payment);
-
-        Payment concluded = switch (decreaseMoneyPort.decreaseMoney(payment.debitRequestId(), payment.requestMembershipId(), payment.requestPrice())) {
-            case SUCCEEDED -> paymentPort.conclude(payment.paymentId(), PaymentStatus.PAID);
-            case FAILED -> paymentPort.conclude(payment.paymentId(), PaymentStatus.FAILED);
-            case UNCONFIRMED -> throw new PaymentRejectedException(Reason.PAYMENT_NOT_CONFIRMED);
-        };
-        paymentFlowPort.concluded(concluded);
-        return concluded;
+        return resume(payment).orElseThrow(() -> new PaymentRejectedException(Reason.PAYMENT_NOT_CONFIRMED));
     }
 
-    private Optional<Reason> refusal(RequestPaymentCommand command) {
-        if (!getMembershipPort.getMembership(command.requestMembershipId()).valid()) {
+    @Override
+    public void resumeUnconfirmedPayments() {
+        for (SweptPayment swept : paymentPort.sweep(sweepRetryAfter, sweepAttempts)) {
+            Payment payment = swept.payment();
+            resume(payment).ifPresentOrElse(
+                    concluded -> log.info("The sweep finished payment {} as {}", concluded.paymentId(), concluded.paymentStatus()),
+                    () -> {
+                        if (swept.attempt() >= sweepAttempts) {
+                            log.error("Payment {} stays REQUESTED: money-service did not confirm the debit {} after {} sweeps",
+                                    payment.paymentId(), payment.debitRequestId(), swept.attempt());
+                        }
+                    });
+        }
+    }
+
+    private Optional<Payment> resume(Payment payment) {
+        Optional<PaymentStatus> outcome = switch (decreaseMoneyPort.decreaseMoney(payment.debitRequestId(), payment.requestMembershipId(), payment.requestPrice())) {
+            case SUCCEEDED -> Optional.of(PaymentStatus.PAID);
+            case FAILED -> Optional.of(PaymentStatus.FAILED);
+            case UNCONFIRMED -> Optional.empty();
+        };
+        return outcome.map(status -> {
+            Payment concluded = paymentPort.conclude(payment.paymentId(), status);
+            paymentFlowPort.concluded(concluded);
+            return concluded;
+        });
+    }
+
+    private Payment claim(NewPayment requested) {
+        Optional<Reason> refusal = refusal(requested);
+        if (refusal.isPresent()) {
+            paymentFlowPort.refused(requested, refusal.get());
+            throw new PaymentRejectedException(refusal.get());
+        }
+        Payment claimed = paymentPort.claim(requested);
+        if (claimed.sameRequestAs(requested)) {
+            paymentFlowPort.requested(claimed);
+        }
+        return claimed;
+    }
+
+    private Optional<Reason> refusal(NewPayment requested) {
+        if (!getMembershipPort.getMembership(requested.requestMembershipId()).valid()) {
             return Optional.of(Reason.INVALID_PAYER);
         }
-        MembershipStatus merchant = getMembershipPort.getMembership(command.franchiseId());
+        MembershipStatus merchant = getMembershipPort.getMembership(requested.franchiseId());
         if (!merchant.valid() || !merchant.corp()) {
             return Optional.of(Reason.INVALID_MERCHANT);
         }

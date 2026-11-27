@@ -1,14 +1,21 @@
 package com.jaypay.money.adapter.out.service;
 
 import com.jaypay.common.CommonHttpClient;
+import com.jaypay.common.HttpReply;
 import com.jaypay.common.membership.MembershipResponse;
 import com.jaypay.money.application.port.out.GetMembershipPort;
 import com.jaypay.money.application.port.out.MembershipStatus;
+import com.jaypay.money.domain.MembershipNotConfirmedException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.UncheckedIOException;
+import java.net.HttpURLConnection;
+
 
 @Component
+@Slf4j
 public class MembershipServiceAdapter implements GetMembershipPort {
 
     private final CommonHttpClient commonHttpClient;
@@ -23,8 +30,21 @@ public class MembershipServiceAdapter implements GetMembershipPort {
     @Override
     public MembershipStatus getMembership(String membershipId) {
         String url = String.join("/", membershipServiceUrl, "memberships", membershipId);
-        MembershipResponse membership = commonHttpClient.get(url, MembershipResponse.class).body();
-        return new MembershipStatus(membershipId, membership != null && membership.valid());
+        HttpReply<MembershipResponse> reply;
+        try {
+            reply = commonHttpClient.get(url, MembershipResponse.class);
+        } catch (UncheckedIOException unanswered) {
+            log.warn("membership-service did not answer about member {}", membershipId, unanswered);
+            throw new MembershipNotConfirmedException(membershipId, unanswered.getMessage());
+        }
+        if (reply.status() == HttpURLConnection.HTTP_NOT_FOUND) {
+            return new MembershipStatus(membershipId, false);
+        }
+        if (reply.body() == null) {
+            log.warn("membership-service did not confirm member {}: status {}", membershipId, reply.status());
+            throw new MembershipNotConfirmedException(membershipId, "status " + reply.status());
+        }
+        return new MembershipStatus(membershipId, reply.body().valid());
     }
 
 }

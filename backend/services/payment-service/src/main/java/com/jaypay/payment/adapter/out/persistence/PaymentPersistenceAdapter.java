@@ -10,6 +10,7 @@ import com.jaypay.payment.domain.PaymentStatus;
 import com.jaypay.payment.domain.RequestId;
 import lombok.RequiredArgsConstructor;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,11 @@ import java.util.Optional;
 public class PaymentPersistenceAdapter implements PaymentPort {
 
     private final SpringDataPaymentRepository paymentRepository;
+
+    @Override
+    public Optional<Payment> findByRequestId(RequestId requestId) {
+        return paymentRepository.findByRequestId(requestId.value()).map(PaymentPersistenceAdapter::toDomain);
+    }
 
     @Override
     public Payment claim(NewPayment payment) {
@@ -29,7 +35,7 @@ public class PaymentPersistenceAdapter implements PaymentPort {
                 payment.feeRate().basisPoints(),
                 payment.charge().fee(),
                 payment.charge().payout());
-        return paymentRepository.findByRequestId(payment.requestId().value()).map(PaymentPersistenceAdapter::toDomain).orElseThrow();
+        return findByRequestId(payment.requestId()).orElseThrow();
     }
 
     @Override
@@ -52,6 +58,13 @@ public class PaymentPersistenceAdapter implements PaymentPort {
     public List<Payment> findPaid() {
         return paymentRepository.findByPaymentStatusOrderByPaymentId(PaymentStatus.PAID).stream()
                 .map(PaymentPersistenceAdapter::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<SweptPayment> sweep(Duration retryAfter, int attempts) {
+        return paymentRepository.sweep(retryAfter.toMillis() / 1000.0, attempts).stream()
+                .map(entity -> new SweptPayment(toDomain(entity), entity.getSweepAttempts()))
                 .toList();
     }
 

@@ -1,6 +1,6 @@
 # Architecture notes
 
-The [root README](../README.md) shows the services, the messaging and the observability stack. This page follows one request through the saga top-up and shows the layers inside each service.
+The [root README](../README.md) shows the services, the messaging and the observability stack. This page follows one request through the saga top-up, lists which failures between services the tests cover, and shows the layers inside each service.
 
 ## Money top-up through the saga
 
@@ -31,19 +31,22 @@ sequenceDiagram
     money->>banking: RequestFirmBankingCommand
     Note over banking: stores the transfer under recharge-<id>,<br/>the fake bank moves the money once
     banking->>money: RequestFirmBankingFinishedEvent
-    banking->>query: RequestFirmBankingFinishedEvent
     Note over money: a confirmed charge adds the amount<br/>to the balance in PostgreSQL once,<br/>a refused one fails the wallet change
     alt the deadline passes or the wallet change is no longer running
         money->>banking: RollbackFirmBankingRequestCommand
-        banking->>money: RollbackFirmBankingFinishedEvent
+        banking->>money: RollbackFirmBankingFinishedEvent,<br/>RollbackFirmBankingUnconfirmedEvent<br/>or RollbackFirmBankingRefusedEvent
+        Note over money: a confirmed refund ends the saga,<br/>an unconfirmed one waits for the next send,<br/>a refused one stores ROLLBACK_UNCONFIRMED
+    else the wallet was increased
+        money->>query: WalletRechargedEvent
+        query->>membership: GET /memberships/{membershipId}
+        membership-->>query: member address
+        query->>dynamodb: record the recharge and add the amount<br/>to the totals of that address, once per recharge
     end
-    Note over query: only a confirmed charge counts
-    query->>membership: GET /memberships/{membershipId}
-    membership-->>query: member address
-    query->>dynamodb: add the amount to the total of that address
 ```
 
 When membership-service does not answer, or the command cannot reach it, nothing else happens until the deadline fails the wallet change.
+
+The deadlines live in the memory of the money-service instance that scheduled them. When that instance stops, the sweep of money-service, at start and every `money.recharge.sweep.every`, publishes `RechargeSweptEvent` to each running saga, and a saga whose deadline is past due runs it, so the top-up still fails and the rollback is still sent up to its number of attempts. `RechargeSagaTest.aRechargeWaitingForTheBankWhoseDeadlineIsLostStillFailsAndIsRolledBackOnce`, `aRollbackWhoseRetryIsLostIsStillSentUpToItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed` and `aRechargeWhoseDeadlineIsLostIsRolledBackOnceWhileSeveralInstancesSweepAtOnce` drop the deadlines and check the result.
 
 `make smoke` runs saga top-ups that succeed, one the bank refuses, and one for a member that membership-service does not know. It checks that the saga trace spans money-service and banking-service, and that the trace of a top-up request reaches logging-consumer through the Kafka log topic.
 
@@ -107,6 +110,64 @@ The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://lo
 - auth-service does not ask Keycloak on every request. Disabling an account or taking a role away refuses its next sign-in and its next refresh at once, but an access token issued before keeps working until it expires. With the 2-minute lifetime and Spring Security's clock skew of 60 seconds, `make smoke` and a manual measurement saw the first 401 181 seconds after the account was disabled.
 
 Spring Security stays in the adapters of auth-service, which keeps no database: `domain` holds `StaffRole`, and `adapter.in.web` holds the decision table and the token conversion. `SecurityStaysInAdaptersTest` fails when `domain` or `application` imports Spring Security.
+
+## Failure paths between services
+
+Each row is a call that a flow moving money makes to another service. Each column is one way the call fails:
+
+- Lost answer: the other service did the work, and its answer never arrived or arrived as an error.
+- 5xx: the other service answered 5xx and did nothing.
+- Repeat after a change: a party changed after the first request, for example a member became invalid or the bank started refusing an account, and the same request was sent again.
+
+A cell names the test that states the money and the status after that failure, and that the same request sent again moves no money twice. A cell without a test says why. Issue [#142](https://github.com/chrysaor/JayPay/issues/142) asked for this table.
+
+### Payment, payment-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /memberships/{id}` on membership-service, payer and merchant | No work to lose. The payment is not stored, see #176 | Read as an invalid payer or merchant, #176 | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
+| `POST /money/decrease` on money-service | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange`, `aPaymentWhoseRefusedDebitAnswerWasLostFailsOnTheRepeatAndKeepsTheBalance`, `aPaymentWhoseDebitAnswerWasLostIsPaidByTheSweepWithoutARepeat`, `aPaymentWhoseRefusedDebitAnswerWasLostIsFailedByTheSweepAndKeepsTheBalance`, `sweepsAndRepeatsOfALostPaymentAtOnceDebitItOnce`, `theSweepGivesUpAfterItsAttemptsWithAnErrorAndARepeatStillFinishesThePayment` | `PaymentInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatDebitsOnce` | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
+
+### Remittance, remittance-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /memberships/{id}` on membership-service, sender and receiver | No work to lose. The remittance is not stored, see #176 | Read as an invalid sender or receiver, #176 | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderBecomesInvalid`, `aDebitWhoseAnswerWasLostIsRefundedOnTheRepeatAfterTheReceiverBecomesInvalid` |
+| `POST /banking/info` on banking-service | No work to lose. The remittance is not stored | Not covered. Read as `INVALID_BANK_ACCOUNT`, which needs a decision, see below | Not covered. The account is checked only on the first request |
+| `POST /money/decrease` on money-service, the sender's debit | `RemittanceInvariantsTest.aDebitWithoutAnAnswerIsFinishedByTheSameRequestAgain`, `aDebitWhoseAnswerWasLostIsCompletedByTheSweepWithoutARepeat`, `sweepsAndRepeatsOfALostDebitAtOnceMoveTheMoneyOnce`, `theSweepGivesUpAfterItsAttemptsWithOneErrorAndARepeatStillFinishesTheRemittance` | `RemittanceInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce` | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderSpentTheRest` |
+| `POST /money/increase` on money-service, the receiver's credit | `RemittanceInvariantsTest.aCreditWithoutAnAnswerIsFinishedByTheSameRequestAgain`, `aCreditWithoutAnAnswerIsCompletedByTheSweepWithoutARepeat` | `RemittanceInvariantsTest.aCreditMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aCreditWhoseAnswerWasLostCompletesOnTheRepeatAfterTheReceiverBecomesInvalid` |
+| `POST /money/refund` on money-service, the sender's refund | `RemittanceInvariantsTest.aRefundWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain`, `aRefundMoneyServiceFailedWith5xxIsRefundedByTheSweepWithoutARepeat`, `aRefundThatAMoneyServiceWithoutTheRefundEndpointDidNotTakeIsRefundedByTheSweepAfterTheUpgrade` | `RemittanceInvariantsTest.aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid`, `aRefundMoneyServiceFailedWith5xxIsStillRefundedAfterTheSenderBecomesInvalid` |
+| `POST /banking/firmbanking/request` on banking-service | `RemittanceInvariantsTest.aTransferTheBankDoesNotAnswerIsAskedAgainUnderTheSameIdAndLandsOnce`, `aTransferTheBankDidNotConfirmIsCompletedByTheSweepUnderTheSameTransferIdAndLandsOnce`, `sweepsAndRepeatsOfAnUnconfirmedTransferAtOnceLandItOnce` | `RemittanceInvariantsTest.aTransferBankingServiceFailsWith5xxSendsNothingAndTheRepeatSendsItOnce` | `RemittanceInvariantsTest.aTransferWhoseAnswerWasLostCompletesOnTheRepeatAfterTheBankStartsRefusingTheAccount` |
+
+### Top-up, money-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /banking/account/{id}` on banking-service | `RechargeSagaTest.aRechargeWhoseAccountLookupAnswerIsLostStoresNothingAndTheRepeatCreditsOnce` | `RechargeSagaTest.aRechargeWhoseAccountLookupFailsWith5xxStoresNothingAndTheRepeatCreditsOnce` | `RechargeSagaTest.aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
+| `CheckMembershipCommand` to membership-service | `RechargeSagaTest.aRechargeMembershipNeverAnswersFailsAtTheDeadlineBeforeTheBank` | `RechargeSagaTest.aRechargeWhoseMembershipCheckCannotBeDeliveredFailsAtTheDeadlineBeforeTheBank` | `RechargeSagaTest.aRepeatOfARechargeTheMemberCheckRefusedStaysFailedAfterTheMemberIsConfirmedAgain`, `aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
+| `CheckRegisteredBankAccountCommand` to banking-service | `RechargeSagaTest.aRechargeWhoseAccountCheckIsNeverAnsweredFailsAtTheDeadlineWithoutACharge` | `RechargeSagaTest.aRechargeWhoseAccountCheckCannotBeDeliveredFailsAtTheDeadlineWithoutACharge` | `RechargeSagaTest.aRepeatOfARechargeTheAccountCheckRefusedStaysFailedAfterTheAccountPasses` |
+| `RequestFirmBankingCommand` to banking-service, the charge | `RechargeSagaTest.aRechargeWhoseChargeTheBankConfirmsAfterTheDeadlineIsRolledBackWithoutTellingThatTheWalletWasIncreased`, `aRechargeTheBankNeverConfirmsFailsAtTheDeadlineAndIsRolledBack` | `RechargeSagaTest.aRechargeWhoseChargeCannotBeDeliveredFailsAtTheDeadlineWithoutCreditingTheWallet` | `RechargeSagaTest.aRepeatWhileTheChargeIsUnansweredChargesNothingAgainAndTheDeadlineRollsTheChargeBackOnce`, `aRepeatOfACreditedRechargeAfterTheMemberAndTheAccountChangeAnswersTheFirstResultWithoutChargingAgain` |
+| `RollbackFirmBankingRequestCommand` to banking-service | `RechargeSagaTest.aRechargeWhoseRollbackAnswerIsLostIsRolledBackAgainAndIsNotChargedAgain`, `BankTransferTest.aRollbackReturnsALandedChargeToTheMemberOnce` | `RechargeSagaTest.aRollbackBankingServiceRefusesIsSentAgainUntilBankingServiceTakesIt`, `aRollbackThatIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed` | `RechargeSagaTest.aRechargeWhoseRollbackAnswerIsLostIsRolledBackAgainAndIsNotChargedAgain` |
+| The bank's answer to the refund, carried by `RollbackFirmBankingFinishedEvent`, `RollbackFirmBankingUnconfirmedEvent` or `RollbackFirmBankingRefusedEvent` | `RechargeSagaTest.aRollbackWhoseRefundTheBankHasNotConfirmedIsSentAgainUntilTheRefundIsConfirmed`, `aRollbackWhoseRefundIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed`, `BankTransferTest.aRollbackWhoseRefundTheBankDoesNotAnswerFinishesUnconfirmedAndTheNextRollbackAsksTheBankAgain`, `aRollbackWhileTheBankStillDoesNotAnswerTheChargeFinishesUnconfirmed` | `RechargeSagaTest.aRollbackWhoseRefundTheBankRefusesLeavesTheRechargeRollbackUnconfirmedWithoutSendingItAgain`, `BankTransferTest.aRollbackWhoseRefundTheBankRefusesFinishesRefusedWithoutAskingTheBankAgain` | `BankTransferTest.aRollbackWhoseRefundTheBankDoesNotAnswerFinishesUnconfirmedAndTheNextRollbackAsksTheBankAgain` |
+
+The commands travel through Axon Server. A lost answer is a command the other service handled without publishing its event. A 5xx is a command its handler refused with an exception.
+
+### Settlement, settlement-service
+
+| Call | Lost answer | 5xx | Repeat after a change |
+| --- | --- | --- | --- |
+| `GET /payment/normal-status` on payment-service | No work to lose. The run pays nothing, as with 5xx | `SettlementWhenAServiceFailsTest.aRunWhosePaymentListFailsWith5xxPaysNothingAndTheNextRunPaysOnce` | Not applicable. The list is read again on every run |
+| `GET /banking/account/{id}` on banking-service | No work to lose. The run stops and pays nothing more | `SettlementWhenAServiceFailsTest.aPaymentWhoseAccountLookupFailsWith5xxStaysPaidAndTheNextRunPaysOnce` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount` |
+| `POST /banking/firmbanking/request` on banking-service, the payout | `SettlementJobTest.concurrentAndRepeatedRunsPayEachPaymentOnceAfterTheBankAnswersAgain`, `SettlementServiceTest.aPayoutWithoutAnAnswerStaysPaidAndTheNextRunFinishesItOnce` | `SettlementWhenAServiceFailsTest.aPayoutBankingServiceFailsWith5xxSendsNothingStaysPaidAndTheNextRunPaysOnce` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount`, `SettlementServiceTest.aPayoutWithoutAnAnswerIsNotSentToTheAccountTheMerchantRegistersNext` |
+| `POST /payment/finish-settlement` on payment-service | `SettlementWhenAServiceFailsTest.aSettlementWhoseFinishAnswerWasLostIsNeitherPaidNorSettledAgain` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount` | `SettlementServiceTest.aPayoutThatLandedIsNotSentToTheAccountTheMerchantRegistersNext` |
+
+### Not covered yet
+
+These cells have no test, because the current answer moves money the wrong way or because nobody has decided the right answer yet:
+
+- Remittance, `POST /banking/info` answers 5xx. The remittance is refused as `INVALID_BANK_ACCOUNT`, as #176 describes for membership-service.
+
+banking-service's own calls to the bank, and the event flow topic on Kafka, are not in these tables. `BankTransferTest` covers the bank's missing and refused answers.
 
 ## Layers inside a service
 

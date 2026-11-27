@@ -14,12 +14,13 @@ BACKEND_VERSION_FILE := backend/build-logic/src/main/kotlin/jaypay.java.gradle.k
 GIT_COMMON_DIR :=$(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test coverage verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
+.PHONY: help build test coverage scorecard verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
 	@echo "make test                      run backend and frontend tests"
 	@echo "make coverage                  run the tests if needed and print the line coverage of backend and frontend"
+	@echo "make scorecard                 write docs/scorecard.md from GitHub and the local test reports"
 	@echo "make verify [STEPS=...]        the gate: $$(sed -n 's/^ALL_STEPS=(\(.*\))/\1/p' scripts/verify.sh)"
 	@echo "make verify-selftest           prove the gate fails on planted errors"
 	@echo "make images                    build jaypay/<service> and jaypay/frontend-<app>"
@@ -54,6 +55,10 @@ coverage: $(FRONTEND_DEPS)
 	cd backend && ./gradlew testCodeCoverageReport
 	cd frontend && npm test
 	@python3 scripts/coverage.py
+
+scorecard:
+	python3 -m unittest discover -s scripts -p 'test_*.py'
+	python3 scripts/scorecard.py
 
 verify:
 	scripts/verify.sh $(STEPS)
@@ -131,6 +136,7 @@ contract:
 
 release-branch:
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "usage: make release-branch VERSION=X.Y.Z"; exit 2; }
+	@git diff --quiet HEAD -- && git diff --cached --quiet -- || { echo "release-branch: commit or stash these changes first, the release commit would take them along:"; git status --short --untracked-files=no; exit 2; }
 	git fetch origin develop
 	mkdir -p build && git show origin/develop:CHANGELOG.md >build/release-CHANGELOG.md
 	python3 scripts/changelog.py release build/release-CHANGELOG.md $(VERSION) $$(date +%F)

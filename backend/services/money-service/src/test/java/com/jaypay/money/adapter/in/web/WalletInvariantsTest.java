@@ -3,6 +3,8 @@ package com.jaypay.money.adapter.in.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.kafka.KafkaTestBroker;
+import com.jaypay.common.logging.LogRecorder;
+import com.jaypay.money.adapter.out.service.MembershipServiceAdapter;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.RepeatedTest;
@@ -27,8 +29,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,6 +48,8 @@ class WalletInvariantsTest {
 
     private static final int CONCURRENT_REQUESTS = 40;
     private static final AtomicLong MEMBERS = new AtomicLong(5000);
+    private static final Set<String> UNANSWERED = ConcurrentHashMap.newKeySet();
+    private static final Set<String> INVALID = ConcurrentHashMap.newKeySet();
     private static final HttpServer MEMBERSHIP = startMembershipService();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -185,6 +191,178 @@ class WalletInvariantsTest {
         assertThat(balanceOf(member)).isEqualTo(4_000_000_000L);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/money/increase", "/money/decrease"})
+    void aChangeAskedWhileMembershipServiceFailsIsAppliedOnceWhenTheSameRequestComesBack(String path) throws Exception {
+        String member = memberWithBalance(5000);
+        String requestId = UUID.randomUUID().toString();
+
+        UNANSWERED.add(member);
+        HttpResponse<String> duringOutage;
+        try (LogRecorder logs = LogRecorder.of(MembershipServiceAdapter.class)) {
+            duringOutage = post(path, "{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member
+                    + "\",\"amount\":3000}");
+            assertThat(logs.lines()).containsExactly("WARN membership-service did not confirm member " + member + ": status 503");
+        }
+        UNANSWERED.remove(member);
+
+        assertThat(duringOutage.statusCode()).isEqualTo(503);
+        assertThat(JSON.readTree(duringOutage.body()).get("error").asText()).isEqualTo("MEMBERSHIP_NOT_CONFIRMED");
+        assertThat(balanceOf(member)).isEqualTo(5000);
+
+        JsonNode afterRecovery = change(path, requestId, member, 3000);
+        JsonNode repeated = change(path, requestId, member, 3000);
+
+        assertThat(afterRecovery.get("moneyChangingResultStatus").asInt()).isEqualTo(1);
+        assertThat(repeated).isEqualTo(afterRecovery);
+        assertThat(balanceOf(member)).isEqualTo(path.endsWith("increase") ? 8000 : 2000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"invalid", "unanswered"})
+    void aRefundOfASucceededDecreaseGivesTheMoneyBackWhateverTheMemberStateIsNow(String state) throws Exception {
+        String member = memberWithBalance(5000);
+        String decrease = UUID.randomUUID().toString();
+        change("/money/decrease", decrease, member, 2000);
+        String refundId = UUID.randomUUID().toString();
+
+        (state.equals("invalid") ? INVALID : UNANSWERED).add(member);
+        JsonNode refunded;
+        try {
+            refunded = refund(refundId, decrease);
+        } finally {
+            INVALID.remove(member);
+            UNANSWERED.remove(member);
+        }
+
+        assertThat(refunded.get("moneyChangingRequestId").asText()).isEqualTo(refundId);
+        assertThat(refunded.get("moneyChangingType").asInt()).isEqualTo(1);
+        assertThat(refunded.get("moneyChangingResultStatus").asInt()).isEqualTo(1);
+        assertThat(refunded.get("amount").asLong()).isEqualTo(2000);
+        assertThat(balanceOf(member)).isEqualTo(5000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/money/increase", "/money/decrease"})
+    void anIncreaseOrDecreaseForAMemberThatIsNotValidIsStillRefused(String path) throws Exception {
+        String member = memberWithBalance(5000);
+
+        INVALID.add(member);
+        JsonNode refused;
+        try {
+            refused = change(path, UUID.randomUUID().toString(), member, 1000);
+        } finally {
+            INVALID.remove(member);
+        }
+
+        assertThat(refused.get("moneyChangingResultStatus").asInt()).isEqualTo(2);
+        assertThat(balanceOf(member)).isEqualTo(5000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"unknown", "increase", "refusedDecrease"})
+    void refusesARefundThatDoesNotNameADecreaseThatSucceeded(String refunded) throws Exception {
+        String member = memberWithBalance(1000);
+        String refundedId = UUID.randomUUID().toString();
+        switch (refunded) {
+            case "increase" -> change("/money/increase", refundedId, member, 500);
+            case "refusedDecrease" -> change("/money/decrease", refundedId, member, 5000);
+            default -> {
+            }
+        }
+        long before = balanceOf(member);
+        String refundId = UUID.randomUUID().toString();
+
+        HttpResponse<String> refused = post("/money/refund", refundBody(refundId, refundedId));
+
+        assertThat(refused.statusCode()).as(refused.body()).isEqualTo(409);
+        assertThat(JSON.readTree(refused.body()).get("error").asText()).isEqualTo("NOT_REFUNDABLE");
+        assertThat(balanceOf(member)).isEqualTo(before);
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM wallet_change WHERE request_id = ?", Long.class, refundId)).isZero();
+    }
+
+    @Test
+    void refusesASecondRefundOfTheSameDecrease() throws Exception {
+        String member = memberWithBalance(5000);
+        String decrease = UUID.randomUUID().toString();
+        change("/money/decrease", decrease, member, 2000);
+        refund(UUID.randomUUID().toString(), decrease);
+
+        HttpResponse<String> second = post("/money/refund", refundBody(UUID.randomUUID().toString(), decrease));
+
+        assertThat(second.statusCode()).as(second.body()).isEqualTo(409);
+        assertThat(JSON.readTree(second.body()).get("error").asText()).isEqualTo("NOT_REFUNDABLE");
+        assertThat(balanceOf(member)).isEqualTo(5000);
+    }
+
+    @RepeatedTest(5)
+    void concurrentCopiesOfOneRefundGiveTheMoneyBackOnce() throws Exception {
+        String member = memberWithBalance(5000);
+        String decrease = UUID.randomUUID().toString();
+        change("/money/decrease", decrease, member, 2000);
+        String refundId = UUID.randomUUID().toString();
+
+        List<JsonNode> results = concurrently(() -> refund(refundId, decrease));
+
+        assertThat(results).allSatisfy(result -> assertThat(result).isEqualTo(results.getFirst()));
+        assertThat(results.getFirst().get("moneyChangingResultStatus").asInt()).isEqualTo(1);
+        assertThat(balanceOf(member)).isEqualTo(5000);
+    }
+
+    @RepeatedTest(5)
+    void concurrentRefundsOfOneDecreaseUnderDifferentIdsGiveTheMoneyBackOnce() throws Exception {
+        String member = memberWithBalance(5000);
+        String decrease = UUID.randomUUID().toString();
+        change("/money/decrease", decrease, member, 2000);
+
+        List<Integer> statuses = concurrently(() -> JSON.valueToTree(
+                post("/money/refund", refundBody(UUID.randomUUID().toString(), decrease)).statusCode()))
+                .stream().map(JsonNode::asInt).toList();
+
+        assertThat(statuses).containsOnly(200, 409);
+        assertThat(statuses).containsOnlyOnce(200);
+        assertThat(balanceOf(member)).isEqualTo(5000);
+    }
+
+    @Test
+    void aRefundAnEarlierVersionStoredAsARefusedIncreaseIsGivenBackWhenItIsSentAsARefund() throws Exception {
+        String member = memberWithBalance(5000);
+        String decrease = UUID.randomUUID().toString();
+        change("/money/decrease", decrease, member, 2000);
+        String refundId = UUID.randomUUID().toString();
+        INVALID.add(member);
+        try {
+            assertThat(change("/money/increase", refundId, member, 2000).get("moneyChangingResultStatus").asInt()).isEqualTo(2);
+
+            JsonNode refunded = refund(refundId, decrease);
+
+            assertThat(refunded.get("moneyChangingResultStatus").asInt()).isEqualTo(1);
+            assertThat(refund(refundId, decrease)).isEqualTo(refunded);
+        } finally {
+            INVALID.remove(member);
+        }
+        assertThat(balanceOf(member)).isEqualTo(5000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"refundedRequestId\":\"has spaces\"", "\"other\":1"})
+    void refusesARefundWithoutAUsableRefundedRequestId(String refunded) throws Exception {
+        HttpResponse<String> refused = post("/money/refund", "{\"requestId\":\"" + UUID.randomUUID() + "\"," + refunded + "}");
+
+        assertThat(refused.statusCode()).isEqualTo(400);
+        assertThat(JSON.readTree(refused.body()).get("error").asText()).isEqualTo("INVALID_REQUEST_ID");
+    }
+
+    private JsonNode refund(String requestId, String refundedRequestId) throws Exception {
+        HttpResponse<String> response = post("/money/refund", refundBody(requestId, refundedRequestId));
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        return JSON.readTree(response.body());
+    }
+
+    private static String refundBody(String requestId, String refundedRequestId) {
+        return "{\"requestId\":\"" + requestId + "\",\"refundedRequestId\":\"" + refundedRequestId + "\"}";
+    }
+
     private String memberWithBalance(long balance) throws Exception {
         String member = String.valueOf(MEMBERS.incrementAndGet());
         post("/money/create-member-money", "{\"membershipId\":\"" + member + "\"}");
@@ -243,8 +421,13 @@ class WalletInvariantsTest {
             server.setExecutor(Executors.newFixedThreadPool(CONCURRENT_REQUESTS));
             server.createContext("/memberships/", exchange -> {
                 String membershipId = exchange.getRequestURI().getPath().substring("/memberships/".length());
+                if (UNANSWERED.contains(membershipId)) {
+                    exchange.sendResponseHeaders(503, -1);
+                    exchange.close();
+                    return;
+                }
                 byte[] body = ("{\"membershipId\":\"" + membershipId + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
-                        + "\"address\":\"Seocho\",\"valid\":true,\"corp\":false,\"refreshToken\":\"\"}").getBytes(StandardCharsets.UTF_8);
+                        + "\"address\":\"Seocho\",\"valid\":" + !INVALID.contains(membershipId) + ",\"corp\":false,\"refreshToken\":\"\"}").getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, body.length);
                 exchange.getResponseBody().write(body);

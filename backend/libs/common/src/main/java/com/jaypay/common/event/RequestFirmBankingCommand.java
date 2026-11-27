@@ -19,8 +19,5 @@ public class RequestFirmBankingCommand {
     private String fromBankName;
     @ToString.Exclude
     private String fromBankAccountNumber;
-    private String toBankName;
-    @ToString.Exclude
-    private String toBankAccountNumber;
     private long moneyAmount;
 }

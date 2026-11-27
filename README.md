@@ -9,7 +9,7 @@ JayPay is a study project for a wallet-based payment service: members sign up, r
 
 ## Quick start
 
-You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 is needed only to build and test the frontend outside Docker. Run these from the repository root:
+You need Docker, a JDK 21 or newer to run Gradle, and Python 3. Gradle downloads Java 25 itself. Node 24 or newer is needed only to build and test the frontend outside Docker. Run these from the repository root:
 
 ```sh
 make images
@@ -27,6 +27,16 @@ The customer site after a top-up, and the event flow of the admin console showin
 ![The wallet page of the customer site with a balance and a top-up form](docs/images/web-wallet.jpg)
 
 ![The event flow page of the admin console with the steps of a failed remittance above the list of recent flows](docs/images/admin-event-flow.jpg)
+
+## How it is built
+
+One maintainer develops JayPay with coding agents. The agents follow the rules in [CLAUDE.md](CLAUDE.md), and the maintainer decides what to build, answers the open decisions and confirms every release.
+
+- Every change starts from an issue. An agent branches from `develop`, writes the failing test first, and opens a pull request that names the issue.
+- `make verify` is the one gate. Agents run it before they report work as done, and CI runs the same target on every pull request. `make verify-selftest` plants errors and proves that the gate fails on each of them.
+- An agent merges its pull request into `develop` once CI passes. Merging into `master` and tagging a release need the maintainer's confirmation every time.
+- A pull request that makes a decision adds a record to [docs/decisions](docs/decisions/README.md), and a bug that reached `develop` or took more than one attempt gets a retrospective in [docs/retrospectives](docs/retrospectives/README.md).
+- [docs/scorecard.md](docs/scorecard.md) shows merged pull requests, time to merge, the CI failure rate, coverage and tests, each with its source and what it does not measure.
 
 ## Architecture
 
@@ -160,6 +170,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make build` | Compiles the backend and builds the frontend |
 | `make test` | Runs the backend tests, with PostgreSQL through Testcontainers, and the frontend tests |
 | `make coverage` | Prints the line coverage of the backend and of each frontend app. CI writes the same table to the summary of its backend and frontend jobs |
+| `make scorecard` | Writes `docs/scorecard.md`: merged PRs, time to merge, CI failure rate, releases, coverage, tests, smoke scenes and issues, each with its source and what it does not measure |
 | `make verify` | Runs the gate that CI runs: `changelog contract docs english env terraform actionlint charts frontend backend` |
 | `make verify STEPS="contract backend"` | Runs only the named steps |
 | `make verify-selftest` | Proves that the gate fails on planted errors |
@@ -212,10 +223,9 @@ JayPay is a study project and is not safe to run with real money or real users.
 - Login takes a member id only, with no password or other credential.
 - The fake bank in banking-service accepts every account and every transfer to an account number that does not end in `-refused`, and forgets its answers when it restarts. A real bank has to deduplicate a transfer by its request id for a repeated request to stay safe.
 - A bank transfer, a bank remittance or a payout that the bank does not answer waits until the same request is sent again or the next settlement run. Nothing retries a remittance in the background.
-- The saga top-up deadline lives in the memory of one money-service instance. A restart drops it, and a top-up that was waiting on the bank stays running.
 - The local stacks run Vault in dev mode: it keeps the key in memory, unsealed, and writes it again from `ENCRYPTION_KEY` at every start, and its root token sits in `infra/docker/.env`. Grafana lets anyone on the machine view dashboards and query ClickHouse and Prometheus through them without a login. Kafka, Axon Server and DynamoDB Local take any client on their loopback ports without credentials.
 - Money can be created and moved by anyone: a top-up through the customer site adds up to 10000000 to any member's wallet without a bank withdrawal, and a payment and a remittance take the paying or sending member from the request body ([#91](https://github.com/chrysaor/JayPay/issues/91)).
-- A payout the bank refuses keeps its payment unsettled, and someone has to fix the merchant's account.
+- A payout the bank refuses keeps its payment unsettled until the merchant registers another account, and the next settlement run then pays it to that account.
 
 [Issue #53](https://github.com/chrysaor/JayPay/issues/53) tracks the endpoints and fixes that the two sites still need.
 

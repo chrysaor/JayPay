@@ -5,6 +5,7 @@ import com.jaypay.remittance.domain.Remittance;
 import com.jaypay.remittance.domain.RemittanceStatus;
 import com.jaypay.remittance.domain.RequestId;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,4 +21,9 @@ public interface RemittancePort {
     Remittance find(UUID remittanceId);
 
     List<Remittance> findSentOrReceivedBy(String membershipId);
+
+    List<SweptRemittance> sweep(Duration retryAfter, int attempts);
+
+    record SweptRemittance(Remittance remittance, int attempt) {
+    }
 }

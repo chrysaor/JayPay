@@ -202,7 +202,7 @@ stop_forwards() {
 
 forward() {
   local name=$1 target_namespace=$2 target=$3 ports=$4 output=build/k8s/port-forward-$1.log
-  cluster --namespace "$target_namespace" port-forward "$target" "$ports" >"$output" 2>&1 &
+  kubectl --context "$profile" --namespace "$target_namespace" port-forward "$target" "$ports" >"$output" 2>&1 &
   forwards+=($!)
   for _ in $(seq 1 30); do
     forwarded_port=$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9]*\) .*/\1/p' "$output" | head -1)

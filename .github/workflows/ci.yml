@@ -31,6 +31,7 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              - 'infra/terraform/modules/dynamodb-money-sum/table.json'
               - '.github/workflows/ci.yml'
               - 'Makefile'
               - 'scripts/verify.sh'
@@ -51,7 +52,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - run: make verify STEPS="changelog contract english env terraform actionlint charts"
+      - run: make verify STEPS="changelog contract docs english env terraform actionlint charts"
       - run: make verify-selftest
 
   backend:
