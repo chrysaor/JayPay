@@ -18,6 +18,8 @@ money:
     rollback:
       retry-after: 30s
       attempts: 5
+    sweep:
+      every: 30s
 service:
   banking:
     url: ${SERVICE_BANKING_URL:http://localhost:8082}

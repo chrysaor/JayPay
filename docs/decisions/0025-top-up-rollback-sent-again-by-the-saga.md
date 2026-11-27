@@ -29,7 +29,7 @@ banking-service refunds a charge once however many rollbacks arrive, because the
 
 ## What we gave up
 
-- The deadlines live in the memory of the money-service instance (`SimpleDeadlineManager`). A restart during the retries drops them, and that top-up stays `FAILED` without the mark, the same way a restart drops the recharge deadline today.
+- The deadlines live in the memory of the money-service instance (`SimpleDeadlineManager`). A restart during the retries drops them, and that top-up stays `FAILED` without the mark, the same way a restart drops the recharge deadline today. [0026](0026-lost-top-up-deadlines-found-by-a-sweep.md) covers this.
 - An operator finds an unconfirmed rollback in the `wallet_change` table by its status, or in the error log. The admin console does not show it.
 - `RollbackFirmBankingFinishedEvent` does not say whether the bank confirmed the refund. A rollback whose refund the bank has not answered still ends the saga.
 

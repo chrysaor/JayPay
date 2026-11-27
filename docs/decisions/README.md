@@ -59,6 +59,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0023](0023-kafka-rebalance-latency-total-left-out.md) | The Kafka rebalance latency total is left out of the metrics | 0.5.0 (unreleased) | accepted | [#179](https://github.com/chrysaor/JayPay/pull/179), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0024](0024-log-levels-by-what-the-operator-does.md) | Log levels follow what the operator has to do | 0.5.0 (unreleased) | accepted | [#189](https://github.com/chrysaor/JayPay/issues/189), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0025](0025-top-up-rollback-sent-again-by-the-saga.md) | The saga sends a top-up rollback again, a set number of times | 0.5.0 (unreleased) | accepted | [#191](https://github.com/chrysaor/JayPay/pull/191), [retrospective](../retrospectives/2026-11-27-top-up-rollback-sent-once.md), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0026](0026-lost-top-up-deadlines-found-by-a-sweep.md) | A sweep finds top-up sagas whose deadline a restart dropped | 0.5.0 (unreleased) | accepted | [#193](https://github.com/chrysaor/JayPay/issues/193), [retrospective](../retrospectives/2026-11-27-saga-deadlines-lost-on-restart.md), [Unreleased](../../CHANGELOG.md#unreleased) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 

@@ -19,6 +19,7 @@ import com.jaypay.money.adapter.out.persistence.SpringDataMoneyChangingRequestRe
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
 import com.sun.net.httpserver.HttpServer;
 import org.axonframework.commandhandling.CommandHandler;
+import org.axonframework.deadline.DeadlineManager;
 import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.eventhandling.gateway.EventGateway;
 import org.junit.jupiter.api.AfterAll;
@@ -29,6 +30,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -59,7 +61,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "money.recharge.deadline=3s",
         "money.recharge.rollback.retry-after=2s",
-        "money.recharge.rollback.attempts=2"})
+        "money.recharge.rollback.attempts=2",
+        "money.recharge.sweep.every=1s"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class RechargeSagaTest {
@@ -89,6 +92,15 @@ class RechargeSagaTest {
 
     @Autowired
     private WalletRecharges walletRecharges;
+
+    @Autowired
+    private DeadlineManager deadlines;
+
+    @Autowired
+    private JdbcTemplate database;
+
+    @Autowired
+    private RechargeSweeper sweeper;
 
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
@@ -493,6 +505,60 @@ class RechargeSagaTest {
     }
 
     @Test
+    void aRechargeWaitingForTheBankWhoseDeadlineIsLostStillFailsAndIsRolledBackOnce() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> Optional.of(banking.charges(requestId)).filter(count -> count > 0));
+        deadlines.cancelAll("recharge-deadline");
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING))).isEqualTo(MoneyChangingStatus.FAILED);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRechargeWhoseDeadlineIsLostIsRolledBackOnceWhileSeveralInstancesSweepAtOnce() throws Exception {
+        String member = memberWithWallet();
+        banking.hold(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> Optional.of(banking.charges(requestId)).filter(count -> count > 0));
+        deadlines.cancelAll("recharge-deadline");
+        List<Thread> instances = List.of(
+                Thread.ofVirtual().start(() -> sweepUntilSettled(requestId)),
+                Thread.ofVirtual().start(() -> sweepUntilSettled(requestId)));
+        for (Thread instance : instances) {
+            instance.join(PATIENCE);
+        }
+
+        assertThat(statusOf(requestId)).contains(MoneyChangingStatus.FAILED);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+    }
+
+    @Test
+    void aRollbackWhoseRetryIsLostIsStillSentUpToItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.silenceRollbacksOf(account(member), Integer.MAX_VALUE);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+        eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.FAILED));
+        deadlines.cancelAll("rollback-deadline");
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        assertThat(banking.rollbacks(requestId)).isEqualTo(2);
+        assertThat(sagaEnded(requestId)).isTrue();
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
     void aRechargeWhoseAccountLookupAnswerIsLostStoresNothingAndTheRepeatCreditsOnce() throws Exception {
         String member = memberWithWallet();
         ACCOUNT_LOOKUP_DROPPED.add(member);
@@ -559,6 +625,25 @@ class RechargeSagaTest {
 
     private Optional<MoneyChangingStatus> statusOf(String requestId) {
         return changes.findById(requestId).map(MoneyChangingRequestJpaEntity::getStatus);
+    }
+
+    private void sweepUntilSettled(String requestId) {
+        long until = System.nanoTime() + PATIENCE.toNanos();
+        while (System.nanoTime() < until && statusOf(requestId).filter(status -> status != MoneyChangingStatus.PENDING).isEmpty()) {
+            sweeper.sweep();
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    private boolean sagaEnded(String requestId) {
+        return database.queryForObject(
+                "select count(*) from association_value_entry where association_key = 'rechargingRequestId' and association_value = ?",
+                Integer.class, requestId) == 0;
     }
 
     private long balanceOf(String member) {
