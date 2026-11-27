@@ -40,4 +40,5 @@ When the deadlines need to survive a restart, which needs a deadline manager tha
 ## Links
 
 - Issue [#183](https://github.com/chrysaor/JayPay/issues/183)
+- PR [#191](https://github.com/chrysaor/JayPay/pull/191)
 - Retrospective [A top-up rollback that failed was never sent again](../retrospectives/2026-11-27-top-up-rollback-sent-once.md)
