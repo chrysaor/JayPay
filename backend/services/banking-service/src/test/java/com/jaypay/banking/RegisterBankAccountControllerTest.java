@@ -69,6 +69,38 @@ class RegisterBankAccountControllerTest {
     }
 
     @Test
+    void registersNothingForAMemberThatMembershipDoesNotConfirm() throws Exception {
+        when(getMembershipPort.getMembership("71")).thenReturn(new MembershipStatus("71", false));
+
+        String answer = mockMvc.perform(post("/banking/account/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"membershipId": "71", "bankName": "Shinhan bank", "bankAccountNumber": "71-1", "valid": true}
+                                """))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(answer).doesNotContain("71-1");
+        mockMvc.perform(get("/banking/account/{membershipId}", "71")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void theAccountAMemberRegistersNextIsTheOneThatIsFound() throws Exception {
+        when(getMembershipPort.getMembership("72")).thenReturn(new MembershipStatus("72", true));
+        for (String account : new String[]{"72-1", "72-2"}) {
+            mockMvc.perform(post("/banking/account/register")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"membershipId": "72", "bankName": "Shinhan bank", "bankAccountNumber": "%s", "valid": true}
+                                    """.formatted(account)))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/banking/account/{membershipId}", "72"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankAccountNumber").value("72-2"));
+    }
+
+    @Test
     void findsTheRegisteredBankAccountOfAMembership() throws Exception {
         when(getMembershipPort.getMembership("3")).thenReturn(new MembershipStatus("3", true));
         mockMvc.perform(post("/banking/account/register")
