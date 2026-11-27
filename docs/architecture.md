@@ -45,6 +45,8 @@ sequenceDiagram
 
 When membership-service does not answer, or the command cannot reach it, nothing else happens until the deadline fails the wallet change.
 
+The deadlines live in the memory of the money-service instance that scheduled them. When that instance stops, the sweep of money-service, at start and every `money.recharge.sweep.every`, publishes `RechargeSweptEvent` to each running saga, and a saga whose deadline is past due runs it, so the top-up still fails and the rollback is still sent up to its number of attempts. `RechargeSagaTest.aRechargeWaitingForTheBankWhoseDeadlineIsLostStillFailsAndIsRolledBackOnce`, `aRollbackWhoseRetryIsLostIsStillSentUpToItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed` and `aRechargeWhoseDeadlineIsLostIsRolledBackOnceWhileSeveralInstancesSweepAtOnce` drop the deadlines and check the result.
+
 `make smoke` runs saga top-ups that succeed, one the bank refuses, and one for a member that membership-service does not know. It checks that the saga trace spans money-service and banking-service, and that the trace of a top-up request reaches logging-consumer through the Kafka log topic.
 
 ## Admin console sign-in through Keycloak

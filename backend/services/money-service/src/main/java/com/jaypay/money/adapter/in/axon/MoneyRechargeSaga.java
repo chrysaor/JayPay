@@ -9,6 +9,7 @@ import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
 import com.jaypay.common.event.WalletRechargedEvent;
+import com.jaypay.money.adapter.axon.event.RechargeSweptEvent;
 import com.jaypay.money.adapter.axon.event.RechargingRequestCreatedEvent;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
 import com.jaypay.money.domain.RechargeFailure;
@@ -28,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 @Saga
@@ -44,6 +46,7 @@ public class MoneyRechargeSaga {
     private transient Duration deadline;
     private transient Duration rollbackRetryAfter;
     private transient int rollbackAttempts;
+    private transient Duration sweepEvery;
     private transient ChangeMoneyUseCase changeMoneyUseCase;
 
     private String rechargingRequestId;
@@ -56,6 +59,7 @@ public class MoneyRechargeSaga {
     private String rollbackFirmBankingId;
     private int rollbacksSent;
     private String rollbackDeadlineId;
+    private long dueAt;
 
     @Autowired
     public void setCommandGateway(CommandGateway commandGateway) {
@@ -85,6 +89,11 @@ public class MoneyRechargeSaga {
     }
 
     @Autowired
+    public void setSweepEvery(@Value("${money.recharge.sweep.every}") Duration sweepEvery) {
+        this.sweepEvery = sweepEvery;
+    }
+
+    @Autowired
     public void setChangeMoneyUseCase(ChangeMoneyUseCase changeMoneyUseCase) {
         this.changeMoneyUseCase = changeMoneyUseCase;
     }
@@ -98,7 +107,7 @@ public class MoneyRechargeSaga {
         bankAccountNumber = event.bankAccountNumber();
         amount = event.amount();
         registeredBankAccountAggregateIdentifier = event.registeredBankAccountAggregateIdentifier();
-        deadlineId = deadlineManager.schedule(deadline, DEADLINE);
+        deadlineId = schedule(deadline, DEADLINE);
 
         String checkMembershipId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("checkMembershipId", checkMembershipId);
@@ -211,6 +220,27 @@ public class MoneyRechargeSaga {
         SagaLifecycle.end();
     }
 
+    @SagaEventHandler(associationProperty = "rechargingRequestId")
+    public void handle(RechargeSweptEvent event) {
+        if (Instant.now().isBefore(Instant.ofEpochMilli(dueAt).plus(sweepEvery))) {
+            return;
+        }
+        if (deadlineId != null) {
+            log.warn("The deadline of recharge {} was lost, so the sweep runs it", rechargingRequestId);
+            deadlineManager.cancelSchedule(DEADLINE, deadlineId);
+            onDeadline();
+        } else if (rollbackDeadlineId != null) {
+            log.warn("The rollback deadline of recharge {} was lost, so the sweep runs it", rechargingRequestId);
+            deadlineManager.cancelSchedule(ROLLBACK_DEADLINE, rollbackDeadlineId);
+            onRollbackDeadline();
+        }
+    }
+
+    private String schedule(Duration after, String deadlineName) {
+        dueAt = Instant.now().plus(after).toEpochMilli();
+        return deadlineManager.schedule(after, deadlineName);
+    }
+
     private void rollBack() {
         cancelDeadline();
         if (rollbackFirmBankingId != null) {
@@ -222,7 +252,7 @@ public class MoneyRechargeSaga {
     }
 
     private void sendRollback() {
-        rollbackDeadlineId = deadlineManager.schedule(rollbackRetryAfter.multipliedBy(1L << rollbacksSent), ROLLBACK_DEADLINE);
+        rollbackDeadlineId = schedule(rollbackRetryAfter.multipliedBy(1L << rollbacksSent), ROLLBACK_DEADLINE);
         int attempt = ++rollbacksSent;
         commandGateway.send(new RollbackFirmBankingRequestCommand(
                 rollbackFirmBankingId,
