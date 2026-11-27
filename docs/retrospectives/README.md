@@ -50,3 +50,4 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [The upgrade to 0.5.0 depended on the order of the services](2026-11-27-upgrade-depended-on-the-order-of-the-services.md) | [#199](https://github.com/chrysaor/JayPay/issues/199) |
 | 2026-11-27 | [The first-start saga test stopped the processor before its worker ran](2026-11-27-first-start-saga-test-failed-without-a-reason.md) | [#187](https://github.com/chrysaor/JayPay/pull/187), [#188](https://github.com/chrysaor/JayPay/pull/188) |
 | 2026-11-27 | [A remittance refund asked after the sender became invalid never landed](2026-11-27-refund-refused-for-an-invalid-sender.md) | [#184](https://github.com/chrysaor/JayPay/issues/184) |
+| 2026-11-27 | [Checks that passed without checking](2026-11-27-checks-that-passed-without-checking.md) | [#208](https://github.com/chrysaor/JayPay/issues/208) |

@@ -65,7 +65,7 @@ The `changelog` step of `make verify` checks the format. On a PR into `develop`,
 
 ## Releasing
 
-1. `make release-branch VERSION=X.Y.Z`, then `git push -u origin release/X.Y.Z`. It fails when Unreleased is empty. Otherwise the branch starts with one commit, `chore: release X.Y.Z`, that sets the backend version and turns Unreleased into `## [X.Y.Z] - <today>` with an empty Unreleased above it.
+1. `make release-branch VERSION=X.Y.Z`, then `git push -u origin release/X.Y.Z`. It stops before it does anything when the working tree or the index holds uncommitted changes, which would end up in the release commit, and it fails when Unreleased is empty. Otherwise the branch starts with one commit, `chore: release X.Y.Z`, that sets the backend version and turns Unreleased into `## [X.Y.Z] - <today>` with an empty Unreleased above it.
 2. On the release branch, turn `## X.Y.Z (unreleased)` in [docs/news.md](docs/news.md) into `## X.Y.Z (<today>)` and complete that section and the In progress table, and drop `(unreleased)` from the decision records of the release and from the index in `docs/decisions/README.md`. `make release-branch` does not change these files. Commit and push.
 3. Each push to the release branch runs `release.yml`. It verifies, builds every image, fails on HIGH or CRITICAL findings, and publishes `ghcr.io/chrysaor/jaypay-<name>:X.Y.Z-rc.<sha>`. Deploy the candidate and check it.
 4. Open a PR from `release/X.Y.Z` into `master`, and merge it once the owner confirms.
