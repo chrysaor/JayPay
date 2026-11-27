@@ -25,4 +25,6 @@ public interface SpringDataMoneyChangingRequestRepository extends JpaRepository<
     @Query("SELECT r FROM MoneyChangingRequestJpaEntity r WHERE r.requestId = :requestId")
     Optional<MoneyChangingRequestJpaEntity> findForUpdate(@Param("requestId") String requestId);
 
+    Optional<MoneyChangingRequestJpaEntity> findByRefundedRequestId(String refundedRequestId);
+
 }

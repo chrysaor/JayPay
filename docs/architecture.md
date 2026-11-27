@@ -131,11 +131,11 @@ A cell names the test that states the money and the status after that failure, a
 
 | Call | Lost answer | 5xx | Repeat after a change |
 | --- | --- | --- | --- |
-| `GET /memberships/{id}` on membership-service, sender and receiver | No work to lose. The remittance is not stored, see #176 | Read as an invalid sender or receiver, #176 | Not covered. A debit whose answer was lost before the sender or the receiver became invalid needs a decision, see below |
+| `GET /memberships/{id}` on membership-service, sender and receiver | No work to lose. The remittance is not stored, see #176 | Read as an invalid sender or receiver, #176 | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderBecomesInvalid`, `aDebitWhoseAnswerWasLostIsRefundedOnTheRepeatAfterTheReceiverBecomesInvalid` |
 | `POST /banking/info` on banking-service | No work to lose. The remittance is not stored | Not covered. Read as `INVALID_BANK_ACCOUNT`, which needs a decision, see below | Not covered. The account is checked only on the first request |
 | `POST /money/decrease` on money-service, the sender's debit | `RemittanceInvariantsTest.aDebitWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce` | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderSpentTheRest` |
 | `POST /money/increase` on money-service, the receiver's credit | `RemittanceInvariantsTest.aCreditWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aCreditMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aCreditWhoseAnswerWasLostCompletesOnTheRepeatAfterTheReceiverBecomesInvalid` |
-| `POST /money/increase` on money-service, the sender's refund | `RemittanceInvariantsTest.aRefundWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid` |
+| `POST /money/refund` on money-service, the sender's refund | `RemittanceInvariantsTest.aRefundWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid`, `aRefundMoneyServiceFailedWith5xxIsStillRefundedAfterTheSenderBecomesInvalid` |
 | `POST /banking/firmbanking/request` on banking-service | `RemittanceInvariantsTest.aTransferTheBankDoesNotAnswerIsAskedAgainUnderTheSameIdAndLandsOnce` | `RemittanceInvariantsTest.aTransferBankingServiceFailsWith5xxSendsNothingAndTheRepeatSendsItOnce` | `RemittanceInvariantsTest.aTransferWhoseAnswerWasLostCompletesOnTheRepeatAfterTheBankStartsRefusingTheAccount` |
 
 ### Top-up, money-service
@@ -163,8 +163,6 @@ The commands travel through Axon Server. A lost answer is a command the other se
 
 These cells have no test, because the current answer moves money the wrong way or because nobody has decided the right answer yet:
 
-- Remittance, a debit whose answer was lost, then the sender or the receiver becomes invalid. The repeat does not check the members again. Decision record 0017 settles this for payments only. [#184](https://github.com/chrysaor/JayPay/issues/184).
-- Remittance, a refund that money-service answered with 5xx without doing it, then the sender becomes invalid. money-service refuses a change for a member that is not valid, so the repeat cannot refund and answers 503 every time. [#184](https://github.com/chrysaor/JayPay/issues/184).
 - Remittance, `POST /banking/info` answers 5xx. The remittance is refused as `INVALID_BANK_ACCOUNT`, as #176 describes for membership-service.
 
 banking-service's own calls to the bank, and the event flow topic on Kafka, are not in these tables. `BankTransferTest` covers the bank's missing and refused answers.

@@ -116,8 +116,7 @@ public class RemittanceService implements RequestRemittanceUseCase, FindRemittan
     }
 
     private Remittance refund(Remittance remittance) {
-        NewRemittance request = remittance.request();
-        return switch (walletPort.increase(remittance.refundRequestId(), request.fromMembershipId(), request.amount())) {
+        return switch (walletPort.refund(remittance.refundRequestId(), remittance.debitRequestId())) {
             case SUCCEEDED -> move(remittance, RemittanceStatus.REFUNDED);
             case FAILED, UNCONFIRMED -> throw new RemittanceRejectedException(Reason.REMITTANCE_NOT_CONFIRMED);
         };

@@ -31,6 +31,11 @@ public class RequestMoneyChangingController {
         return MoneyChangingResultDetail.of(changeMoneyUseCase.decreaseMoney(moneyChangingCommands.parse(request)));
     }
 
+    @PostMapping(path = "/money/refund")
+    MoneyChangingResultDetail refundMoneyChangingRequest(@RequestBody RefundRequestBody request) {
+        return MoneyChangingResultDetail.of(changeMoneyUseCase.refundMoney(moneyChangingCommands.parse(request)));
+    }
+
     @PostMapping(path = "/money/create-member-money")
     void createMemberMoney(@RequestBody CreateMemberMoneyRequest request) {
         createMemberMoneyUseCase.createMemberMoney(new CreateMemberMoneyCommand(request.getMembershipId()));

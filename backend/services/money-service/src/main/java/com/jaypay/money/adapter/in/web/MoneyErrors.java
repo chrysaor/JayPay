@@ -1,6 +1,7 @@
 package com.jaypay.money.adapter.in.web;
 
 import com.jaypay.money.domain.MembershipNotConfirmedException;
+import com.jaypay.money.domain.NotRefundableException;
 import com.jaypay.money.domain.RegisteredAccountNotConfirmedException;
 import com.jaypay.money.domain.RequestIdReusedException;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,12 @@ class MoneyErrors {
     @ResponseStatus(HttpStatus.CONFLICT)
     Error reused(RequestIdReusedException reused) {
         return new Error("REQUEST_ID_REUSED", "This requestId was already used for a different change.");
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.CONFLICT)
+    Error notRefundable(NotRefundableException notRefundable) {
+        return new Error("NOT_REFUNDABLE", "The refundedRequestId names no decrease that succeeded and is not refunded under another requestId, so nothing changed.");
     }
 
     @ExceptionHandler

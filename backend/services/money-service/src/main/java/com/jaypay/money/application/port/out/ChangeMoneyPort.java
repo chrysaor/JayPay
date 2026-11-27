@@ -15,6 +15,10 @@ public interface ChangeMoneyPort {
 
     MoneyChangingRequest settle(MoneyChangingRequest settled);
 
+    Optional<RequestId> findRefundOf(RequestId refundedRequestId);
+
+    MoneyChangingRequest settleRefund(MoneyChangingRequest settled, RequestId refundedRequestId);
+
     void increaseBalance(MemberMoney.MembershipId membershipId, MoneyAmount amount);
 
     boolean decreaseBalance(MemberMoney.MembershipId membershipId, MoneyAmount amount);
