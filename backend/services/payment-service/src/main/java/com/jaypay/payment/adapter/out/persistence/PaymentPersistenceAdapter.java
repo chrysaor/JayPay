@@ -10,6 +10,7 @@ import com.jaypay.payment.domain.PaymentStatus;
 import com.jaypay.payment.domain.RequestId;
 import lombok.RequiredArgsConstructor;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,6 +58,13 @@ public class PaymentPersistenceAdapter implements PaymentPort {
     public List<Payment> findPaid() {
         return paymentRepository.findByPaymentStatusOrderByPaymentId(PaymentStatus.PAID).stream()
                 .map(PaymentPersistenceAdapter::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<SweptPayment> sweep(Duration retryAfter, int attempts) {
+        return paymentRepository.sweep(retryAfter.toMillis() / 1000.0, attempts).stream()
+                .map(entity -> new SweptPayment(toDomain(entity), entity.getSweepAttempts()))
                 .toList();
     }
 

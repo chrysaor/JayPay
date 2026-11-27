@@ -16,7 +16,7 @@ While fixing [#183](https://github.com/chrysaor/JayPay/issues/183) in [#191](htt
 
 ## Fix
 
-[#194](https://github.com/chrysaor/JayPay/issues/194): `RollbackFirmBankingFinishedEvent` carries `refundStatus`. The saga ends only on a confirmed refund, sends the rollback again on an unconfirmed one up to its attempts, and stores `ROLLBACK_UNCONFIRMED` at once on a refused one. `reverse` reports a charge the bank still does not answer as unconfirmed. The decision is in [0027](../decisions/0027-top-up-rollback-ends-on-a-confirmed-refund.md).
+[#194](https://github.com/chrysaor/JayPay/issues/194): `RollbackFirmBankingFinishedEvent` carries `refundStatus`. The saga ends only on a confirmed refund, sends the rollback again on an unconfirmed one up to its attempts, and stores `ROLLBACK_UNCONFIRMED` at once on a refused one. `reverse` reports a charge the bank still does not answer as unconfirmed. The decision is in [0028](../decisions/0028-top-up-rollback-ends-on-a-confirmed-refund.md).
 
 ## What changed so it is caught next time
 
