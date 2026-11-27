@@ -23,13 +23,13 @@ public class LoggingProducer {
         try {
             kafkaTemplate.send(topic, key, value).whenComplete((result, exception) -> {
                 if (exception == null) {
-                    log.info("Message sent successfully. Offset: {}", result.getRecordMetadata().offset());
+                    log.debug("Sent the logging record {} at offset {}", key, result.getRecordMetadata().offset());
                 } else {
-                    log.warn("Failed to send message: {}", exception.getMessage());
+                    log.warn("Could not send the logging record {}", key, exception);
                 }
             });
         } catch (KafkaException e) {
-            log.warn("Failed to send message: {}", e.getMessage());
+            log.warn("Could not send the logging record {}", key, e);
         }
     }
 

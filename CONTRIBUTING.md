@@ -31,6 +31,25 @@ Who merges:
 7. Merge after CI passes.
 8. Close the issue. `Closes` only fires on `master`, so merging into `develop` leaves it open.
 
+## Logging
+
+Each backend log line takes the level of what it tells the operator:
+
+| Level | Meaning | Example |
+| --- | --- | --- |
+| `ERROR` | An operator has to act: money may be wrong, or the system gave up | The rollback of a top-up failed, a bank account registration was lost |
+| `WARN` | Something outside the service failed, and the system recovers by itself through a retry, a deadline or the next run | banking-service did not answer the transfer |
+| `INFO` | One line for each business state change, and for each expected refusal with its reason | Merchant 11 has no bank account, banking-service refused the transfer as invalid |
+| `DEBUG` | Detail of one call, off by default | The command a handler received, each record sent to the logging topic |
+
+- An expected refusal, such as a member that is not valid, no registered account, a charge the bank refused or a transfer refused as invalid, is `INFO`, not `WARN`, so the count of `WARN` lines says that something is broken.
+- Every line names the id of what it is about. The backend build fails on a log call with a fixed text and no argument.
+- A caught exception goes in as the last argument, so the line keeps its class and stack trace. Never log only its `getMessage()`.
+- Never log a bank account number, or a whole request or command object.
+- A failure is logged once, where it is caught. A web error handler that turns an exception into 4xx or 503 logs nothing more.
+
+Every service runs at the Spring Boot default, `INFO`. [docs/services.md](docs/services.md#log-levels) says how to raise the level of one service.
+
 ## Changelog
 
 `CHANGELOG.md` tells a reader what each release lets them do that the one before did not. Every PR into `develop` that changes behaviour adds a line under `## [Unreleased]`, in the group that fits: `### Added`, `### Changed`, `### Fixed` or `### Security`, in that order. Write what changed for someone who uses or runs JayPay, not the PR title, and end the line with its PR or issue link, for example `([#107](https://github.com/chrysaor/JayPay/pull/107))`.

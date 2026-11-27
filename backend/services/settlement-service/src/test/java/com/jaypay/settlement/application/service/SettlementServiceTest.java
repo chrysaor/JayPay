@@ -1,5 +1,6 @@
 package com.jaypay.settlement.application.service;
 
+import com.jaypay.common.logging.LogRecorder;
 import com.jaypay.settlement.application.port.out.BankAccount;
 import com.jaypay.settlement.application.port.out.BankingPort;
 import com.jaypay.settlement.application.port.out.Payout;
@@ -50,6 +51,22 @@ class SettlementServiceTest {
         new SettlementService(banking, payments, flow, attempts).settleNormalStatusPayments();
 
         assertThat(flow.reports).containsExactly("waiting for an account 1", "started 2", "paid out 2 REFUSED");
+    }
+
+    @Test
+    void logsAMissingAccountAndARefusedPayoutAsInfoAndAPayoutWithoutAnAnswerAsWarn() {
+        PaidPayments payments = new PaidPayments(new Payment(1, "99", 9700), new Payment(2, "11", 4825), new Payment(3, "12", 194));
+        banking.refuse(FIRST_MERCHANT_ACCOUNT);
+        banking.silence(SECOND_MERCHANT_ACCOUNT);
+
+        try (LogRecorder logs = LogRecorder.of(SettlementService.class)) {
+            new SettlementService(banking, payments, flow, attempts).settleNormalStatusPayments();
+
+            assertThat(logs.lines()).containsExactly(
+                    "INFO Merchant 99 has no bank account, so payment 1 stays paid",
+                    "INFO The bank refused the payout of payment 2 to merchant 11, so it stays paid until the merchant registers another account",
+                    "WARN The bank did not confirm the payout of payment 3, so the next run asks again");
+        }
     }
 
     @Test

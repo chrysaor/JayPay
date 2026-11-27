@@ -37,8 +37,8 @@ class FlowEventListener {
             return;
         }
         if (!wellFormed(event)) {
-            log.warn("Skipped a flow step without a flow, a step of that flow, a service, an outcome or a time: {} {} {}",
-                    event.flowType(), event.step(), event.service());
+            log.warn("Skipped a flow step without a flow, a step of that flow, a service, an outcome or a time: flow {} {} {} {}",
+                    event.flowId(), event.flowType(), event.step(), event.service());
             return;
         }
         recordFlowStepUseCase.record(event.flowType(), event.flowId(), new RecordedStep(

@@ -4,6 +4,21 @@ This page describes each of the eleven Spring Boot services in `backend/services
 
 The services that use PostgreSQL let Hibernate create and update their tables with `SPRING_JPA_HIBERNATE_DDL_AUTO`, `update` in both local stacks. Hibernate adds a check constraint that lists the values of each enum column, and `update` never changes it, so on every start each service drops the checks that cover a single enum column, on a new database and on one that an older version created. The database then takes any status value, and only the code checks it. Checks named on an entity, such as the `wallet` balance and the `payment` fee, stay.
 
+## Log levels
+
+Every service logs at the Spring Boot default, `INFO`, and its levels follow the rule in [CONTRIBUTING.md](../CONTRIBUTING.md#logging). Spring Boot reads a level from the environment, so `LOGGING_LEVEL_COM_JAYPAY=DEBUG` turns on the `DEBUG` lines of our code in one service without a new image. A variable such as `LOGGING_LEVEL_COM_JAYPAY_MONEY` narrows it to one package.
+
+With Compose, write the variable into a second file for one service and recreate only that container. `build/` is ignored by git:
+
+```sh
+printf 'services:\n  money-service:\n    environment:\n      LOGGING_LEVEL_COM_JAYPAY: DEBUG\n' > build/log-level.yaml
+docker compose -f infra/docker/compose.yaml -f build/log-level.yaml up -d --no-deps money-service
+```
+
+`cd infra/docker && docker compose up -d --no-deps money-service` puts the default back.
+
+On Kubernetes, add the variable to `env` in `deploy/envs/<env>/spring-service/<service>.yaml`. Argo CD syncs the change and replaces the pod. `kubectl set env` does not last, because Argo CD heals what differs from Git. In `deploy/envs/local` the gate requires the same environment as `compose.yaml`, so for the local cluster add the same line to the service's `environment` in `infra/docker/compose.yaml`, run `make k8s-up`, and remove both lines afterwards.
+
 ## membership-service
 
 Members of the customer site: sign up, look-up, edits and the customer tokens.
