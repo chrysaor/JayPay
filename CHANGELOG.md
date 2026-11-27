@@ -23,6 +23,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 - `POST /memberships/login` answers 404 `MEMBERSHIP_NOT_FOUND` in place of 500 for a member that does not exist ([#149](https://github.com/chrysaor/JayPay/issues/149))
 - `GET /banking/account/{membershipId}` answers the bank account the member registered last. Before, a member who registered another account kept the first one for top-ups and settlement payouts ([#225](https://github.com/chrysaor/JayPay/issues/225))
 - While membership-service fails or does not answer, a payment, a remittance and a bank account registration answer 503 `MEMBERSHIP_NOT_CONFIRMED` and change nothing, and the same request sent later goes through once. Before, a payment and a remittance answered 400 as if the member were not valid, and a registration answered 500. `POST /money/aggregation/get-money-sum-by-address` answers 503 `MONEY_SUM_NOT_CONFIRMED` in place of 500 when membership-service or money-service fails. A bank account registration for a member that does not exist or is not valid registers nothing in place of answering 500 ([#223](https://github.com/chrysaor/JayPay/issues/223))
+- While banking-service fails or does not answer, a remittance to a bank account answers 503 `BANK_ACCOUNT_NOT_CONFIRMED` and changes nothing, and the same request sent later sends the money once. Before, it answered 400 `INVALID_BANK_ACCOUNT` as if the bank did not know the account ([#176](https://github.com/chrysaor/JayPay/issues/176))
 
 ## [0.5.0] - 2026-11-27
 

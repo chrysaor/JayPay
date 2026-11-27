@@ -133,7 +133,7 @@ A cell names the test that states the money and the status after that failure, a
 | Call | Lost answer | 5xx | Repeat after a change |
 | --- | --- | --- | --- |
 | `GET /memberships/{id}` on membership-service, sender and receiver | No work to lose. The remittance is not stored | `RemittanceInvariantsTest.aRemittanceMembershipServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce` | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderBecomesInvalid`, `aDebitWhoseAnswerWasLostIsRefundedOnTheRepeatAfterTheReceiverBecomesInvalid` |
-| `POST /banking/info` on banking-service | No work to lose. The remittance is not stored | Not covered. Read as `INVALID_BANK_ACCOUNT`, which needs a decision, see below | Not covered. The account is checked only on the first request |
+| `POST /banking/info` on banking-service | No work to lose. The remittance is not stored | `RemittanceInvariantsTest.aRemittanceWhoseBankAccountBankingServiceFailsToCheckTakesNothingAndTheRepeatSendsTheMoneyOnce` | Not covered. The account is checked only on the first request |
 | `POST /money/decrease` on money-service, the sender's debit | `RemittanceInvariantsTest.aDebitWithoutAnAnswerIsFinishedByTheSameRequestAgain`, `aDebitWhoseAnswerWasLostIsCompletedByTheSweepWithoutARepeat`, `sweepsAndRepeatsOfALostDebitAtOnceMoveTheMoneyOnce`, `theSweepGivesUpAfterItsAttemptsWithOneErrorAndARepeatStillFinishesTheRemittance` | `RemittanceInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce` | `RemittanceInvariantsTest.aDebitWhoseAnswerWasLostCompletesOnTheRepeatAfterTheSenderSpentTheRest` |
 | `POST /money/increase` on money-service, the receiver's credit | `RemittanceInvariantsTest.aCreditWithoutAnAnswerIsFinishedByTheSameRequestAgain`, `aCreditWithoutAnAnswerIsCompletedByTheSweepWithoutARepeat` | `RemittanceInvariantsTest.aCreditMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aCreditWhoseAnswerWasLostCompletesOnTheRepeatAfterTheReceiverBecomesInvalid` |
 | `POST /money/refund` on money-service, the sender's refund | `RemittanceInvariantsTest.aRefundWithoutAnAnswerIsFinishedByTheSameRequestAgain` | `RemittanceInvariantsTest.aRefundMoneyServiceFailsWith5xxIsFinishedByTheSameRequestAgain`, `aRefundMoneyServiceFailedWith5xxIsRefundedByTheSweepWithoutARepeat`, `aRefundThatAMoneyServiceWithoutTheRefundEndpointDidNotTakeIsRefundedByTheSweepAfterTheUpgrade` | `RemittanceInvariantsTest.aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid`, `aRefundMoneyServiceFailedWith5xxIsStillRefundedAfterTheSenderBecomesInvalid` |
@@ -161,11 +161,7 @@ The commands travel through Axon Server. A lost answer is a command the other se
 | `POST /banking/firmbanking/request` on banking-service, the payout | `SettlementJobTest.concurrentAndRepeatedRunsPayEachPaymentOnceAfterTheBankAnswersAgain`, `SettlementServiceTest.aPayoutWithoutAnAnswerStaysPaidAndTheNextRunFinishesItOnce` | `SettlementWhenAServiceFailsTest.aPayoutBankingServiceFailsWith5xxSendsNothingStaysPaidAndTheNextRunPaysOnce` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount`, `SettlementServiceTest.aPayoutWithoutAnAnswerIsNotSentToTheAccountTheMerchantRegistersNext` |
 | `POST /payment/finish-settlement` on payment-service | `SettlementWhenAServiceFailsTest.aSettlementWhoseFinishAnswerWasLostIsNeitherPaidNorSettledAgain` | `SettlementAfterAccountChangeTest.aRefusedPayoutLandsOnTheNewAccountOnceAndAPayoutAlreadySentIsNeverSentToTheNewAccount` | `SettlementServiceTest.aPayoutThatLandedIsNotSentToTheAccountTheMerchantRegistersNext` |
 
-### Not covered yet
-
-These cells have no test, because the current answer moves money the wrong way or because nobody has decided the right answer yet:
-
-- Remittance, `POST /banking/info` answers 5xx. The remittance is refused as `INVALID_BANK_ACCOUNT`, as #176 describes for membership-service.
+### Not in these tables
 
 banking-service's own calls to the bank, and the event flow topic on Kafka, are not in these tables. `BankTransferTest` covers the bank's missing and refused answers.
 

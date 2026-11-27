@@ -105,6 +105,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 - money-aggregation-service had no test for its one use case. It now has one for the sum over more than 100 members and for an address without members.
 - remittance-service had no test for the remittances of a member. It now has one.
 - [#225](https://github.com/chrysaor/JayPay/issues/225) found that a member who registered another bank account kept the first one, and fixed it.
+- [#223](https://github.com/chrysaor/JayPay/issues/223) found that a payment, a remittance, a bank account registration and the sum of balances read an outage of a service they call as a refusal or failed on it, and decision [0035](decisions/0035-an-outage-of-a-checked-service-answers-503.md) fixed the answer.
 - Three gaps are filed: [#223](https://github.com/chrysaor/JayPay/issues/223), [#224](https://github.com/chrysaor/JayPay/issues/224) and [#225](https://github.com/chrysaor/JayPay/issues/225).
 
 Mutation testing would show which of the tested lines a test would notice changing. It needs a new build plugin, which waits for the owner's decision.

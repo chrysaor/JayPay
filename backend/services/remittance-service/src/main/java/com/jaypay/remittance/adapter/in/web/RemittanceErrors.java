@@ -1,5 +1,6 @@
 package com.jaypay.remittance.adapter.in.web;
 
+import com.jaypay.remittance.domain.BankAccountNotConfirmedException;
 import com.jaypay.remittance.domain.MembershipNotConfirmedException;
 import com.jaypay.remittance.domain.RemittanceRejectedException;
 import org.springframework.http.HttpStatus;
@@ -43,6 +44,12 @@ class RemittanceErrors {
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     Error notConfirmed(MembershipNotConfirmedException notConfirmed) {
         return new Error("MEMBERSHIP_NOT_CONFIRMED", "A member could not be checked, so nothing changed. Send the same request again.");
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    Error notConfirmed(BankAccountNotConfirmedException notConfirmed) {
+        return new Error("BANK_ACCOUNT_NOT_CONFIRMED", "The bank account could not be checked, so nothing changed. Send the same request again.");
     }
 
     private static ResponseEntity<Error> error(HttpStatus status, RemittanceRejectedException refused, String message) {
