@@ -1,7 +1,7 @@
 package com.jaypay.money.query.application.port.out;
 
+import java.util.Optional;
+
 public interface GetMemberAddressInfoPort {
-    MemberAddressInfo getMemberAddressInfo(
-            String membershipId
-    );
+    Optional<MemberAddressInfo> getMemberAddressInfo(String membershipId);
 }

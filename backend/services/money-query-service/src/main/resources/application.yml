@@ -13,6 +13,9 @@ spring:
 service:
   membership:
     url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}
+region-total:
+  membership-patience: 15s
+  membership-retry-after: 2s
 dynamodb:
   table-name: ${DYNAMODB_TABLE_NAME}
   region: ${AWS_REGION:ap-northeast-2}
