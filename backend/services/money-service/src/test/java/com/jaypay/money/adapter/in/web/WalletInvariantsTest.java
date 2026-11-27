@@ -3,6 +3,8 @@ package com.jaypay.money.adapter.in.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.kafka.KafkaTestBroker;
+import com.jaypay.common.logging.LogRecorder;
+import com.jaypay.money.adapter.out.service.MembershipServiceAdapter;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.RepeatedTest;
@@ -195,8 +197,12 @@ class WalletInvariantsTest {
         String requestId = UUID.randomUUID().toString();
 
         UNANSWERED.add(member);
-        HttpResponse<String> duringOutage = post(path, "{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member
-                + "\",\"amount\":3000}");
+        HttpResponse<String> duringOutage;
+        try (LogRecorder logs = LogRecorder.of(MembershipServiceAdapter.class)) {
+            duringOutage = post(path, "{\"requestId\":\"" + requestId + "\",\"targetMembershipId\":\"" + member
+                    + "\",\"amount\":3000}");
+            assertThat(logs.lines()).containsExactly("WARN membership-service did not confirm member " + member + ": status 503");
+        }
         UNANSWERED.remove(member);
 
         assertThat(duringOutage.statusCode()).isEqualTo(503);

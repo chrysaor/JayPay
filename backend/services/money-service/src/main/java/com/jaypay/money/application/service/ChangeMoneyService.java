@@ -67,7 +67,7 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
         Optional<RegisteredBankAccount> account = getRegisteredBankAccountPort.getRegisteredBankAccount(command.targetMembershipId())
                 .filter(registered -> registered.bankAccountNumber() != null && !registered.bankAccountNumber().isBlank());
         if (account.isEmpty()) {
-            log.warn("Member {} has no registered bank account, so recharge {} fails", command.targetMembershipId(), command.requestId().value());
+            log.info("Member {} has no registered bank account, so recharge {} fails", command.targetMembershipId(), command.requestId().value());
             rechargeFlowPort.requestFailed(pending, RechargeFailure.NO_BANK_ACCOUNT);
             return changeMoneyPort.settle(pending.settled(false));
         }

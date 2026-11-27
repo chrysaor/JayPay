@@ -44,7 +44,7 @@ public class BankingServiceAdapter implements BankingPort {
                 }
             }
             if (reply.status() == 400) {
-                log.warn("banking-service refused the transfer {} as invalid", requestId);
+                log.info("banking-service refused the transfer {} as invalid", requestId);
                 return Outcome.FAILED;
             }
             log.warn("banking-service did not confirm the transfer {}: status {}", requestId, reply.status());

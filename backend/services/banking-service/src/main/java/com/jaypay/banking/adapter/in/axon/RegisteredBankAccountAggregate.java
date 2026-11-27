@@ -36,8 +36,7 @@ public class RegisteredBankAccountAggregate {
 
     @CommandHandler
     public RegisteredBankAccountAggregate(CreateRegisteredBankAccountCommand command) {
-        log.info("CreateRegisteredBankAccountCommand Sourcing Handler");
-
+        log.debug("Registering a bank account for member {}", command.membershipId());
         apply(new CreateRegisteredBankAccountEvent(
                 command.membershipId(), command.bankName(), command.bankAccountNumber()
         ));
@@ -46,8 +45,7 @@ public class RegisteredBankAccountAggregate {
     @CommandHandler
     public void handle(CheckRegisteredBankAccountCommand command, RequestBankingInfoUseCase requestBankingInfoUseCase,
                        FlowEventPublisher flowEvents) {
-        log.info("CheckRegisteredBankAccountCommand Handler");
-
+        log.debug("Checking the bank account of recharge {}", command.getRechargeRequestId());
         id = command.getAggregateIdentifier();
 
         boolean isValid = requestBankingInfoUseCase.requestExternalBankingInfo(
@@ -72,8 +70,6 @@ public class RegisteredBankAccountAggregate {
 
     @EventSourcingHandler
     public void on(CreateRegisteredBankAccountEvent event) {
-        log.info("CreatedRegisteredBankAccountEvent Sourcing Handler");
-
         id = UUID.randomUUID().toString();
         membershipId = event.membershipId();
         bankName = event.bankName();

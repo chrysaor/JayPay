@@ -1,4 +1,4 @@
-# 0024. The saga sends a top-up rollback again, a set number of times
+# 0025. The saga sends a top-up rollback again, a set number of times
 
 ## Release
 

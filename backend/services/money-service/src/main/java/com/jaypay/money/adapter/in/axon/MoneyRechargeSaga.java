@@ -103,7 +103,7 @@ public class MoneyRechargeSaga {
         String checkMembershipId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("checkMembershipId", checkMembershipId);
         commandGateway.send(new CheckMembershipCommand(checkMembershipId, rechargingRequestId, membershipId)).exceptionally(failure -> {
-            log.warn("The membership check of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());
+            log.warn("The membership check of recharge {} failed, so the deadline ends it", rechargingRequestId, failure);
             return null;
         });
     }
@@ -111,7 +111,7 @@ public class MoneyRechargeSaga {
     @SagaEventHandler(associationProperty = "checkMembershipId")
     public void handle(CheckedMembershipEvent event) {
         if (!event.valid()) {
-            log.warn("Member {} of recharge {} is not a valid member, so the recharge fails", membershipId, rechargingRequestId);
+            log.info("Member {} of recharge {} is not a valid member, so the recharge fails", membershipId, rechargingRequestId);
             changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.MEMBER_NOT_CONFIRMED);
             end();
             return;
@@ -127,7 +127,7 @@ public class MoneyRechargeSaga {
                 bankAccountNumber,
                 amount)
         ).exceptionally(failure -> {
-            log.warn("The account check of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());
+            log.warn("The account check of recharge {} failed, so the deadline ends it", rechargingRequestId, failure);
             return null;
         });
     }
@@ -135,7 +135,7 @@ public class MoneyRechargeSaga {
     @SagaEventHandler(associationProperty = "checkRegisteredBankAccountId")
     public void handle(CheckedRegisteredBankAccountEvent event) {
         if (!event.isChecked()) {
-            log.warn("The bank account of recharge {} did not pass the check, so the recharge fails", rechargingRequestId);
+            log.info("The bank account of recharge {} did not pass the check, so the recharge fails", rechargingRequestId);
             changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.BANK_ACCOUNT_NOT_CONFIRMED);
             end();
             return;
@@ -151,7 +151,7 @@ public class MoneyRechargeSaga {
                 bankAccountNumber,
                 amount)
         ).exceptionally(failure -> {
-            log.warn("The charge of recharge {} failed, so the deadline ends it: {}", rechargingRequestId, failure.getMessage());
+            log.warn("The charge of recharge {} failed, so the deadline ends it", rechargingRequestId, failure);
             return null;
         });
     }
@@ -162,13 +162,14 @@ public class MoneyRechargeSaga {
             case RequestFirmBankingFinishedEvent.SUCCEEDED -> {
                 if (changeMoneyUseCase.finishRecharging(new RequestId(rechargingRequestId))) {
                     eventGateway.publish(new WalletRechargedEvent(rechargingRequestId, membershipId, amount));
+                    log.info("Recharge {} of member {} finished", rechargingRequestId, membershipId);
                     end();
                 } else {
                     rollBack();
                 }
             }
             case RequestFirmBankingFinishedEvent.REFUSED -> {
-                log.warn("The bank refused the charge of recharge {}, so the recharge fails", rechargingRequestId);
+                log.info("The bank refused the charge of recharge {}, so the recharge fails", rechargingRequestId);
                 changeMoneyUseCase.failRecharging(new RequestId(rechargingRequestId), RechargeFailure.CHARGE_REFUSED);
                 end();
             }
@@ -232,7 +233,7 @@ public class MoneyRechargeSaga {
                 bankAccountNumber,
                 amount)
         ).exceptionally(failure -> {
-            log.warn("Attempt {} of the rollback of recharge {} failed: {}", attempt, rechargingRequestId, failure.getMessage());
+            log.warn("Attempt {} of the rollback of recharge {} failed", attempt, rechargingRequestId, failure);
             return null;
         });
     }

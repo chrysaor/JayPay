@@ -28,14 +28,13 @@ public class MemberMoneyAggregate {
 
     @CommandHandler
     public MemberMoneyAggregate(MemberMoneyCreatedCommand command) {
-        log.info("MemberMoneyCreatedCommand Handler");
-
+        log.debug("Creating the wallet of member {}", command.membershipId());
         apply(new MemberMoneyCreatedEvent(command.membershipId()));
     }
 
     @CommandHandler
     public void handler(RechargingMoneyRequestCreateCommand command) {
-        log.info("RechargingMoneyRequestCreateCommand Handler");
+        log.debug("Starting recharge {} of member {}", command.rechargingRequestId(), command.membershipId());
         id = command.aggregateIdentifier();
 
         apply(new RechargingRequestCreatedEvent(
@@ -50,7 +49,6 @@ public class MemberMoneyAggregate {
 
     @EventSourcingHandler
     public void on(MemberMoneyCreatedEvent event) {
-        log.info("MemberMoneyCreatedEvent Sourcing Handler");
         id = UUID.randomUUID().toString();
         membershipId = Long.parseLong(event.membershipId());
         balance = 0;
@@ -58,7 +56,6 @@ public class MemberMoneyAggregate {
 
     @EventSourcingHandler
     public void on(IncreaseMemberMoneyEvent event) {
-        log.info("IncreaseMemberMoneyEvent Sourcing Handler");
         id = event.aggregateIdentifier();
         membershipId = Long.parseLong(event.targetMembershipId());
         balance += event.amount();

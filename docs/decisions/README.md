@@ -57,7 +57,8 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0021](0021-region-total-counts-wallet-increases.md) | The region total counts wallet increases, once per recharge | 0.5.0 (unreleased) | accepted | [#178](https://github.com/chrysaor/JayPay/pull/178), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0022](0022-enum-columns-without-value-checks.md) | Enum columns keep no check of their values, without a migration tool | 0.5.0 (unreleased) | accepted | [#180](https://github.com/chrysaor/JayPay/pull/180), [retrospective](../retrospectives/2026-11-27-status-columns-refuse-later-values.md), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0023](0023-kafka-rebalance-latency-total-left-out.md) | The Kafka rebalance latency total is left out of the metrics | 0.5.0 (unreleased) | accepted | [#179](https://github.com/chrysaor/JayPay/pull/179), [Unreleased](../../CHANGELOG.md#unreleased) |
-| [0024](0024-top-up-rollback-sent-again-by-the-saga.md) | The saga sends a top-up rollback again, a set number of times | 0.5.0 (unreleased) | accepted | [#191](https://github.com/chrysaor/JayPay/pull/191), [retrospective](../retrospectives/2026-11-27-top-up-rollback-sent-once.md), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0024](0024-log-levels-by-what-the-operator-does.md) | Log levels follow what the operator has to do | 0.5.0 (unreleased) | accepted | [#189](https://github.com/chrysaor/JayPay/issues/189), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0025](0025-top-up-rollback-sent-again-by-the-saga.md) | The saga sends a top-up rollback again, a set number of times | 0.5.0 (unreleased) | accepted | [#191](https://github.com/chrysaor/JayPay/pull/191), [retrospective](../retrospectives/2026-11-27-top-up-rollback-sent-once.md), [Unreleased](../../CHANGELOG.md#unreleased) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 

@@ -33,7 +33,7 @@ public class SettlementService implements SettlementUseCase {
         for (Payment payment : paymentPort.getPaidPayments()) {
             Optional<BankAccount> account = accounts.computeIfAbsent(payment.franchiseId(), bankingPort::getRegisteredBankAccount);
             if (account.isEmpty()) {
-                log.warn("Merchant {} has no bank account, so payment {} stays paid", payment.franchiseId(), payment.paymentId());
+                log.error("Merchant {} has no bank account, so payment {} stays paid", payment.franchiseId(), payment.paymentId());
                 settlementFlowPort.waitingForAccount(payment);
             } else {
                 settle(payment, account.get());

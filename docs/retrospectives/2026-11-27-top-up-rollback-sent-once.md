@@ -17,7 +17,7 @@ The failure path table of [#142](https://github.com/chrysaor/JayPay/issues/142) 
 
 ## Fix
 
-[#191](https://github.com/chrysaor/JayPay/pull/191): the saga schedules a rollback deadline with each send, sends the rollback again when no confirmation arrived, doubles the wait each time, and after `money.recharge.rollback.attempts` sends stores the top-up as `ROLLBACK_UNCONFIRMED` and ends. The decision is in [0024](../decisions/0024-top-up-rollback-sent-again-by-the-saga.md).
+[#191](https://github.com/chrysaor/JayPay/pull/191): the saga schedules a rollback deadline with each send, sends the rollback again when no confirmation arrived, doubles the wait each time, and after `money.recharge.rollback.attempts` sends stores the top-up as `ROLLBACK_UNCONFIRMED` and ends. The decision is in [0025](../decisions/0025-top-up-rollback-sent-again-by-the-saga.md).
 
 ## What changed so it is caught next time
 
