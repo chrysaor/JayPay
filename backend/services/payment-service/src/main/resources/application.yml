@@ -14,6 +14,10 @@ payment:
   amount:
     max: 10000000
   fee-rate-basis-points: 300
+  sweep:
+    every: 30s
+    retry-after: 60s
+    attempts: 5
 service:
   membership:
     url: ${SERVICE_MEMBERSHIP_URL:http://localhost:8081}

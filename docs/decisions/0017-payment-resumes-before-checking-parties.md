@@ -26,7 +26,7 @@ A payment whose debit answer is lost stays `REQUESTED`, and the caller is told t
 
 - The parties are judged once, at the first request. A payment to a merchant that loses its corporate flag before the repeat still ends `PAID` and goes to settlement.
 - A debit that never reached money-service is taken on the repeat even when the payer is no longer valid.
-- Nothing finishes a `REQUESTED` payment in the background. A caller that never repeats leaves it `REQUESTED`, with the price taken when the debit landed.
+- Nothing finishes a `REQUESTED` payment in the background. A caller that never repeats leaves it `REQUESTED`, with the price taken when the debit landed. [0027](0027-unconfirmed-payments-finished-by-a-sweep.md) covers this.
 
 ## When to decide again
 
