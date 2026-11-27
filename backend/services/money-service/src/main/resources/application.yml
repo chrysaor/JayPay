@@ -15,6 +15,9 @@ money:
     max: 10000000
   recharge:
     deadline: 60s
+    rollback:
+      retry-after: 30s
+      attempts: 5
 service:
   banking:
     url: ${SERVICE_BANKING_URL:http://localhost:8082}

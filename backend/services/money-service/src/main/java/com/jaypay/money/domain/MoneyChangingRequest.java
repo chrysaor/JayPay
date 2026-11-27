@@ -17,6 +17,10 @@ public record MoneyChangingRequest(
                 applied ? MoneyChangingStatus.SUCCEEDED : MoneyChangingStatus.FAILED);
     }
 
+    public MoneyChangingRequest withRollbackUnconfirmed() {
+        return new MoneyChangingRequest(requestId, targetMembershipId, type, amount, MoneyChangingStatus.ROLLBACK_UNCONFIRMED);
+    }
+
     public boolean sameChangeAs(MoneyChangingRequest other) {
         return targetMembershipId.equals(other.targetMembershipId) && type == other.type && amount.equals(other.amount);
     }

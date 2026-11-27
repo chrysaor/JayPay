@@ -36,11 +36,14 @@ import java.util.UUID;
 public class MoneyRechargeSaga {
 
     private static final String DEADLINE = "recharge-deadline";
+    private static final String ROLLBACK_DEADLINE = "rollback-deadline";
 
     private transient CommandGateway commandGateway;
     private transient EventGateway eventGateway;
     private transient DeadlineManager deadlineManager;
     private transient Duration deadline;
+    private transient Duration rollbackRetryAfter;
+    private transient int rollbackAttempts;
     private transient ChangeMoneyUseCase changeMoneyUseCase;
 
     private String rechargingRequestId;
@@ -50,6 +53,9 @@ public class MoneyRechargeSaga {
     private long amount;
     private String registeredBankAccountAggregateIdentifier;
     private String deadlineId;
+    private String rollbackFirmBankingId;
+    private int rollbacksSent;
+    private String rollbackDeadlineId;
 
     @Autowired
     public void setCommandGateway(CommandGateway commandGateway) {
@@ -69,6 +75,13 @@ public class MoneyRechargeSaga {
     @Autowired
     public void setDeadline(@Value("${money.recharge.deadline}") Duration deadline) {
         this.deadline = deadline;
+    }
+
+    @Autowired
+    public void setRollbackRetry(@Value("${money.recharge.rollback.retry-after}") Duration rollbackRetryAfter,
+                                 @Value("${money.recharge.rollback.attempts}") int rollbackAttempts) {
+        this.rollbackRetryAfter = rollbackRetryAfter;
+        this.rollbackAttempts = rollbackAttempts;
     }
 
     @Autowired
@@ -177,13 +190,39 @@ public class MoneyRechargeSaga {
     @EndSaga
     @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
     public void handle(RollbackFirmBankingFinishedEvent event) {
+        if (rollbackDeadlineId != null) {
+            deadlineManager.cancelSchedule(ROLLBACK_DEADLINE, rollbackDeadlineId);
+        }
         log.info("The charge of recharge {} is rolled back", rechargingRequestId);
+    }
+
+    @DeadlineHandler(deadlineName = ROLLBACK_DEADLINE)
+    public void onRollbackDeadline() {
+        rollbackDeadlineId = null;
+        if (rollbacksSent < rollbackAttempts) {
+            log.warn("The rollback of recharge {} is not confirmed, so it is sent again", rechargingRequestId);
+            sendRollback();
+            return;
+        }
+        log.error("The rollback of recharge {} is not confirmed after {} attempts, so the recharge is left with an unconfirmed rollback",
+                rechargingRequestId, rollbacksSent);
+        changeMoneyUseCase.leaveRollbackUnconfirmed(new RequestId(rechargingRequestId));
+        SagaLifecycle.end();
     }
 
     private void rollBack() {
         cancelDeadline();
-        String rollbackFirmBankingId = UUID.randomUUID().toString();
+        if (rollbackFirmBankingId != null) {
+            return;
+        }
+        rollbackFirmBankingId = UUID.randomUUID().toString();
         SagaLifecycle.associateWith("rollbackFirmBankingId", rollbackFirmBankingId);
+        sendRollback();
+    }
+
+    private void sendRollback() {
+        rollbackDeadlineId = deadlineManager.schedule(rollbackRetryAfter.multipliedBy(1L << rollbacksSent), ROLLBACK_DEADLINE);
+        int attempt = ++rollbacksSent;
         commandGateway.send(new RollbackFirmBankingRequestCommand(
                 rollbackFirmBankingId,
                 UUID.randomUUID().toString(),
@@ -193,7 +232,7 @@ public class MoneyRechargeSaga {
                 bankAccountNumber,
                 amount)
         ).exceptionally(failure -> {
-            log.error("The rollback of recharge {} failed: {}", rechargingRequestId, failure.getMessage());
+            log.warn("Attempt {} of the rollback of recharge {} failed: {}", attempt, rechargingRequestId, failure.getMessage());
             return null;
         });
     }

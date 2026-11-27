@@ -89,6 +89,13 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
         }).orElse(true);
     }
 
+    @Override
+    public void leaveRollbackUnconfirmed(RequestId requestId) {
+        changeMoneyPort.findForUpdate(requestId)
+                .filter(request -> request.status() == MoneyChangingStatus.FAILED)
+                .ifPresent(request -> changeMoneyPort.settle(request.withRollbackUnconfirmed()));
+    }
+
     private MemberMoney.MoneyAggregateIdentifier walletOf(MemberMoney.MembershipId membershipId) {
         MemberMoney.MoneyAggregateIdentifier existing = getMemberMoneyPort.getMoneyAggregateIdentifier(membershipId);
         if (!existing.getAggregateIdentifier().isBlank()) {
