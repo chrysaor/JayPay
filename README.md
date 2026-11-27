@@ -33,7 +33,7 @@ The customer site after a top-up, and the event flow of the admin console showin
 One maintainer develops JayPay with coding agents. The agents follow the rules in [CLAUDE.md](CLAUDE.md), and the maintainer decides what to build, answers the open decisions and confirms every release.
 
 - Every change starts from an issue. An agent branches from `develop`, writes the failing test first, and opens a pull request that names the issue.
-- `make verify` is the one gate. Agents run it before they report work as done, and CI runs the same target on every pull request. `make verify-selftest` plants errors and proves that the gate fails on each of them.
+- `make verify` is the one gate. Agents run it before they report work as done, and CI runs the same target on every pull request. On every push to `develop` and to a release branch, CI also starts the Compose stack and runs `make smoke`, and `release.yml` publishes images only after that smoke passed. `make verify-selftest` plants errors and proves that the gate fails on each of them.
 - An agent merges its pull request into `develop` once CI passes. Merging into `master` and tagging a release need the maintainer's confirmation every time.
 - A pull request that makes a decision adds a record to [docs/decisions](docs/decisions/README.md), and a bug that reached `develop` or took more than one attempt gets a retrospective in [docs/retrospectives](docs/retrospectives/README.md).
 - [docs/scorecard.md](docs/scorecard.md) shows merged pull requests, time to merge, the CI failure rate, coverage and tests, each with its source and what it does not measure.
@@ -78,7 +78,7 @@ Axon Server routes the commands and events of the money top-up saga and stores t
 | `infra/docker/` | `compose.yaml` for the local stack and the configuration of every container in it, see [infra/docker/README.md](infra/docker/README.md) |
 | `infra/terraform/` | The AWS DynamoDB table that money-query-service uses, see [infra/terraform/README.md](infra/terraform/README.md) |
 | `deploy/` | Helm charts for the services, the two sites and the dependencies of the local cluster, and the values of every workload per environment, see [deploy/README.md](deploy/README.md) |
-| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke` and `make k8s-smoke`, `k8s.sh` behind the `make k8s-*` targets, `init-env.py` that writes `infra/docker/.env`, `render-charts.sh` that renders every workload, `check-docs.py` that draws `docs/diagrams/`, and the checks that `make verify` runs |
+| `scripts/` | `verify.sh` behind `make verify`, `smoke.sh` behind `make smoke` and `make k8s-smoke`, `k8s.sh` behind the `make k8s-*` targets, `init-env.py` that writes `infra/docker/.env`, `stack-logs.py` that saves the service logs with the secrets redacted when the smoke fails in CI, `render-charts.sh` that renders every workload, `check-docs.py` that draws `docs/diagrams/`, and the checks that `make verify` runs |
 | `docs/` | The HTTP API contract, the [service reference](docs/services.md), the diagrams, the architecture notes, the [decision records](docs/decisions/README.md), the [retrospectives](docs/retrospectives/README.md), the [news of each release](docs/news.md), and the [legacy documents](docs/legacy/README.md) |
 
 ## Local stack
