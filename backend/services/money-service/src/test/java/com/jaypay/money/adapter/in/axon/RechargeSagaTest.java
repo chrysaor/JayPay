@@ -505,6 +505,50 @@ class RechargeSagaTest {
     }
 
     @Test
+    void aRollbackWhoseRefundTheBankHasNotConfirmedIsSentAgainUntilTheRefundIsConfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.leaveRefundsUnconfirmed(account(member), 1);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> Optional.of(banking.rollbacks(requestId)).filter(count -> count > 1))).isEqualTo(2);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(statusOf(requestId)).contains(MoneyChangingStatus.FAILED);
+        assertThat(banking.charges(requestId)).isEqualTo(1);
+        assertThat(balanceOf(member)).isZero();
+    }
+
+    @Test
+    void aRollbackWhoseRefundIsNeverConfirmedStopsAfterItsAttemptsAndLeavesTheRechargeRollbackUnconfirmed() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.leaveRefundsUnconfirmed(account(member), Integer.MAX_VALUE);
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        assertThat(banking.rollbacks(requestId)).isEqualTo(2);
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+    }
+
+    @Test
+    void aRollbackWhoseRefundTheBankRefusesLeavesTheRechargeRollbackUnconfirmedWithoutSendingItAgain() throws Exception {
+        String member = memberWithWallet();
+        banking.silence(account(member));
+        banking.refuseRefundsOf(account(member));
+        String requestId = UUID.randomUUID().toString();
+
+        recharge(requestId, member, 700);
+
+        assertThat(eventually(() -> statusOf(requestId).filter(status -> status == MoneyChangingStatus.ROLLBACK_UNCONFIRMED))).isNotNull();
+        eventually(() -> Optional.of(sagaEnded(requestId)).filter(ended -> ended));
+        assertThat(banking.rollbacks(requestId)).isEqualTo(1);
+    }
+
+    @Test
     void aRechargeWaitingForTheBankWhoseDeadlineIsLostStillFailsAndIsRolledBackOnce() throws Exception {
         String member = memberWithWallet();
         banking.hold(account(member));
@@ -815,6 +859,8 @@ class RechargeSagaTest {
         private final Set<String> disconnectedCharges = ConcurrentHashMap.newKeySet();
         private final Map<String, Integer> silentRollbacks = new ConcurrentHashMap<>();
         private final Map<String, Integer> failingRollbacks = new ConcurrentHashMap<>();
+        private final Map<String, Integer> unconfirmedRefunds = new ConcurrentHashMap<>();
+        private final Set<String> refusedRefunds = ConcurrentHashMap.newKeySet();
         private final Map<String, RequestFirmBankingFinishedEvent> heldConfirmations = new ConcurrentHashMap<>();
         private final List<String> checked = new CopyOnWriteArrayList<>();
         private final List<String> charged = new CopyOnWriteArrayList<>();
@@ -851,6 +897,14 @@ class RechargeSagaTest {
 
         void failRollbacksOf(String account, int times) {
             failingRollbacks.put(account, times);
+        }
+
+        void leaveRefundsUnconfirmed(String account, int times) {
+            unconfirmedRefunds.put(account, times);
+        }
+
+        void refuseRefundsOf(String account) {
+            refusedRefunds.add(account);
         }
 
         void answerAgain(String account) {
@@ -944,8 +998,11 @@ class RechargeSagaTest {
             if (takeOne(silentRollbacks, command.getBankAccountNumber())) {
                 return;
             }
+            String account = command.getBankAccountNumber();
+            int refundStatus = refusedRefunds.contains(account) ? RollbackFirmBankingFinishedEvent.REFUSED
+                    : takeOne(unconfirmedRefunds, account) ? RollbackFirmBankingFinishedEvent.UNCONFIRMED : RollbackFirmBankingFinishedEvent.CONFIRMED;
             eventGateway.publish(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(),
-                    UUID.randomUUID().toString()));
+                    UUID.randomUUID().toString(), refundStatus));
         }
 
         private static boolean takeOne(Map<String, Integer> remaining, String account) {

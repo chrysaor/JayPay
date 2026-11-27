@@ -61,7 +61,8 @@ public class FirmBankingRequestAggregate {
         Optional<RecordedTransfer> refund = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
         TransferStatus refundStatus = refund.map(RecordedTransfer::status).orElse(TransferStatus.CANCELLED);
         log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
-        apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id));
+        apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id,
+                RollbackFirmBankingFinishedEvent.CONFIRMED));
         flowEvents.publish(command.getRechargeRequestId(), FlowStep.CHARGE_ROLLED_BACK, rollbackOutcome(refundStatus), rollbackReason(refundStatus),
                 command.getMembershipId(), command.getMoneyAmount());
     }
