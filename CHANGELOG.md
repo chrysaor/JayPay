@@ -4,6 +4,8 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-27
+
 ### Added
 
 - The README has a **How it is built** section: how the maintainer and the coding agents split the work, the issue and pull request flow, the `make verify` gate, the release confirmation, and where decisions, retrospectives and the scorecard live ([#172](https://github.com/chrysaor/JayPay/issues/172))
@@ -13,7 +15,8 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - The customer site and the admin console build on Node 26, the active LTS, in place of Node 24. Java stays on 25, and Dependabot no longer proposes a new JDK major ([#168](https://github.com/chrysaor/JayPay/issues/168))
 - Backend log levels follow one rule, written in `CONTRIBUTING.md`: `ERROR` when an operator has to act, `WARN` when something outside the service failed and the system recovers by itself, `INFO` for each business state change and each expected refusal, and `DEBUG` for detail. A member without a registered account, and a transfer banking-service refuses as invalid are now `INFO`. A lost bank account registration and a merchant without a bank account are now `ERROR`, like a payout the bank refuses. The handler-name lines, the line that printed a whole command and the line for each record sent to the logging topic are gone or `DEBUG`. Failures keep their exception and stack trace, and money-service now logs a `WARN` when membership-service or banking-service does not confirm a member or an account. `LOGGING_LEVEL_COM_JAYPAY=DEBUG` raises the level of one service without a new image, see `docs/services.md` ([#189](https://github.com/chrysaor/JayPay/issues/189))
-- Upgrading from 0.4.0 to 0.5.0 works in any order of the services, and a 0.4.0 service keeps working next to a 0.5.0 one during the rollout. Every service now reads an Axon event or command with a field it does not know and ignores the field, so a later release can add a field the same way. A 0.4.0 money-service cannot do that: on such a field it stops processing every top-up and retries the same event without end, so the rollback answers of 0.5.0 are new event types and not a new field ([#199](https://github.com/chrysaor/JayPay/issues/199))
+- Upgrading from 0.4.0 to 0.5.0 works in any order of the services, and a 0.4.0 service keeps working next to a 0.5.0 one during the rollout. Every service now reads an Axon event or command with a field it does not know and ignores the field, so a later release can add a field the same way. A 0.4.0 money-service cannot do that: on such a field it stops processing every top-up and retries the same event without end, so the rollback answers of 0.5.0 are new event types and not a new field. One call depends on banking-service: while it still runs 0.4.0, a remittance to a bank account ends `REFUNDED`, and a settlement payout is refused with an `ERROR` about the merchant's account that needs no action, and is paid by the next run. No money is lost either way ([#199](https://github.com/chrysaor/JayPay/issues/199))
+- Right after the upgrade, payment-service and remittance-service finish the payments and remittances that 0.4.0 left unfinished: each one is completed or refunded within a few minutes, without a new request ([#171](https://github.com/chrysaor/JayPay/issues/171), [#201](https://github.com/chrysaor/JayPay/issues/201))
 
 ### Fixed
 
