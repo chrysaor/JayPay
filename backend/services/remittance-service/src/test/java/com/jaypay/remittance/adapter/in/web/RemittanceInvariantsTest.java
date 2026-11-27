@@ -444,6 +444,25 @@ class RemittanceInvariantsTest {
     }
 
     @Test
+    void aRefundMoneyServiceFailedWith5xxIsStillRefundedAfterTheSenderBecomesInvalid() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        CREDIT_REFUSED.add(receiver);
+        String body = toMember(UUID.randomUUID().toString(), sender, receiver, "2500");
+        failing("-refund", 1);
+
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        INVALID.add(sender);
+        HttpResponse<String> repeated = post(body);
+        INVALID.remove(sender);
+        HttpResponse<String> afterValidAgain = post(body);
+
+        assertThat(repeated.statusCode()).as(repeated.body()).isEqualTo(200);
+        assertThat(afterValidAgain.statusCode()).as(afterValidAgain.body()).isEqualTo(200);
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+    }
+
+    @Test
     void aRefundWhoseAnswerWasLostIsRefundedOnceOnTheRepeatAfterTheSenderBecomesInvalid() throws Exception {
         String sender = memberWithBalance(10000);
         String receiver = memberWithBalance(0);
@@ -864,6 +883,10 @@ class RemittanceInvariantsTest {
 
     private static String apply(String requestId, String member, int sign, long amount) {
         boolean[] applied = {false};
+        if (INVALID.contains(member)) {
+            return "{\"moneyChangingRequestId\":\"" + requestId + "\",\"moneyChangingType\":" + (sign > 0 ? 1 : 2)
+                    + ",\"moneyChangingResultStatus\":2,\"amount\":" + amount + "}";
+        }
         if (sign > 0 && !CREDIT_REFUSED.contains(member)) {
             BALANCES.merge(member, amount, Long::sum);
             applied[0] = true;

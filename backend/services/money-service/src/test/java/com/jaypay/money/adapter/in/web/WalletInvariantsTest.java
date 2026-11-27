@@ -49,6 +49,7 @@ class WalletInvariantsTest {
     private static final int CONCURRENT_REQUESTS = 40;
     private static final AtomicLong MEMBERS = new AtomicLong(5000);
     private static final Set<String> UNANSWERED = ConcurrentHashMap.newKeySet();
+    private static final Set<String> INVALID = ConcurrentHashMap.newKeySet();
     private static final HttpServer MEMBERSHIP = startMembershipService();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -281,7 +282,7 @@ class WalletInvariantsTest {
                     return;
                 }
                 byte[] body = ("{\"membershipId\":\"" + membershipId + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
-                        + "\"address\":\"Seocho\",\"valid\":true,\"corp\":false,\"refreshToken\":\"\"}").getBytes(StandardCharsets.UTF_8);
+                        + "\"address\":\"Seocho\",\"valid\":" + !INVALID.contains(membershipId) + ",\"corp\":false,\"refreshToken\":\"\"}").getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, body.length);
                 exchange.getResponseBody().write(body);
