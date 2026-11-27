@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import subprocess
 import sys
 from urllib.parse import quote, quote_plus
@@ -7,6 +8,7 @@ from urllib.parse import quote, quote_plus
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMPOSE = ["docker", "compose", "-f", os.path.join(ROOT, "infra", "docker", "compose.yaml")]
 ENV_FILE = os.path.join(ROOT, "infra", "docker", ".env")
+PRINTED_SECRET = re.compile(r"(Unseal Key|Root Token): \S+")
 
 
 def secrets():
@@ -24,6 +26,7 @@ def secrets():
 
 
 def redact(text, known):
+    text = PRINTED_SECRET.sub(lambda match: f"{match.group(1)}: <redacted>", text)
     for value, key in known:
         text = text.replace(value, f"<redacted {key}>")
     return text
