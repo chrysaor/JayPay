@@ -4,6 +4,8 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-27
+
 ### Added
 
 - The README has a **How it is built** section: how the maintainer and the coding agents split the work, the issue and pull request flow, the `make verify` gate, the release confirmation, and where decisions, retrospectives and the scorecard live ([#172](https://github.com/chrysaor/JayPay/issues/172))
