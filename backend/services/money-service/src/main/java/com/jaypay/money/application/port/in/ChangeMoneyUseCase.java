@@ -16,4 +16,6 @@ public interface ChangeMoneyUseCase {
 
     boolean failRecharging(RequestId requestId, RechargeFailure failure);
 
+    void leaveRollbackUnconfirmed(RequestId requestId);
+
 }

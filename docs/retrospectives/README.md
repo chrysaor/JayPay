@@ -44,4 +44,5 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [The company bank account had four definitions in four services](2026-11-27-company-account-defined-in-four-services.md) | [#177](https://github.com/chrysaor/JayPay/pull/177) |
 | 2026-11-27 | [One negative Kafka counter took logging-consumer out of Prometheus](2026-11-27-negative-kafka-counter-failed-every-scrape.md) | [#179](https://github.com/chrysaor/JayPay/pull/179) |
 | 2026-11-27 | [The status columns of four released services would refuse a value added later](2026-11-27-status-columns-refuse-later-values.md) | [#180](https://github.com/chrysaor/JayPay/pull/180) |
+| 2026-11-27 | [A top-up rollback that failed was never sent again](2026-11-27-top-up-rollback-sent-once.md) | [#191](https://github.com/chrysaor/JayPay/pull/191) |
 | 2026-11-27 | [The first-start saga test stopped the processor before its worker ran](2026-11-27-first-start-saga-test-failed-without-a-reason.md) | [#187](https://github.com/chrysaor/JayPay/pull/187), [#188](https://github.com/chrysaor/JayPay/pull/188) |
