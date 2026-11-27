@@ -41,7 +41,7 @@ public class FlowEventPublisher {
         try {
             value = JSON.writeValueAsString(event);
         } catch (JsonProcessingException e) {
-            log.warn("Could not write step {} of flow {}: {}", step, flowId, e.getMessage());
+            log.warn("Could not write step {} of flow {}", step, flowId, e);
             return;
         }
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -60,11 +60,11 @@ public class FlowEventPublisher {
         try {
             kafkaTemplate.send(topic, flowId, value).whenComplete((result, exception) -> {
                 if (exception != null) {
-                    log.warn("Could not publish step {} of flow {}: {}", step, flowId, exception.getMessage());
+                    log.warn("Could not publish step {} of flow {}", step, flowId, exception);
                 }
             });
         } catch (RuntimeException e) {
-            log.warn("Could not publish step {} of flow {}: {}", step, flowId, e.getMessage());
+            log.warn("Could not publish step {} of flow {}", step, flowId, e);
         }
     }
 }

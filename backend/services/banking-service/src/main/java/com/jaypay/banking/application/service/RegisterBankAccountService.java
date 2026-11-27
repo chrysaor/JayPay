@@ -53,7 +53,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
         registeredBankAccountAggregatePort.createRegisteredBankAccountAggregate(command.membershipId(), command.bankName(), command.bankAccountNumber())
                 .whenComplete((aggregateIdentifier, throwable) -> {
                     if (throwable != null) {
-                        log.warn("{}", throwable.getMessage());
+                        log.error("The bank account of member {} was not registered", command.membershipId(), throwable);
                     } else {
                         createRegisteredBankAccount(command, aggregateIdentifier);
                     }
@@ -62,8 +62,7 @@ public class RegisterBankAccountService implements RegisterBankAccountUseCase, G
 
     @Override
     public Optional<RegisteredBankAccount> getRegisteredBankAccount(GetRegisteredBankAccountCommand command) {
-        log.info("getRegisteredBankAccount");
-        log.info("{}", command);
+        log.debug("Looking up the registered bank account of member {}", command.membershipId());
         return getRegisteredBankAccountPort.getRegisteredBankAccount(command.membershipId());
     }
 

@@ -53,7 +53,7 @@ public class DynamoDBAdapter implements GetMoneySumByAddressPort, InsertMoneyInc
             if (!alreadyCounted(e)) {
                 throw e;
             }
-            log.info("Recharge {} is already in the region total, so it is not added again", rechargingRequestId);
+            log.debug("Recharge {} is already in the region total, so it is not added again", rechargingRequestId);
         }
     }
 
