@@ -27,7 +27,8 @@ remove_smoke_users() {
   local id
   if [ ${#smoke_users[@]} -gt 0 ] && (keycloak_admin_sign_in) >/dev/null 2>&1; then
     for id in "${smoke_users[@]}"; do
-      curl -sS -o /dev/null --max-time 30 -X DELETE -H "Authorization: Bearer $(cat "$work/keycloak-admin")" \
+      printf 'Authorization: Bearer %s\n' "$(cat "$work/keycloak-admin")" >"$work/bearer"
+      curl -sS -o /dev/null --max-time 30 -X DELETE -H @"$work/bearer" \
         "$keycloak/admin/realms/staff/users/$id" || true
     done
   fi
@@ -49,13 +50,16 @@ call() {
   local method=$1 url=$2 trace=$3 body=${4:-} type=${5:-application/json}
   local args=(-sS --path-as-is -o "$work/body" -w '%{http_code}' --max-time 90 -X "$method" -H "traceparent: 00-$trace-$(hex 8)-01")
   if [ -n "$body" ]; then
-    args+=(-H "Content-Type: $type" --data-binary "$body")
+    printf '%s' "$body" >"$work/request-body"
+    args+=(-H "Content-Type: $type" --data-binary @"$work/request-body")
   fi
   if [ -n "$bearer" ]; then
-    args+=(-H "Authorization: Bearer $bearer")
+    printf 'Authorization: Bearer %s\n' "$bearer" >"$work/bearer"
+    args+=(-H @"$work/bearer")
   fi
+  printf 'url = "%s"\n' "$url" >"$work/request-url"
   : >"$work/body"
-  http_status=$(curl "${args[@]}" "$url" 2>"$work/curl-error") || true
+  http_status=$(curl "${args[@]}" --config "$work/request-url" 2>"$work/curl-error") || true
 }
 
 request() {
@@ -511,7 +515,7 @@ expect "a payment to a member that is not corporate" 400 POST "$web/api/payment/
 staff_setting() { sed -n "s/^STAFF_$1=//p" "$env_file"; }
 
 sign_in_staff() {
-  python3 "$root/scripts/staff_sign_in.py" "$admin" "$1" "$2" >"$work/staff-tokens" 2>"$work/staff-refusal"
+  python3 "$root/scripts/staff_sign_in.py" "$admin" "$1" <<<"$2" >"$work/staff-tokens" 2>"$work/staff-refusal"
 }
 
 staff_sign_in_refused() {
@@ -523,14 +527,14 @@ staff_sign_in_refused() {
 staff_token() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$work/staff-tokens" "$1"; }
 
 token_claim() {
-  python3 - "$1" "$2" <<'PY'
+  python3 -c '
 import base64, json, sys
-payload = sys.argv[1].split(".")[1]
+payload = sys.stdin.read().split(".")[1]
 value = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-for part in sys.argv[2].split("."):
+for part in sys.argv[1].split("."):
     value = value.get(part)
 print(" ".join(value) if isinstance(value, list) else value)
-PY
+' "$2" <<<"$1"
 }
 
 sign_in_default_staff() {
@@ -551,13 +555,15 @@ as_staff() {
 }
 
 refresh_status() {
+  printf '%s' "$1" >"$work/refresh-token"
   curl -sS -o "$work/body" -w '%{http_code}' --max-time 30 -d grant_type=refresh_token -d client_id=jaypay-admin-console \
-    --data-urlencode "refresh_token=$1" "$admin/realms/staff/protocol/openid-connect/token" 2>"$work/curl-error" || true
+    --data-urlencode "refresh_token@$work/refresh-token" "$admin/realms/staff/protocol/openid-connect/token" 2>"$work/curl-error" || true
 }
 
 keycloak_admin_sign_in() {
+  sed -n 's/^KEYCLOAK_ADMIN_PASSWORD=//p' "$env_file" | tr -d '\n' >"$work/keycloak-admin-password"
   curl -sS --fail-with-body --max-time 30 -d grant_type=password -d client_id=admin-cli -d username=admin \
-    --data-urlencode "password=$(sed -n 's/^KEYCLOAK_ADMIN_PASSWORD=//p' "$env_file")" \
+    --data-urlencode "password@$work/keycloak-admin-password" \
     "$keycloak/realms/master/protocol/openid-connect/token" >"$work/body" 2>"$work/curl-error" ||
     fail "the Keycloak admin sign in on $keycloak failed: $(response)"
   json_field access_token >"$work/keycloak-admin"

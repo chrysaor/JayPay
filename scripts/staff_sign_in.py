@@ -105,7 +105,7 @@ def sign_in(site, username, password):
 
 
 def main():
-    site, username, password = sys.argv[1], sys.argv[2], sys.argv[3]
+    site, username, password = sys.argv[1], sys.argv[2], sys.stdin.read().rstrip("\n")
     tokens, refusal = sign_in(site.rstrip("/"), username, password)
     if tokens is None:
         print(refusal, file=sys.stderr)

@@ -10,6 +10,7 @@ import network_policy
 PROBE = "policy-probe"
 OUTSIDE_NAMESPACE = "jaypay-policy-probe"
 OUTSIDE_LABEL = "frontend-admin"
+CONTROL = "127.0.0.1:8079"
 REACH = r'''
 if command -v nc >/dev/null 2>&1; then tool=nc
 elif command -v bash >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then tool=bash
@@ -47,7 +48,7 @@ def probe_pod(namespace, label, image):
             "containers": [{
                 "name": PROBE,
                 "image": image,
-                "command": ["sleep", "600"],
+                "command": ["sh", "-c", f"httpd -p {CONTROL} && exec sleep 600"],
                 "resources": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "16Mi"}},
                 "securityContext": {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]}},
             }],
@@ -118,10 +119,12 @@ def main():
 
         failures, untestable, opened, refused = [], [], 0, 0
         for name, pod_namespace, pod, identity in callers:
-            outcome = reach(context, pod_namespace, pod, list(targets))
+            outcome = reach(context, pod_namespace, pod, [*targets, *([CONTROL] if pod == PROBE else [])])
             if outcome is None:
                 untestable.append(name)
                 continue
+            if pod == PROBE and outcome.get(CONTROL) != "open":
+                failures.append(f"{name} cannot open its own listener on {CONTROL}, so its refused connections prove nothing")
             for target, (service, port) in targets.items():
                 want = "open" if (service, port, identity) in allowed else "closed"
                 got = outcome.get(target, "missing")

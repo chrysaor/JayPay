@@ -66,6 +66,21 @@ for line in open(sys.argv[1]):
 PY
 }
 
+stop_tree() {
+  local child
+  for child in $(pgrep -P "$1"); do
+    stop_tree "$child"
+  done
+  kill "$1" 2>/dev/null || true
+}
+
+stop_pulls() {
+  local pid
+  for pid in $(jobs -p); do
+    stop_tree "$pid"
+  done
+}
+
 pull_dependency_images() {
   local name image policy
   while read -r name image policy; do
@@ -166,6 +181,7 @@ up() {
     kube apply --server-side --filename - >/dev/null
   log "installing Argo CD"
   with_retries install_argocd
+  trap stop_pulls EXIT
   pull_dependency_images
   publish_working_tree
   deployed=$(kube get deployment --output name)
@@ -194,6 +210,8 @@ up() {
 }
 
 forwards=()
+scaled_file=""
+scaled_original=""
 forwarded_port=""
 
 stop_forwards() {
@@ -269,6 +287,10 @@ application_at() {
   [ "$status" = "$commit Synced" ]
 }
 
+restore_scaled_file() {
+  [ -z "$scaled_file" ] || commit_to_mirror "Restore $scaled_file" "$scaled_file" "$scaled_original" >/dev/null
+}
+
 gitops_check() {
   local workload=frontend-web file original replicas scaled commit started
   file=$env_dir/frontend/$workload.yaml
@@ -279,6 +301,8 @@ gitops_check() {
   scaled=$((replicas + 1))
   until_true "$workload runs $replicas replicas" replicas_are "$workload" "$replicas"
 
+  scaled_file=$file scaled_original=$original
+  trap restore_scaled_file EXIT
   commit=$(commit_to_mirror "Scale $workload to $scaled replicas" "$file" "$(grep -v '^replicas:' <<<"$original")
 replicas: $scaled")
   started=$SECONDS
@@ -288,6 +312,7 @@ replicas: $scaled")
   log "PASSED: the commit reached the cluster in $((SECONDS - started))s, nothing was applied by hand"
 
   commit=$(commit_to_mirror "Scale $workload back to $replicas replicas" "$file" "$original")
+  scaled_file=""
   until_true "the revert commit reaches the cluster" replicas_are "$workload" "$replicas"
   until_true "local-$workload is synced to the revert commit" application_at "local-$workload" "$commit"
   log "committed ${commit:0:12}, which restores $file, and the cluster followed"
