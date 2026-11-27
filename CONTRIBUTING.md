@@ -83,6 +83,6 @@ make smoke
 make down
 ```
 
-The first `make up` writes `infra/docker/.env` with random secrets. `make smoke` drives the running stack end to end. CI runs the same four targets in `smoke.yml` on every push to `develop` and in `release.yml` on every push to a release branch or a tag, but not on pull requests, and uploads the service logs with the values of `.env` redacted when the smoke fails.
+The first `make up` writes `infra/docker/.env` with random secrets. `make smoke` drives the running stack end to end, and `make e2e` drives the two sites of the running stack in a browser. CI runs the same targets in `smoke.yml` on every push to `develop` and in `release.yml` on every push to a release branch or a tag, but not on pull requests, and uploads the service logs with the values of `.env` redacted when the smoke fails.
 
 `make scan` runs the Trivy filesystem scan and the gitleaks history scan from `SECURITY.md`.

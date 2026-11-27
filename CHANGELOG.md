@@ -8,6 +8,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - CI starts the Compose stack and runs `make smoke` on every push to `develop` (`smoke.yml`, which can also be started by hand), and `release.yml` runs the same smoke on a release branch or a tag and publishes images only after it passed. A failed run uploads the service logs as the `stack-logs` artifact, with every value of `infra/docker/.env` and the Vault root token and unseal key redacted. Pull requests do not run it ([#143](https://github.com/chrysaor/JayPay/issues/143))
 - `docs/test-audit.md` lists every use case of every service against the normal path, the refusals, a repeated request, a lost answer and an outage of a service it calls, with the test that covers each or none ([#149](https://github.com/chrysaor/JayPay/issues/149))
+- `make e2e` drives the customer site and the admin console of the running stack in Chromium with Playwright: a merchant and a member sign up, the member links a bank account, adds money, pays and signs in again, and staff sign in through Keycloak and follow that payment step by step in the event flow. CI runs it after the smoke on every push to `develop` and to a release branch ([#144](https://github.com/chrysaor/JayPay/issues/144))
 
 ### Changed
 
