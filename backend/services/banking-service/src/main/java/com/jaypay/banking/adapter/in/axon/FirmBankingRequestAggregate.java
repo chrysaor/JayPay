@@ -18,7 +18,6 @@ import org.axonframework.eventsourcing.EventSourcingHandler;
 import org.axonframework.modelling.command.AggregateIdentifier;
 import org.axonframework.spring.stereotype.Aggregate;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.axonframework.modelling.command.AggregateLifecycle.apply;
@@ -58,11 +57,14 @@ public class FirmBankingRequestAggregate {
                                        FlowEventPublisher flowEvents) {
         id = UUID.randomUUID().toString();
         String chargeRequestId = chargeRequestId(command.getRechargeRequestId());
-        Optional<RecordedTransfer> refund = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
-        TransferStatus refundStatus = refund.map(RecordedTransfer::status).orElse(TransferStatus.CANCELLED);
-        log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
+        TransferStatus refundStatus = transferMoneyUseCase.reverse(chargeRequestId, chargeRequestId + "-refund");
+        if (refundStatus == TransferStatus.FAILED) {
+            log.error("The bank refused the refund of recharge {}, so the charge is not returned", command.getRechargeRequestId());
+        } else {
+            log.info("rolled back the recharge {}: {}", command.getRechargeRequestId(), refundStatus);
+        }
         apply(new RollbackFirmBankingFinishedEvent(command.getRollbackFirmbankingId(), command.getMembershipId(), id,
-                RollbackFirmBankingFinishedEvent.CONFIRMED));
+                finishedRefundStatus(refundStatus)));
         flowEvents.publish(command.getRechargeRequestId(), FlowStep.CHARGE_ROLLED_BACK, rollbackOutcome(refundStatus), rollbackReason(refundStatus),
                 command.getMembershipId(), command.getMoneyAmount());
     }
@@ -110,6 +112,14 @@ public class FirmBankingRequestAggregate {
             case SUCCEEDED, CANCELLED -> null;
             case PENDING -> "The bank has not confirmed the refund yet";
             case FAILED -> "The bank refused the refund";
+        };
+    }
+
+    private static int finishedRefundStatus(TransferStatus refund) {
+        return switch (refund) {
+            case SUCCEEDED, CANCELLED -> RollbackFirmBankingFinishedEvent.CONFIRMED;
+            case PENDING -> RollbackFirmBankingFinishedEvent.UNCONFIRMED;
+            case FAILED -> RollbackFirmBankingFinishedEvent.REFUSED;
         };
     }
 
