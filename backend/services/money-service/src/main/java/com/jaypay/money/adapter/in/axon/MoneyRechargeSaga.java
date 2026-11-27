@@ -20,7 +20,6 @@ import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.axonframework.deadline.DeadlineManager;
 import org.axonframework.deadline.annotation.DeadlineHandler;
 import org.axonframework.eventhandling.gateway.EventGateway;
-import org.axonframework.modelling.saga.EndSaga;
 import org.axonframework.modelling.saga.SagaEventHandler;
 import org.axonframework.modelling.saga.SagaLifecycle;
 import org.axonframework.modelling.saga.StartSaga;
@@ -197,13 +196,22 @@ public class MoneyRechargeSaga {
         }
     }
 
-    @EndSaga
     @SagaEventHandler(associationProperty = "rollbackFirmBankingId")
     public void handle(RollbackFirmBankingFinishedEvent event) {
-        if (rollbackDeadlineId != null) {
-            deadlineManager.cancelSchedule(ROLLBACK_DEADLINE, rollbackDeadlineId);
+        switch (event.getRefundStatus()) {
+            case RollbackFirmBankingFinishedEvent.CONFIRMED -> {
+                cancelRollbackDeadline();
+                log.info("The charge of recharge {} is rolled back", rechargingRequestId);
+                SagaLifecycle.end();
+            }
+            case RollbackFirmBankingFinishedEvent.REFUSED -> {
+                cancelRollbackDeadline();
+                log.error("The bank refused the refund of recharge {}, so the recharge is left with an unconfirmed rollback", rechargingRequestId);
+                changeMoneyUseCase.leaveRollbackUnconfirmed(new RequestId(rechargingRequestId));
+                SagaLifecycle.end();
+            }
+            default -> log.warn("The bank has not confirmed the refund of recharge {}, so the rollback deadline sends it again", rechargingRequestId);
         }
-        log.info("The charge of recharge {} is rolled back", rechargingRequestId);
     }
 
     @DeadlineHandler(deadlineName = ROLLBACK_DEADLINE)
@@ -271,6 +279,13 @@ public class MoneyRechargeSaga {
     private void end() {
         cancelDeadline();
         SagaLifecycle.end();
+    }
+
+    private void cancelRollbackDeadline() {
+        if (rollbackDeadlineId != null) {
+            deadlineManager.cancelSchedule(ROLLBACK_DEADLINE, rollbackDeadlineId);
+            rollbackDeadlineId = null;
+        }
     }
 
     private void cancelDeadline() {
