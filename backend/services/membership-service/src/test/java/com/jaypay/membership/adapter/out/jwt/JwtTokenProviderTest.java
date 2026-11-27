@@ -23,4 +23,11 @@ class JwtTokenProviderTest {
     void rejectsMalformedTokens() {
         assertThat(provider.validateJwtToken("not-a-jwt")).isFalse();
     }
+
+    @Test
+    void rejectsTokensSignedWithAnotherKey() {
+        String foreign = new JwtTokenProvider("b".repeat(64)).generateJwtToken(new Membership.MembershipId("42"));
+
+        assertThat(provider.validateJwtToken(foreign)).isFalse();
+    }
 }
