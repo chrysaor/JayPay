@@ -263,7 +263,8 @@ payment-service calls `GET /memberships/{membershipId}` on membership-service to
 - `requestId` is 1 to 64 letters, digits, `-` or `_`, chosen by the caller. The first request with an id stores a `payment` row with the status `REQUESTED` through `INSERT ... ON CONFLICT (request_id) DO NOTHING`, and commits it before anything else. Then payment-service calls `POST /money/decrease` with the request id `payment-<paymentId>-decrease`, so money-service takes the price once however often the call is repeated.
 - A debit that succeeds moves the payment to `PAID`, and a balance lower than the price moves it to `FAILED`. Both answer 200 with the payment. Each move is one `UPDATE ... WHERE payment_status = 'REQUESTED'`.
 - A repeated request with the same id and the same payer, merchant and price answers with the stored payment. A payment that is still `REQUESTED` calls money-service again with the same debit id, even when the payer or the merchant changed since the first request, so a payment whose debit landed ends `PAID` and one whose debit was refused ends `FAILED`. A request that reuses an id for another payment answers 409 with `{"error":"REQUEST_ID_REUSED"}`.
-- When money-service gives no answer, the request answers 503 with `{"error":"PAYMENT_NOT_CONFIRMED"}` and the payment stays `REQUESTED` until the same request is sent again.
+- When money-service gives no answer, the request answers 503 with `{"error":"PAYMENT_NOT_CONFIRMED"}` and the payment stays `REQUESTED` until the same request is sent again or the sweep finishes it.
+- At start and every `payment.sweep.every`, 30 seconds, payment-service sweeps the payments that are still `REQUESTED` after `payment.sweep.retry-after`, 60 seconds, and calls money-service again with the same debit id, the way a repeated request does. A payment is swept again each further `payment.sweep.retry-after`, up to `payment.sweep.attempts`, five sweeps. The sweep counts each one in `sweep_attempts` in the same `UPDATE ... FOR UPDATE SKIP LOCKED` that picks the payment, so instances that sweep at once do not pick it twice in one wait. A payment whose debit landed ends `PAID`, one whose debit was refused ends `FAILED`, and the sweep logs each at `INFO`. When money-service still gives no answer at the last sweep, payment-service logs an error with the payment id and the debit id, and the payment stays `REQUESTED` with `sweep_attempts` at the limit. The same request sent again still finishes it.
 
 The statuses move only this way: `REQUESTED` to `PAID` or `FAILED`, and `PAID` to `SETTLED`.
 
@@ -285,6 +286,7 @@ Every answer with a payment carries `paymentId`, `requestId`, `requestMembership
 - The paying member comes from the request body, not from a token, so a caller can pay from any member's wallet ([#91](https://github.com/chrysaor/JayPay/issues/91)).
 - Payments from before the `payment` table stay in the old `payment_request` table, which payment-service no longer reads, so settlement-service does not pay them out.
 - Nothing returns the money of a `PAID` payment to the wallet. There is no refund or cancellation.
+- A payment that money-service did not confirm within its sweeps waits for an operator or a repeated request. The admin console does not show it. An operator finds it in the error log, or in the `payment` table by the status `REQUESTED` and `sweep_attempts` at `payment.sweep.attempts`.
 
 ## money-aggregation-service
 

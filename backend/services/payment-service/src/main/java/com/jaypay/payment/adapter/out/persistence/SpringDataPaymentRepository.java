@@ -35,6 +35,16 @@ public interface SpringDataPaymentRepository extends JpaRepository<PaymentJpaEnt
     int conclude(@Param("paymentId") long paymentId, @Param("outcome") String outcome);
 
     @Transactional
+    @Query(nativeQuery = true, value = """
+            UPDATE payment SET sweep_attempts = sweep_attempts + 1
+            WHERE payment_id IN (SELECT payment_id FROM payment
+                                 WHERE payment_status = 'REQUESTED' AND sweep_attempts < :attempts
+                                   AND requested_at < now() - make_interval(secs => :retryAfterSeconds * (sweep_attempts + 1))
+                                 FOR UPDATE SKIP LOCKED)
+            RETURNING *""")
+    List<PaymentJpaEntity> sweep(@Param("retryAfterSeconds") double retryAfterSeconds, @Param("attempts") int attempts);
+
+    @Transactional
     @Modifying(clearAutomatically = true)
     @Query(nativeQuery = true, value = """
             UPDATE payment SET payment_status = 'SETTLED', settled_at = now()

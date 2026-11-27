@@ -125,7 +125,7 @@ A cell names the test that states the money and the status after that failure, a
 | Call | Lost answer | 5xx | Repeat after a change |
 | --- | --- | --- | --- |
 | `GET /memberships/{id}` on membership-service, payer and merchant | No work to lose. The payment is not stored, see #176 | Read as an invalid payer or merchant, #176 | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
-| `POST /money/decrease` on money-service | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange`, `aPaymentWhoseRefusedDebitAnswerWasLostFailsOnTheRepeatAndKeepsTheBalance`. A payment nobody sends again stays `REQUESTED`, #171 | `PaymentInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatDebitsOnce` | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
+| `POST /money/decrease` on money-service | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange`, `aPaymentWhoseRefusedDebitAnswerWasLostFailsOnTheRepeatAndKeepsTheBalance`, `aPaymentWhoseDebitAnswerWasLostIsPaidByTheSweepWithoutARepeat`, `aPaymentWhoseRefusedDebitAnswerWasLostIsFailedByTheSweepAndKeepsTheBalance`, `sweepsAndRepeatsOfALostPaymentAtOnceDebitItOnce`, `theSweepGivesUpAfterItsAttemptsWithAnErrorAndARepeatStillFinishesThePayment` | `PaymentInvariantsTest.aDebitMoneyServiceFailsWith5xxTakesNothingAndTheRepeatDebitsOnce` | `PaymentInvariantsTest.aPaymentWhoseDebitAnswerWasLostFinishesOnTheRepeatAfterThePartiesChange` |
 
 ### Remittance, remittance-service
 
