@@ -7,7 +7,9 @@ import com.jaypay.banking.domain.BankTransfer;
 import com.jaypay.common.event.RequestFirmBankingCommand;
 import com.jaypay.common.event.RequestFirmBankingFinishedEvent;
 import com.jaypay.common.event.RollbackFirmBankingFinishedEvent;
+import com.jaypay.common.event.RollbackFirmBankingRefusedEvent;
 import com.jaypay.common.event.RollbackFirmBankingRequestCommand;
+import com.jaypay.common.event.RollbackFirmBankingUnconfirmedEvent;
 import com.jaypay.common.kafka.KafkaTestBroker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -293,10 +295,10 @@ class BankTransferTest {
         commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "908", 4000));
         bank.silence("908");
 
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.UNCONFIRMED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingUnconfirmedEvent.class);
         bank.reset();
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.CONFIRMED);
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.CONFIRMED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingFinishedEvent.class);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingFinishedEvent.class);
 
         assertThat(bank.asked(refundId)).isEqualTo(2);
         assertThat(bank.sent(refundId)).isEqualTo(1);
@@ -309,9 +311,9 @@ class BankTransferTest {
         commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "909", 4000));
         bank.refuse("909");
 
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.REFUSED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingRefusedEvent.class);
         bank.reset();
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.REFUSED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingRefusedEvent.class);
 
         assertThat(bank.asked(refundId)).isEqualTo(1);
         assertThat(bank.sent(refundId)).isZero();
@@ -323,9 +325,9 @@ class BankTransferTest {
         bank.silence("910");
         commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "910", 4000));
 
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.UNCONFIRMED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingUnconfirmedEvent.class);
         bank.reset();
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.CONFIRMED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingFinishedEvent.class);
 
         assertThat(bank.sent("recharge-" + rechargeId)).isEqualTo(1);
         assertThat(bank.sent("recharge-" + rechargeId + "-refund")).isEqualTo(1);
@@ -338,7 +340,7 @@ class BankTransferTest {
         commandGateway.sendAndWait(charge(rechargeId, UUID.randomUUID().toString(), "911", 4000));
         bank.reset();
 
-        assertThat(refundStatusOf(rollback(rechargeId))).isEqualTo(RollbackFirmBankingFinishedEvent.CONFIRMED);
+        assertThat(rollbackAnswerOf(rollback(rechargeId))).containsExactly(RollbackFirmBankingFinishedEvent.class);
 
         assertThat(bank.asked("recharge-" + rechargeId + "-refund")).isZero();
     }
@@ -457,15 +459,11 @@ class BankTransferTest {
                 "Woori bank", "901", 4000);
     }
 
-    private int refundStatusOf(RollbackFirmBankingRequestCommand rollback) {
+    private List<Class<?>> rollbackAnswerOf(RollbackFirmBankingRequestCommand rollback) {
         String aggregateId = commandGateway.sendAndWait(rollback);
         return eventStore.readEvents(aggregateId).asStream()
-                .map(message -> message.getPayload())
-                .filter(RollbackFirmBankingFinishedEvent.class::isInstance)
-                .map(RollbackFirmBankingFinishedEvent.class::cast)
-                .findFirst()
-                .orElseThrow()
-                .getRefundStatus();
+                .<Class<?>>map(message -> message.getPayloadType())
+                .toList();
     }
 
     private RequestFirmBankingFinishedEvent finished(String aggregateId) {

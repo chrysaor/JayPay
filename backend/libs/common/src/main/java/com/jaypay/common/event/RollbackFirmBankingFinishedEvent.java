@@ -8,13 +8,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class RollbackFirmBankingFinishedEvent {
-
-    public static final int UNCONFIRMED = 0;
-    public static final int CONFIRMED = 1;
-    public static final int REFUSED = 2;
-
     private String rollbackFirmBankingId;
     private String membershipId;
     private String rollbackFirmbankingAggregateIdentifier;
-    private int refundStatus;
 }
