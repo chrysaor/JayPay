@@ -20,6 +20,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 - membership-service answers 400 with an `error` and a `message` in place of 500 when a request is refused: `MEMBERSHIP_MUST_STAY_VALID` for `PUT /memberships/{membershipId}` with `valid: false`, and `ADDRESS_REQUIRED` for a blank address there and on `POST /memberships` ([#200](https://github.com/chrysaor/JayPay/issues/200))
 - `POST /memberships/token-validate` answers `false` in place of 500 for a token signed with another key ([#211](https://github.com/chrysaor/JayPay/issues/211))
 - `POST /memberships/login` answers 404 `MEMBERSHIP_NOT_FOUND` in place of 500 for a member that does not exist ([#149](https://github.com/chrysaor/JayPay/issues/149))
+- `GET /banking/account/{membershipId}` answers the bank account the member registered last. Before, a member who registered another account kept the first one for top-ups and settlement payouts ([#225](https://github.com/chrysaor/JayPay/issues/225))
 
 ## [0.5.0] - 2026-11-27
 

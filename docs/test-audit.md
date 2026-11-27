@@ -27,8 +27,8 @@ The cases:
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
-| Register a bank account | RegisterBankAccountControllerTest | none ([#225](https://github.com/chrysaor/JayPay/issues/225)) | none ([#225](https://github.com/chrysaor/JayPay/issues/225)) | - | none ([#223](https://github.com/chrysaor/JayPay/issues/223)) |
-| Register a bank account by event | RegisterBankAccountControllerTest | RegisterBankAccountServiceTest (Axon refuses) | none ([#225](https://github.com/chrysaor/JayPay/issues/225)) | - | none |
+| Register a bank account | RegisterBankAccountControllerTest | RegisterBankAccountControllerTest (member not confirmed), RegisterBankAccountServiceTest (account not valid) | RegisterBankAccountControllerTest (another account) | - | none ([#223](https://github.com/chrysaor/JayPay/issues/223)) |
+| Register a bank account by event | RegisterBankAccountControllerTest | RegisterBankAccountServiceTest (Axon refuses) | none | - | none |
 | Find the registered account | RegisterBankAccountControllerTest, BankingPersistenceTest | RegisterBankAccountControllerTest | - | - | - |
 | Bank account information | RegisterBankAccountControllerTest | - | - | - | - |
 | Transfer and reverse | BankTransferTest | BankTransferTest | BankTransferTest | BankTransferTest | BankTransferTest (bank does not answer) |
@@ -92,7 +92,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 | --- | --- | --- |
 | `GetMoneySumByAggregationService`, `GetMoneySumController` | every line | Closed here by GetMoneySumByAggregationServiceTest. The controller is still reached only by the smoke test |
 | `AuthMembershipService` | 9 of 12 branches | Closed here by AuthMembershipControllerTest, except the answers [#224](https://github.com/chrysaor/JayPay/issues/224) has to decide |
-| `RegisterBankAccountService`, `BankAccountAdapter` | 3 of 6 and 4 of 4 branches | [#225](https://github.com/chrysaor/JayPay/issues/225) |
+| `RegisterBankAccountService`, `BankAccountAdapter` | 3 of 6 and 4 of 4 branches | The refusals of a registration are closed by [#225](https://github.com/chrysaor/JayPay/issues/225). The branches of `BankAccountAdapter` are the fake bank's refusal of a transfer, which `BankTransferTest` replaces with its own bank |
 | `FlowRetentionScheduler`, `SettlementBatchScheduler` | every line, 5 each | Each only calls its use case on a schedule. The use cases are tested, the schedule is not |
 | `DummyDataGenerator`, `DummyMoneyDataSimulator` in `tools/utility` | every line, 130 | Developer tools that fill a running stack. Not part of a service |
 | `FlowEventListener` | 7 of 22 branches | The checks that a step names its flow, service, outcome and time. The tests send two kinds of malformed step |
@@ -104,6 +104,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 - membership-service had no test for sign-in, token refresh or the member of a token. The new tests found that a sign-in of a member that does not exist answered 500, which is now 404 `MEMBERSHIP_NOT_FOUND`.
 - money-aggregation-service had no test for its one use case. It now has one for the sum over more than 100 members and for an address without members.
 - remittance-service had no test for the remittances of a member. It now has one.
+- [#225](https://github.com/chrysaor/JayPay/issues/225) found that a member who registered another bank account kept the first one, and fixed it.
 - Three gaps are filed: [#223](https://github.com/chrysaor/JayPay/issues/223), [#224](https://github.com/chrysaor/JayPay/issues/224) and [#225](https://github.com/chrysaor/JayPay/issues/225).
 
 Mutation testing would show which of the tested lines a test would notice changing. It needs a new build plugin, which waits for the owner's decision.
