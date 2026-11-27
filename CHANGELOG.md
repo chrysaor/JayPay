@@ -7,6 +7,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 ### Added
 
 - CI starts the Compose stack and runs `make smoke` on every push to `develop` (`smoke.yml`, which can also be started by hand), and `release.yml` runs the same smoke on a release branch or a tag and publishes images only after it passed. A failed run uploads the service logs as the `stack-logs` artifact, with every value of `infra/docker/.env` and the Vault root token and unseal key redacted. Pull requests do not run it ([#143](https://github.com/chrysaor/JayPay/issues/143))
+- `docs/test-audit.md` lists every use case of every service against the normal path, the refusals, a repeated request, a lost answer and an outage of a service it calls, with the test that covers each or none ([#149](https://github.com/chrysaor/JayPay/issues/149))
 
 ### Changed
 
@@ -18,6 +19,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - membership-service answers 400 with an `error` and a `message` in place of 500 when a request is refused: `MEMBERSHIP_MUST_STAY_VALID` for `PUT /memberships/{membershipId}` with `valid: false`, and `ADDRESS_REQUIRED` for a blank address there and on `POST /memberships` ([#200](https://github.com/chrysaor/JayPay/issues/200))
 - `POST /memberships/token-validate` answers `false` in place of 500 for a token signed with another key ([#211](https://github.com/chrysaor/JayPay/issues/211))
+- `POST /memberships/login` answers 404 `MEMBERSHIP_NOT_FOUND` in place of 500 for a member that does not exist ([#149](https://github.com/chrysaor/JayPay/issues/149))
 
 ## [0.5.0] - 2026-11-27
 

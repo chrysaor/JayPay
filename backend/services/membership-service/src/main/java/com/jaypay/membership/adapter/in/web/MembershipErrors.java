@@ -1,5 +1,6 @@
 package com.jaypay.membership.adapter.in.web;
 
+import com.jaypay.membership.application.port.in.MembershipNotFoundException;
 import com.jaypay.membership.application.port.in.MembershipRequestRejected;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,5 +17,11 @@ class MembershipErrors {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     Error rejected(MembershipRequestRejected rejected) {
         return new Error(rejected.error(), rejected.getMessage());
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    Error notFound(MembershipNotFoundException notFound) {
+        return new Error("MEMBERSHIP_NOT_FOUND", notFound.getMessage());
     }
 }

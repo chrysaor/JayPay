@@ -103,6 +103,17 @@ class RemittanceInvariantsTest {
     }
 
     @Test
+    void listsARemittanceForItsSenderAndItsReceiverAndForNobodyElse() throws Exception {
+        String sender = memberWithBalance(20000);
+        String receiver = memberWithBalance(0);
+        String id = remit(toMember(UUID.randomUUID().toString(), sender, receiver, "5000")).get("remittanceId").asText();
+
+        assertThat(history(sender)).extracting(remittance -> remittance.get("remittanceId").asText()).containsExactly(id);
+        assertThat(history(receiver)).extracting(remittance -> remittance.get("remittanceId").asText()).containsExactly(id);
+        assertThat(history(memberWithBalance(0))).isEmpty();
+    }
+
+    @Test
     void movesTheSameAmountOutOfTheSenderAndIntoTheReceiver() throws Exception {
         String sender = memberWithBalance(20000);
         String receiver = memberWithBalance(1000);
@@ -1024,6 +1035,13 @@ class RemittanceInvariantsTest {
     private static String toBank(String requestId, String sender, String bank, String account, String amount) {
         return "{\"requestId\":\"" + requestId + "\",\"fromMembershipId\":\"" + sender + "\",\"toBankName\":\"" + bank
                 + "\",\"toBankAccountNumber\":\"" + account + "\",\"remittanceType\":1,\"amount\":" + amount + "}";
+    }
+
+    private JsonNode history(String membershipId) throws Exception {
+        HttpResponse<String> response = HTTP.send(
+                HttpRequest.newBuilder(uri("/remittance/" + membershipId)).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        return JSON.readTree(response.body());
     }
 
     private JsonNode remit(String body) throws Exception {

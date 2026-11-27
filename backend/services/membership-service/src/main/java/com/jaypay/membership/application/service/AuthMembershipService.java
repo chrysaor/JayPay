@@ -3,6 +3,7 @@ package com.jaypay.membership.application.service;
 import com.jaypay.common.UseCase;
 import com.jaypay.membership.application.port.in.AuthMembershipUseCase;
 import com.jaypay.membership.application.port.in.LoginMembershipCommand;
+import com.jaypay.membership.application.port.in.MembershipNotFoundException;
 import com.jaypay.membership.application.port.in.RefreshTokenCommand;
 import com.jaypay.membership.application.port.in.ValidateTokenCommand;
 import com.jaypay.membership.application.port.out.AuthMembershipPort;
@@ -30,7 +31,7 @@ public class AuthMembershipService implements AuthMembershipUseCase {
         String membershipId = command.membershipId();
         Membership membership = findMembershipPort.findMembership(
                 new Membership.MembershipId(membershipId)
-        ).orElseThrow();
+        ).orElseThrow(() -> new MembershipNotFoundException(membershipId));
 
         if (membership.isValid()) {
             String jwtToken = authMembershipPort.generateJwtToken(
