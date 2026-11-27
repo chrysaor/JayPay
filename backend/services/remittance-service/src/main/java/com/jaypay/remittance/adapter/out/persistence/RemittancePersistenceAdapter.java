@@ -9,6 +9,8 @@ import com.jaypay.remittance.domain.RemittanceStatus;
 import com.jaypay.remittance.domain.RequestId;
 import lombok.RequiredArgsConstructor;
 
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,6 +58,14 @@ public class RemittancePersistenceAdapter implements RemittancePort {
         long member = Long.parseLong(membershipId);
         return remittanceRepository.findByFromMembershipIdOrToMembershipIdOrderByRequestedAtDesc(member, member).stream()
                 .map(RemittancePersistenceAdapter::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<SweptRemittance> sweep(Duration retryAfter, int attempts) {
+        List<String> unfinished = Arrays.stream(RemittanceStatus.values()).filter(status -> !status.finished()).map(Enum::name).toList();
+        return remittanceRepository.sweep(unfinished, retryAfter.toMillis() / 1000.0, attempts).stream()
+                .map(entity -> new SweptRemittance(toDomain(entity), entity.getSweepAttempts()))
                 .toList();
     }
 

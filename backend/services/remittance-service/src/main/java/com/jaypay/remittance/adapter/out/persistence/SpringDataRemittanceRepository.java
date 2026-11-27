@@ -35,4 +35,15 @@ public interface SpringDataRemittanceRepository extends JpaRepository<Remittance
             UPDATE remittance SET remittance_status = :next, updated_at = now()
             WHERE remittance_id = :remittanceId AND remittance_status = :current""")
     int advance(@Param("remittanceId") UUID remittanceId, @Param("current") String current, @Param("next") String next);
+
+    @Transactional
+    @Query(nativeQuery = true, value = """
+            UPDATE remittance SET sweep_attempts = sweep_attempts + 1
+            WHERE remittance_id IN (SELECT remittance_id FROM remittance
+                                    WHERE remittance_status IN (:unfinished) AND sweep_attempts < :attempts
+                                      AND requested_at < now() - make_interval(secs => :retryAfterSeconds * (sweep_attempts + 1))
+                                    FOR UPDATE SKIP LOCKED)
+            RETURNING *""")
+    List<RemittanceJpaEntity> sweep(@Param("unfinished") List<String> unfinished, @Param("retryAfterSeconds") double retryAfterSeconds,
+                                    @Param("attempts") int attempts);
 }

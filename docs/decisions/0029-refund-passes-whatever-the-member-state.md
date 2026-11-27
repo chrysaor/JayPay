@@ -32,7 +32,7 @@ A remittance whose debit answer was lost already finishes on the repeat without 
 
 - A member that is not valid gets money back into their wallet, and keeps it there until they can use it again.
 - A refund that money-service refuses with `NOT_REFUNDABLE` is answered by remittance-service as 503 on every repeat. Only a remittance whose debit money-service never recorded would get there.
-- Nothing sends a refund in the background. A remittance left `REFUNDING` waits for the same request to be sent again, as before.
+- Nothing sends a refund in the background. A remittance left `REFUNDING` waits for the same request to be sent again, as before. [0031](0031-unfinished-remittances-finished-by-a-sweep.md) covers this.
 - A refund that an earlier version applied as an increase is not linked to its decrease.
 
 ## When to decide again
