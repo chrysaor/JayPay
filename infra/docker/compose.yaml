@@ -150,7 +150,7 @@ services:
       - /var/run/postgresql:uid=70,gid=70
       - /tmp
     restart: unless-stopped
-    mem_limit: 256m
+    mem_limit: 512m
     logging: *logging
     ports:
       - "127.0.0.1:5432:5432"

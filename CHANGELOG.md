@@ -11,6 +11,7 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 ### Changed
 
 - Each service keeps three PostgreSQL connections in place of ten, so the postgres container runs at about half of its 256 MiB memory limit in place of 95 to 99%, where Kubernetes would kill it on the next growth. `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` raises the pool of one service, and `make smoke` now fails when PostgreSQL uses more than 80% of its limit ([#215](https://github.com/chrysaor/JayPay/issues/215))
+- The postgres container has a memory limit of 512 MiB in place of 256 MiB on Compose and on the local cluster. Its shared buffers fill as data is read, which took it to 94% of the old limit, and now leaves it at 43% ([#217](https://github.com/chrysaor/JayPay/issues/217))
 
 ## [0.5.0] - 2026-11-27
 
