@@ -59,6 +59,7 @@ class PaymentInvariantsTest {
     private static final AtomicLong MEMBERS = new AtomicLong(7000);
     private static final Set<String> CORPORATE = ConcurrentHashMap.newKeySet();
     private static final Set<String> INVALID = ConcurrentHashMap.newKeySet();
+    private static final Set<String> MEMBERSHIP_FAILING = ConcurrentHashMap.newKeySet();
     private static final Map<String, Long> BALANCES = new ConcurrentHashMap<>();
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
     private static final List<String> DECREASES = new CopyOnWriteArrayList<>();
@@ -151,6 +152,29 @@ class PaymentInvariantsTest {
             assertThat(JSON.readTree(refused.body()).get("error").asText()).isEqualTo("INVALID_MERCHANT");
         }
         assertThat(BALANCES.get(payer)).isEqualTo(10000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"payer", "merchant"})
+    void aPaymentMembershipServiceFailsWith5xxTakesNothingAndTheRepeatPaysOnce(String unconfirmed) throws Exception {
+        String payer = memberWithBalance(10000);
+        String merchant = corporateMember();
+        String requestId = UUID.randomUUID().toString();
+        String failing = unconfirmed.equals("payer") ? payer : merchant;
+        MEMBERSHIP_FAILING.add(failing);
+
+        HttpResponse<String> duringTheOutage = request(requestId, payer, merchant, "3000");
+
+        assertThat(duringTheOutage.statusCode()).as(duringTheOutage.body()).isEqualTo(503);
+        assertThat(JSON.readTree(duringTheOutage.body()).get("error").asText()).isEqualTo("MEMBERSHIP_NOT_CONFIRMED");
+        assertThat(BALANCES.get(payer)).isEqualTo(10000);
+
+        MEMBERSHIP_FAILING.remove(failing);
+        pay(requestId, payer, merchant, "3000");
+
+        assertThat(BALANCES.get(payer)).isEqualTo(7000);
+        assertThat(flowSteps(requestId, 2)).extracting(PaymentInvariantsTest::stepAndOutcome)
+                .containsExactly("PAYMENT_REQUESTED SUCCEEDED", "PAYER_DEBITED SUCCEEDED");
     }
 
     @Test
@@ -581,6 +605,10 @@ class PaymentInvariantsTest {
             server.setExecutor(Executors.newFixedThreadPool(CONCURRENT_REQUESTS * 2));
             server.createContext("/memberships/", exchange -> {
                 String member = exchange.getRequestURI().getPath().substring("/memberships/".length());
+                if (MEMBERSHIP_FAILING.contains(member)) {
+                    respond(exchange, 503, "");
+                    return;
+                }
                 respond(exchange, 200, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
                         + "\"address\":\"Seocho\",\"valid\":" + !INVALID.contains(member) + ",\"corp\":" + CORPORATE.contains(member) + "}");
             });

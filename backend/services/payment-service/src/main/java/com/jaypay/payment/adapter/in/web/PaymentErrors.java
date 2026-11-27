@@ -1,5 +1,6 @@
 package com.jaypay.payment.adapter.in.web;
 
+import com.jaypay.payment.domain.MembershipNotConfirmedException;
 import com.jaypay.payment.domain.PaymentRejectedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +38,12 @@ class PaymentErrors {
             case PAYMENT_NOT_CONFIRMED -> error(HttpStatus.SERVICE_UNAVAILABLE, refused,
                     "The wallet did not confirm the payment. Send the same request again.");
         };
+    }
+
+    @ExceptionHandler
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    Error notConfirmed(MembershipNotConfirmedException notConfirmed) {
+        return new Error("MEMBERSHIP_NOT_CONFIRMED", "A member could not be checked, so nothing changed. Send the same request again.");
     }
 
     private static ResponseEntity<Error> error(HttpStatus status, PaymentRejectedException refused, String message) {

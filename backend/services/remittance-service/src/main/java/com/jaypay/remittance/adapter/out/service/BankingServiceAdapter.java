@@ -5,9 +5,12 @@ import com.jaypay.common.ExternalSystemAdapter;
 import com.jaypay.common.HttpReply;
 import com.jaypay.remittance.application.port.out.BankingPort;
 import com.jaypay.remittance.application.port.out.Outcome;
+import com.jaypay.remittance.domain.BankAccountNotConfirmedException;
 import com.jaypay.remittance.domain.Receiver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+
+import java.io.UncheckedIOException;
 
 @ExternalSystemAdapter
 @Slf4j
@@ -23,8 +26,19 @@ public class BankingServiceAdapter implements BankingPort {
 
     @Override
     public boolean isValid(Receiver.BankAccount account) {
-        BankingInfo info = commonHttpClient.post(url("info"),
-                new BankingInfoRequest(account.bankName(), account.bankAccountNumber()), BankingInfo.class).body();
+        HttpReply<BankingInfo> reply;
+        try {
+            reply = commonHttpClient.post(url("info"),
+                    new BankingInfoRequest(account.bankName(), account.bankAccountNumber()), BankingInfo.class);
+        } catch (UncheckedIOException unanswered) {
+            log.warn("banking-service did not answer about a bank account", unanswered);
+            throw new BankAccountNotConfirmedException(unanswered.getMessage());
+        }
+        if (!reply.isSuccessful()) {
+            log.warn("banking-service did not confirm a bank account: status {}", reply.status());
+            throw new BankAccountNotConfirmedException("status " + reply.status());
+        }
+        BankingInfo info = reply.body();
         return info != null && info.valid();
     }
 
