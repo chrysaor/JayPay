@@ -37,12 +37,13 @@ Each backend log line takes the level of what it tells the operator:
 
 | Level | Meaning | Example |
 | --- | --- | --- |
-| `ERROR` | An operator has to act: money may be wrong, or the system gave up | The rollback of a top-up failed, a bank account registration was lost |
+| `ERROR` | An operator has to act: money may be wrong, or the system gave up | The rollback of a top-up failed, a bank account registration was lost, a merchant cannot be paid |
 | `WARN` | Something outside the service failed, and the system recovers by itself through a retry, a deadline or the next run | banking-service did not answer the transfer |
-| `INFO` | One line for each business state change, and for each expected refusal with its reason | Merchant 11 has no bank account, banking-service refused the transfer as invalid |
+| `INFO` | One line for each business state change, and for each expected refusal with its reason | Member 7 has no registered account, banking-service refused the transfer as invalid |
 | `DEBUG` | Detail of one call, off by default | The command a handler received, each record sent to the logging topic |
 
 - An expected refusal, such as a member that is not valid, no registered account, a charge the bank refused or a transfer refused as invalid, is `INFO`, not `WARN`, so the count of `WARN` lines says that something is broken.
+- A refusal is expected only when the caller who asked gets it as the answer. A refusal inside a scheduled run, such as a payout the bank refused or a merchant without a bank account, reaches nobody, so it is `ERROR`.
 - Every line names the id of what it is about. The backend build fails on a log call with a fixed text and no argument.
 - A caught exception goes in as the last argument, so the line keeps its class and stack trace. Never log only its `getMessage()`.
 - Never log a bank account number, or a whole request or command object.

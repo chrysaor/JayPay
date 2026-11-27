@@ -25,6 +25,8 @@ The owner agreed. The rule is in [CONTRIBUTING.md](../../CONTRIBUTING.md#logging
 - `INFO`: one line for each business state change, with its id. An expected refusal is `INFO` with its id and its reason, so the count of `WARN` lines means that something is broken.
 - `DEBUG`: detail of one call, off by default.
 
+A refusal counts as expected only when the caller who asked gets it as the answer. A payout the bank refused and a merchant without a bank account come up inside the scheduled settlement run, where nobody is told, so they are `ERROR`.
+
 Every line names its id, a caught exception is the last argument, and no line prints an account number or a whole request or command. A failure is logged once, where it is caught, so the web error handlers that answer 4xx or 503 log nothing. The backend build fails on a log call with a fixed text and no argument. Spring Boot reads `LOGGING_LEVEL_COM_JAYPAY` from the environment, which raises the level of one service without a new image.
 
 ## What we gave up

@@ -33,7 +33,7 @@ public class SettlementService implements SettlementUseCase {
         for (Payment payment : paymentPort.getPaidPayments()) {
             Optional<BankAccount> account = accounts.computeIfAbsent(payment.franchiseId(), bankingPort::getRegisteredBankAccount);
             if (account.isEmpty()) {
-                log.info("Merchant {} has no bank account, so payment {} stays paid", payment.franchiseId(), payment.paymentId());
+                log.error("Merchant {} has no bank account, so payment {} stays paid", payment.franchiseId(), payment.paymentId());
                 settlementFlowPort.waitingForAccount(payment);
             } else {
                 settle(payment, account.get());
@@ -56,7 +56,7 @@ public class SettlementService implements SettlementUseCase {
                     settlementFlowPort.settled(payment);
                 }
             }
-            case REFUSED -> log.info("The bank refused the payout of payment {} to merchant {}, so it stays paid until the merchant registers another account",
+            case REFUSED -> log.error("The bank refused the payout of payment {} to merchant {}, so it stays paid until the merchant registers another account",
                     payment.paymentId(), payment.franchiseId());
             case UNCONFIRMED -> log.warn("The bank did not confirm the payout of payment {}, so the next run asks again",
                     payment.paymentId());
