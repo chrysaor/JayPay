@@ -180,6 +180,15 @@ recreate_dynamodb() {
   fi || fail "could not recreate the dynamodb container: $(tail -5 "$work/recreate")"
 }
 
+postgres_memory_percent() {
+  local cgroup='cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max && sed -n "s/^inactive_file //p" /sys/fs/cgroup/memory.stat'
+  if [ "$stack" = kubernetes ]; then
+    cluster exec postgres-0 -- sh -c "$cgroup"
+  else
+    docker exec "$(docker compose -f "$compose_file" ps -q postgres)" sh -c "$cgroup"
+  fi | awk '{ v[NR] = $1 } END { if (NR != 3 || v[2] !~ /^[0-9]+$/) exit 1; printf "%d\n", (v[1] - v[3]) * 100 / v[2] }'
+}
+
 started_at() {
   local container
   if [ "$stack" = kubernetes ]; then
@@ -710,6 +719,11 @@ as_staff ADMIN expect "the API docs of a service behind the console" 403 GET "$a
 expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
 eventually 60 "Prometheus does not scrape every service on port $management_port" targets_up
 log "$(cat "$work/last")"
+
+log "PostgreSQL keeps at least a fifth of its memory limit free"
+postgres_memory_percent=$(postgres_memory_percent) || fail "could not read the memory of the postgres container"
+[ "$postgres_memory_percent" -le 80 ] || fail "PostgreSQL uses $postgres_memory_percent% of its memory limit"
+log "PostgreSQL uses $postgres_memory_percent% of its memory limit"
 
 log "a staff account made in Keycloak signs in, and once disabled it can no longer sign in or refresh"
 new_staff="smoke-$run"
