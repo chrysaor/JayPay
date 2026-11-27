@@ -112,7 +112,7 @@ start_cluster() {
     minikube update-context --profile "$profile" >/dev/null
   else
     minikube start --profile "$profile" --driver docker --container-runtime docker \
-      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-10g}" --cni kindnet --addons ingress \
+      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-14g}" --cni kindnet --addons ingress \
       --mount --mount-string "$host_git:$(dirname "$repo_path")"
   fi
 }
