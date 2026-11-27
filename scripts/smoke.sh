@@ -167,10 +167,12 @@ PY
 
 cluster() { kubectl --context jaypay --namespace "${SMOKE_NAMESPACE:?scripts/k8s.sh sets it}" "$@"; }
 
+pod_exists() { cluster get pod "$1" >"$work/last" 2>&1; }
+
 recreate_dynamodb() {
   if [ "$stack" = kubernetes ]; then
     cluster delete pod dynamodb-0 >"$work/recreate" 2>&1 &&
-      until cluster get pod dynamodb-0 >/dev/null 2>&1; do sleep 1; done &&
+      eventually 60 "the pod dynamodb-0 did not come back" pod_exists dynamodb-0 &&
       cluster wait --for=condition=Ready pod/dynamodb-0 --timeout=120s >>"$work/recreate" 2>&1
   else
     docker compose -f "$compose_file" rm --stop --force dynamodb >"$work/recreate" 2>&1 &&
@@ -503,6 +505,12 @@ sign_in_staff() {
   python3 "$root/scripts/staff_sign_in.py" "$admin" "$1" "$2" >"$work/staff-tokens" 2>"$work/staff-refusal"
 }
 
+staff_sign_in_refused() {
+  local status=0
+  sign_in_staff "$1" "$2" || status=$?
+  [ "$status" = 3 ] || fail "$3, the sign in exited $status: $(cat "$work/staff-refusal")"
+}
+
 staff_token() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$work/staff-tokens" "$1"; }
 
 token_claim() {
@@ -713,7 +721,7 @@ new_token=$(staff_token access_token)
 new_refresh=$(staff_token refresh_token)
 as "$new_token" request "member lookup by the new staff account" GET "$member_url" "$(hex 16)"
 as_keycloak_admin expect "disabling the new staff account" 204 PUT "$keycloak/admin/realms/staff/users/$new_id" "$(hex 16)" '{"enabled":false}'
-! sign_in_staff "$new_staff" "$new_password" || fail "the disabled staff account signed in"
+staff_sign_in_refused "$new_staff" "$new_password" "the disabled staff account was not refused"
 [ "$(refresh_status "$new_refresh")" = 400 ] || fail "the disabled staff account refreshed its token: $(response)"
 as "$new_token" call GET "$member_url" "$(hex 16)"
 log "the access token of the disabled account still answers HTTP $http_status and expires in $(($(token_claim "$new_token" exp) - $(date +%s)))s"
@@ -725,9 +733,9 @@ create_staff "$locked_staff" "$locked_password" viewer
 locked_id=$created_staff
 for attempt in 1 2 3 4 5; do
   sleep 2
-  ! sign_in_staff "$locked_staff" "Wrong-$(hex 8)-Pass-$attempt!" || fail "a wrong password signed in"
+  staff_sign_in_refused "$locked_staff" "Wrong-$(hex 8)-Pass-$attempt!" "a wrong password was not refused"
 done
-! sign_in_staff "$locked_staff" "$locked_password" || fail "the right password signed in to a locked account"
+staff_sign_in_refused "$locked_staff" "$locked_password" "the right password was not refused on a locked account"
 keycloak_admin_sign_in
 as_keycloak_admin request "brute force status of $locked_staff" GET "$keycloak/admin/realms/staff/attack-detection/brute-force/users/$locked_id" "$(hex 16)"
 [ "$(json_field disabled)" = True ] || fail "Keycloak does not report $locked_staff as locked: $(response)"
@@ -740,8 +748,8 @@ as_staff ADMIN expect "a path that climbs out of its segment" 403 GET "$member_u
 
 log "a staff token means nothing to the customer site"
 sign_in_default_staff ADMIN
-call POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$signed_in'"}'
-[ "$(cat "$work/body")" != true ] || fail "the web site accepted a staff token: $(response)"
+expect "token validation of a staff token on the web site" 200 POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"'$signed_in'"}'
+[ "$(cat "$work/body")" = false ] || fail "the web site did not reject a staff token: $(response)"
 
 log "every service shipped its logs to ClickHouse"
 for service in "${services[@]}"; do
@@ -780,7 +788,7 @@ log "the ClickHouse user behind Grafana reads the telemetry but cannot change it
   fail "the grafana user could not read otel_logs: $(response)"
 for statement in "CREATE TABLE otel.smoke_$run (id UInt8) ENGINE = Memory" "DROP TABLE otel.otel_logs" \
   "INSERT INTO otel.otel_logs (ServiceName) VALUES ('smoke')" "SELECT count() FROM system.users"; do
-  [ "$(as_grafana_reader "$statement")" != 200 ] || fail "the grafana user ran $statement"
+  [ "$(as_grafana_reader "$statement")" = 403 ] && grep -q '(ACCESS_DENIED)' "$work/body" || fail "the grafana user was not refused $statement: $(response)"
 done
 
 log "the Vault token of membership-service reads its key and nothing else"

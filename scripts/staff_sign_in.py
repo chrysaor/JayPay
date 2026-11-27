@@ -49,7 +49,14 @@ def page_error(page):
             text = re.search(r">\s*([^<>]*\S)\s*<", page[start:])
             if text:
                 return html.unescape(text.group(1))
-    return "the sign-in page did not redirect back"
+    return None
+
+
+def refused(page, otherwise):
+    message = page_error(page)
+    if message is None:
+        sys.exit(otherwise)
+    return None, message
 
 
 def sign_in(site, username, password):
@@ -74,14 +81,14 @@ def sign_in(site, username, password):
         page = opener.open(f"{site}{ENDPOINTS}/auth?{query}", timeout=30).read().decode()
         action = form_action(page)
         if not action:
-            return None, "the authorization endpoint did not show a sign-in form"
+            sys.exit("the authorization endpoint did not show a sign-in form")
         credentials = urllib.parse.urlencode({"username": username, "password": password}).encode()
         page = opener.open(action, data=credentials, timeout=30).read().decode()
-        return None, page_error(page)
+        return refused(page, "the sign-in page did not redirect back and showed no error")
     except CallbackReached as reached:
         params = urllib.parse.parse_qs(urllib.parse.urlparse(reached.url).query)
         if params.get("state") != [state]:
-            return None, "the callback carried another state"
+            sys.exit("the callback carried another state")
         token_request = urllib.parse.urlencode(
             {
                 "client_id": CLIENT_ID,
@@ -94,7 +101,7 @@ def sign_in(site, username, password):
         with urllib.request.urlopen(f"{site}{ENDPOINTS}/token", data=token_request, timeout=30) as reply:
             return json.load(reply), None
     except urllib.error.HTTPError as error:
-        return None, f"HTTP {error.code} from {error.url}"
+        return refused(error.read().decode(errors="replace"), f"HTTP {error.code} from {error.url}")
 
 
 def main():

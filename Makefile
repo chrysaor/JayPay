@@ -136,6 +136,7 @@ contract:
 
 release-branch:
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "usage: make release-branch VERSION=X.Y.Z"; exit 2; }
+	@git diff --quiet HEAD -- && git diff --cached --quiet -- || { echo "release-branch: commit or stash these changes first, the release commit would take them along:"; git status --short --untracked-files=no; exit 2; }
 	git fetch origin develop
 	mkdir -p build && git show origin/develop:CHANGELOG.md >build/release-CHANGELOG.md
 	python3 scripts/changelog.py release build/release-CHANGELOG.md $(VERSION) $$(date +%F)
