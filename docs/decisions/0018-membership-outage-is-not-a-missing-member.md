@@ -2,7 +2,7 @@
 
 ## Release
 
-0.5.0 (unreleased)
+0.5.0
 
 ## Status
 
