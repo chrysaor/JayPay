@@ -39,7 +39,8 @@ public record MoneyChangingRequest(
     public enum MoneyChangingStatus {
         PENDING(0),
         SUCCEEDED(1),
-        FAILED(2);
+        FAILED(2),
+        ROLLBACK_UNCONFIRMED(3);
 
         private final int code;
 
