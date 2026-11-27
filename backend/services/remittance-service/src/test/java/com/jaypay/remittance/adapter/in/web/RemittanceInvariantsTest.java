@@ -3,15 +3,21 @@ package com.jaypay.remittance.adapter.in.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jaypay.common.kafka.KafkaTestBroker;
+import com.jaypay.remittance.application.port.in.ResumeUnfinishedRemittancesUseCase;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -43,8 +49,10 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "remittance.amount.max=10000000")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"remittance.amount.max=10000000",
+        "remittance.sweep.every=1h", "remittance.sweep.retry-after=0s", "remittance.sweep.attempts=3"})
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class RemittanceInvariantsTest {
 
     private static final int CONCURRENT_REQUESTS = 16;
@@ -52,6 +60,8 @@ class RemittanceInvariantsTest {
     private static final Set<String> INVALID = ConcurrentHashMap.newKeySet();
     private static final Set<String> UNKNOWN = ConcurrentHashMap.newKeySet();
     private static final Set<String> CREDIT_REFUSED = ConcurrentHashMap.newKeySet();
+    private static final Set<String> MONEY_SILENT = ConcurrentHashMap.newKeySet();
+    private static final Set<String> REFUND_UNKNOWN = ConcurrentHashMap.newKeySet();
     private static final Map<String, Long> BALANCES = new ConcurrentHashMap<>();
     private static final Map<String, String> MONEY_RESULTS = new ConcurrentHashMap<>();
     private static final Map<String, JsonNode> SUCCEEDED_DECREASES = new ConcurrentHashMap<>();
@@ -71,6 +81,12 @@ class RemittanceInvariantsTest {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private ResumeUnfinishedRemittancesUseCase sweep;
+
+    @Autowired
+    private JdbcTemplate database;
 
     @DynamicPropertySource
     static void otherServices(DynamicPropertyRegistry registry) {
@@ -771,6 +787,200 @@ class RemittanceInvariantsTest {
                 .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "RECEIVER_CREDITED SUCCEEDED");
     }
 
+    @Test
+    void aDebitWhoseAnswerWasLostIsCompletedByTheSweepWithoutARepeat() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+        unanswered("-decrease", 1);
+        assertThat(post(toMember(requestId, sender, receiver, "2500")).statusCode()).isEqualTo(503);
+        assertThat(storedStatus(requestId)).isEqualTo("REQUESTED");
+
+        sweep.resumeUnfinishedRemittances();
+
+        assertThat(storedStatus(requestId)).isEqualTo("COMPLETED");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+        assertThat(flowSteps(requestId, 3)).extracting(RemittanceInvariantsTest::stepAndOutcome)
+                .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "RECEIVER_CREDITED SUCCEEDED");
+    }
+
+    @Test
+    void aCreditWithoutAnAnswerIsCompletedByTheSweepWithoutARepeat() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+        unanswered("-increase", 1);
+        assertThat(post(toMember(requestId, sender, receiver, "2500")).statusCode()).isEqualTo(503);
+        assertThat(storedStatus(requestId)).isEqualTo("DEBITED");
+
+        sweep.resumeUnfinishedRemittances();
+
+        assertThat(storedStatus(requestId)).isEqualTo("COMPLETED");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @Test
+    void aTransferTheBankDidNotConfirmIsCompletedByTheSweepUnderTheSameTransferIdAndLandsOnce() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1002-" + sender;
+        String requestId = UUID.randomUUID().toString();
+        SILENT_ACCOUNTS.add(account);
+        assertThat(post(toBank(requestId, sender, "Jay Bank", account, "7000")).statusCode()).isEqualTo(503);
+
+        sweep.resumeUnfinishedRemittances();
+        assertThat(storedStatus(requestId)).isEqualTo("TRANSFERRING");
+        SILENT_ACCOUNTS.remove(account);
+        sweep.resumeUnfinishedRemittances();
+
+        assertThat(storedStatus(requestId)).isEqualTo("COMPLETED");
+        assertThat(BALANCES.get(sender)).isEqualTo(13000);
+        String transferId = "remittance-" + storedRemittanceId(requestId) + "-transfer";
+        assertThat(transfersTo(account)).singleElement()
+                .satisfies(transfer -> assertThat(transfer.get("requestId").asText()).isEqualTo(transferId));
+        assertThat(ASKED.stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account))
+                .map(transfer -> transfer.get("requestId").asText())).containsExactly(transferId, transferId, transferId);
+    }
+
+    @Test
+    void aRefundMoneyServiceFailedWith5xxIsRefundedByTheSweepWithoutARepeat() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        CREDIT_REFUSED.add(receiver);
+        String requestId = UUID.randomUUID().toString();
+        failing("-refund", 1);
+        assertThat(post(toMember(requestId, sender, receiver, "2500")).statusCode()).isEqualTo(503);
+        assertThat(storedStatus(requestId)).isEqualTo("REFUNDING");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+
+        sweep.resumeUnfinishedRemittances();
+
+        assertThat(storedStatus(requestId)).isEqualTo("REFUNDED");
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+        assertThat(BALANCES.get(receiver)).isZero();
+    }
+
+    @Test
+    void aRefundThatAMoneyServiceWithoutTheRefundEndpointDidNotTakeIsRefundedByTheSweepAfterTheUpgrade() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        CREDIT_REFUSED.add(receiver);
+        REFUND_UNKNOWN.add(sender);
+        String requestId = UUID.randomUUID().toString();
+        assertThat(post(toMember(requestId, sender, receiver, "2500")).statusCode()).isEqualTo(503);
+
+        sweep.resumeUnfinishedRemittances();
+        assertThat(storedStatus(requestId)).isEqualTo("REFUNDING");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        REFUND_UNKNOWN.remove(sender);
+        sweep.resumeUnfinishedRemittances();
+
+        assertThat(storedStatus(requestId)).isEqualTo("REFUNDED");
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+    }
+
+    @Test
+    void theSweepGivesUpAfterItsAttemptsWithOneErrorAndARepeatStillFinishesTheRemittance(CapturedOutput output) throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+        String body = toMember(requestId, sender, receiver, "2500");
+        MONEY_SILENT.add(sender);
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        String remittanceId = storedRemittanceId(requestId);
+        String debitId = "remittance-" + remittanceId + "-decrease";
+
+        for (int sweeps = 0; sweeps < 5; sweeps++) {
+            sweep.resumeUnfinishedRemittances();
+        }
+
+        assertThat(MONEY_CALLS.stream().filter(debitId::equals)).hasSize(1 + 3);
+        assertThat(storedStatus(requestId)).isEqualTo("REQUESTED");
+        assertThat(output.getOut().lines().filter(line -> line.contains("ERROR") && line.contains(remittanceId))).hasSize(1);
+
+        MONEY_SILENT.remove(sender);
+        assertThat(remit(body).get("remittanceStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @Test
+    void theSweepLeavesFinishedRemittancesAlone() throws Exception {
+        String sender = memberWithBalance(10000);
+        String refusing = memberWithBalance(0);
+        CREDIT_REFUSED.add(refusing);
+        List<String> finished = List.of(
+                remit(toMember(UUID.randomUUID().toString(), sender, memberWithBalance(0), "1000")).get("remittanceId").asText(),
+                remit(toMember(UUID.randomUUID().toString(), sender, memberWithBalance(0), "50000")).get("remittanceId").asText(),
+                remit(toMember(UUID.randomUUID().toString(), sender, refusing, "1000")).get("remittanceId").asText());
+        int calls = MONEY_CALLS.size();
+
+        sweep.resumeUnfinishedRemittances();
+
+        assertThat(List.copyOf(MONEY_CALLS.subList(calls, MONEY_CALLS.size())))
+                .noneMatch(call -> finished.stream().anyMatch(call::contains));
+        assertThat(BALANCES.get(sender)).isEqualTo(9000);
+    }
+
+    @RepeatedTest(5)
+    void sweepsAndRepeatsOfALostDebitAtOnceMoveTheMoneyOnce() throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+        String body = toMember(requestId, sender, receiver, "2500");
+        unanswered("-decrease", 1);
+        assertThat(post(body).statusCode()).isEqualTo(503);
+
+        List<JsonNode> repeats = sweepsAndRepeatsAtOnce(body);
+
+        assertThat(repeats).hasSize(CONCURRENT_REQUESTS / 2)
+                .allSatisfy(result -> assertThat(result.get("remittanceStatus").asText()).isEqualTo("COMPLETED"));
+        assertThat(storedStatus(requestId)).isEqualTo("COMPLETED");
+        assertThat(BALANCES.get(sender)).isEqualTo(7500);
+        assertThat(BALANCES.get(receiver)).isEqualTo(2500);
+    }
+
+    @RepeatedTest(5)
+    void sweepsAndRepeatsOfAnUnconfirmedTransferAtOnceLandItOnce() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1002-" + sender;
+        String requestId = UUID.randomUUID().toString();
+        String body = toBank(requestId, sender, "Jay Bank", account, "7000");
+        SILENT_ACCOUNTS.add(account);
+        assertThat(post(body).statusCode()).isEqualTo(503);
+        SILENT_ACCOUNTS.remove(account);
+
+        List<JsonNode> repeats = sweepsAndRepeatsAtOnce(body);
+
+        assertThat(repeats).hasSize(CONCURRENT_REQUESTS / 2)
+                .allSatisfy(result -> assertThat(result.get("remittanceStatus").asText()).isEqualTo("COMPLETED"));
+        assertThat(storedStatus(requestId)).isEqualTo("COMPLETED");
+        assertThat(BALANCES.get(sender)).isEqualTo(13000);
+        assertThat(transfersTo(account)).hasSize(1);
+        assertThat(ASKED.stream().filter(transfer -> transfer.get("toBankAccountNumber").asText().equals(account))
+                .map(transfer -> transfer.get("requestId").asText()).distinct()).hasSize(1);
+    }
+
+    private List<JsonNode> sweepsAndRepeatsAtOnce(String body) throws Exception {
+        AtomicInteger turn = new AtomicInteger();
+        return concurrently(() -> {
+            if (turn.getAndIncrement() % 2 == 0) {
+                sweep.resumeUnfinishedRemittances();
+                return null;
+            }
+            return remit(body);
+        }).stream().filter(result -> result != null).toList();
+    }
+
+    private String storedStatus(String requestId) {
+        return database.queryForObject("SELECT remittance_status FROM remittance WHERE request_id = ?", String.class, requestId);
+    }
+
+    private String storedRemittanceId(String requestId) {
+        return database.queryForObject("SELECT remittance_id::text FROM remittance WHERE request_id = ?", String.class, requestId);
+    }
+
     private static List<JsonNode> flowSteps(String requestId, int count) {
         return KafkaTestBroker.awaitValues("jaypay.flow.events", requestId, values -> values.size() >= count, Duration.ofSeconds(30))
                 .stream().map(RemittanceInvariantsTest::readJson).toList();
@@ -909,6 +1119,11 @@ class RemittanceInvariantsTest {
 
     private static void changeMoney(HttpExchange exchange, int sign) throws IOException {
         JsonNode change = JSON.readTree(exchange.getRequestBody().readAllBytes());
+        if (MONEY_SILENT.contains(change.get("targetMembershipId").asText())) {
+            MONEY_CALLS.add(change.get("requestId").asText());
+            respond(exchange, 500, "{\"status\":500}");
+            return;
+        }
         answer(exchange, change.get("requestId").asText(), id -> apply(id, change.get("targetMembershipId").asText(),
                 sign, change.get("amount").asLong()));
     }
@@ -917,6 +1132,11 @@ class RemittanceInvariantsTest {
         JsonNode refund = JSON.readTree(exchange.getRequestBody().readAllBytes());
         String requestId = refund.get("requestId").asText();
         JsonNode decrease = SUCCEEDED_DECREASES.get(refund.get("refundedRequestId").asText());
+        if (decrease != null && REFUND_UNKNOWN.contains(decrease.get("member").asText())) {
+            MONEY_CALLS.add(requestId);
+            respond(exchange, 404, "{\"status\":404,\"error\":\"Not Found\"}");
+            return;
+        }
         if (decrease == null) {
             MONEY_CALLS.add(requestId);
             respond(exchange, 409, "{\"error\":\"NOT_REFUNDABLE\",\"message\":\"no decrease\"}");
