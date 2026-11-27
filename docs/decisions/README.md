@@ -62,6 +62,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0026](0026-lost-top-up-deadlines-found-by-a-sweep.md) | A sweep finds top-up sagas whose deadline a restart dropped | 0.5.0 (unreleased) | accepted | [#193](https://github.com/chrysaor/JayPay/issues/193), [retrospective](../retrospectives/2026-11-27-saga-deadlines-lost-on-restart.md), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0027](0027-unconfirmed-payments-finished-by-a-sweep.md) | A sweep finishes payments that money-service did not confirm | 0.5.0 (unreleased) | accepted | [#171](https://github.com/chrysaor/JayPay/issues/171), [Unreleased](../../CHANGELOG.md#unreleased) |
 | [0028](0028-top-up-rollback-ends-on-a-confirmed-refund.md) | A top-up rollback ends only on a refund the bank confirmed | 0.5.0 (unreleased) | accepted | [#194](https://github.com/chrysaor/JayPay/issues/194), [retrospective](../retrospectives/2026-11-27-top-up-rollback-ended-on-an-unconfirmed-refund.md), [Unreleased](../../CHANGELOG.md#unreleased) |
+| [0029](0029-refund-passes-whatever-the-member-state.md) | money-service gives back money it took, whatever the state of the member | 0.5.0 (unreleased) | accepted | [#184](https://github.com/chrysaor/JayPay/issues/184), [retrospective](../retrospectives/2026-11-27-refund-refused-for-an-invalid-sender.md), [Unreleased](../../CHANGELOG.md#unreleased) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 

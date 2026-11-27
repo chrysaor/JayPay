@@ -6,6 +6,7 @@ import com.jaypay.money.application.port.in.ChangeMoneyCommand;
 import com.jaypay.money.application.port.in.ChangeMoneyUseCase;
 import com.jaypay.money.application.port.in.CreateMemberMoneyCommand;
 import com.jaypay.money.application.port.in.CreateMemberMoneyUseCase;
+import com.jaypay.money.application.port.in.RefundMoneyCommand;
 import com.jaypay.money.application.port.out.ChangeMoneyPort;
 import com.jaypay.money.application.port.out.CreateMemberMoneyAggregatePort;
 import com.jaypay.money.application.port.out.CreateMemberMoneyPort;
@@ -19,6 +20,7 @@ import com.jaypay.money.domain.MemberMoney;
 import com.jaypay.money.domain.MoneyChangingRequest;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingStatus;
 import com.jaypay.money.domain.MoneyChangingRequest.MoneyChangingType;
+import com.jaypay.money.domain.NotRefundableException;
 import com.jaypay.money.domain.RechargeFailure;
 import com.jaypay.money.domain.RequestId;
 import com.jaypay.money.domain.RequestIdReusedException;
@@ -50,6 +52,25 @@ public class ChangeMoneyService implements ChangeMoneyUseCase, CreateMemberMoney
     @Override
     public MoneyChangingRequest decreaseMoney(ChangeMoneyCommand command) {
         return change(command, MoneyChangingType.DECREASE);
+    }
+
+    @Override
+    public MoneyChangingRequest refundMoney(RefundMoneyCommand command) {
+        MoneyChangingRequest refunded = changeMoneyPort.findForUpdate(command.refundedRequestId())
+                .filter(request -> request.type() == MoneyChangingType.DECREASE && request.status() == MoneyChangingStatus.SUCCEEDED)
+                .filter(decrease -> changeMoneyPort.findRefundOf(decrease.requestId()).map(command.requestId()::equals).orElse(true))
+                .orElseThrow(() -> {
+                    log.info("Refund {} is refused because {} names no decrease that can still be refunded",
+                            command.requestId().value(), command.refundedRequestId().value());
+                    return new NotRefundableException(command.refundedRequestId());
+                });
+        MoneyChangingRequest pending = MoneyChangingRequest.pending(command.requestId(), refunded.targetMembershipId(), MoneyChangingType.INCREASE, refunded.amount());
+        Optional<MoneyChangingRequest> earlier = findEarlier(pending);
+        if (earlier.isPresent() && earlier.get().status() != MoneyChangingStatus.FAILED) {
+            return earlier.get();
+        }
+        changeMoneyPort.increaseBalance(new MemberMoney.MembershipId(pending.targetMembershipId()), pending.amount());
+        return changeMoneyPort.settleRefund(pending.settled(true), refunded.requestId());
     }
 
     @Override

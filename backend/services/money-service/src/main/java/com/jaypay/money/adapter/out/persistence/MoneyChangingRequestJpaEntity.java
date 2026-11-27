@@ -42,4 +42,7 @@ public class MoneyChangingRequestJpaEntity {
     @Column(nullable = false)
     private Instant requestedAt;
 
+    @Column(unique = true)
+    private String refundedRequestId;
+
 }

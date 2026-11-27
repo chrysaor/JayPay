@@ -48,3 +48,4 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [A restart of money-service dropped the deadlines of running top-ups](2026-11-27-saga-deadlines-lost-on-restart.md) | [#193](https://github.com/chrysaor/JayPay/issues/193) |
 | 2026-11-27 | [A top-up rollback ended while the bank had not confirmed the refund](2026-11-27-top-up-rollback-ended-on-an-unconfirmed-refund.md) | [#194](https://github.com/chrysaor/JayPay/issues/194) |
 | 2026-11-27 | [The first-start saga test stopped the processor before its worker ran](2026-11-27-first-start-saga-test-failed-without-a-reason.md) | [#187](https://github.com/chrysaor/JayPay/pull/187), [#188](https://github.com/chrysaor/JayPay/pull/188) |
+| 2026-11-27 | [A remittance refund asked after the sender became invalid never landed](2026-11-27-refund-refused-for-an-invalid-sender.md) | [#184](https://github.com/chrysaor/JayPay/issues/184) |

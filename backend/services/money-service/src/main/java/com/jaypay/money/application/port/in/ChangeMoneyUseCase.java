@@ -10,6 +10,8 @@ public interface ChangeMoneyUseCase {
 
     MoneyChangingRequest decreaseMoney(ChangeMoneyCommand command);
 
+    MoneyChangingRequest refundMoney(RefundMoneyCommand command);
+
     MoneyChangingRequest increaseMoneyRequestByEvent(ChangeMoneyCommand command);
 
     boolean finishRecharging(RequestId requestId);
