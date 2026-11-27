@@ -8,6 +8,10 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - CI starts the Compose stack and runs `make smoke` on every push to `develop` (`smoke.yml`, which can also be started by hand), and `release.yml` runs the same smoke on a release branch or a tag and publishes images only after it passed. A failed run uploads the service logs as the `stack-logs` artifact, with every value of `infra/docker/.env` and the Vault root token and unseal key redacted. Pull requests do not run it ([#143](https://github.com/chrysaor/JayPay/issues/143))
 
+### Changed
+
+- Each service keeps three PostgreSQL connections in place of ten, so the postgres container runs at about half of its 256 MiB memory limit in place of 95 to 99%, where Kubernetes would kill it on the next growth. `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` raises the pool of one service, and `make smoke` now fails when PostgreSQL uses more than 80% of its limit ([#215](https://github.com/chrysaor/JayPay/issues/215))
+
 ## [0.5.0] - 2026-11-27
 
 ### Added

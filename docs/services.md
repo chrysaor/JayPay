@@ -4,6 +4,8 @@ This page describes each of the eleven Spring Boot services in `backend/services
 
 The services that use PostgreSQL let Hibernate create and update their tables with `SPRING_JPA_HIBERNATE_DDL_AUTO`, `update` in both local stacks. Hibernate adds a check constraint that lists the values of each enum column, and `update` never changes it, so on every start each service drops the checks that cover a single enum column, on a new database and on one that an older version created. The database then takes any status value, and only the code checks it. Checks named on an entity, such as the `wallet` balance and the `payment` fee, stay.
 
+Each of these services keeps a fixed pool of three connections, set once as `spring.datasource.hikari.maximum-pool-size` in `jaypay-common.yml`, and Keycloak keeps up to ten. An idle connection costs PostgreSQL about 1.8 MiB, so the nine services and Keycloak hold about 37 connections at most, where the Hikari default of ten each held 93 and filled the 256 MiB limit of the postgres container. `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` changes the pool of one service without a new image. `make smoke` fails when PostgreSQL uses more than 80% of its memory limit. See [decision 0033](decisions/0033-three-postgres-connections-per-service.md).
+
 ## Log levels
 
 Every service logs at the Spring Boot default, `INFO`, and its levels follow the rule in [CONTRIBUTING.md](../CONTRIBUTING.md#logging). Spring Boot reads a level from the environment, so `LOGGING_LEVEL_COM_JAYPAY=DEBUG` turns on the `DEBUG` lines of our code in one service without a new image. A variable such as `LOGGING_LEVEL_COM_JAYPAY_MONEY` narrows it to one package.
