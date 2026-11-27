@@ -11,10 +11,10 @@ public record ModifyMembershipCommand(String membershipId, String name, String e
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(email, "email");
         if (address == null || address.isBlank()) {
-            throw new IllegalArgumentException("address must not be blank");
+            throw new MembershipRequestRejected("ADDRESS_REQUIRED", "Send an address that is not blank.");
         }
         if (!isValid) {
-            throw new IllegalArgumentException("a modified membership must stay valid");
+            throw new MembershipRequestRejected("MEMBERSHIP_MUST_STAY_VALID", "A membership cannot be made invalid, so nothing changed.");
         }
     }
 }

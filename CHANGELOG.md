@@ -14,6 +14,11 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 - The postgres container has a memory limit of 512 MiB in place of 256 MiB on Compose and on the local cluster. Its shared buffers fill as data is read, which took it to 94% of the old limit, and now leaves it at 43% ([#217](https://github.com/chrysaor/JayPay/issues/217))
 - `make k8s-up` starts the local cluster node with 14 GiB of memory in place of 10 GiB, less than the 10.9 GiB its pods request. The Docker VM needs at least 14 GiB, and `K8S_MEMORY` sets another size ([#219](https://github.com/chrysaor/JayPay/issues/219))
 
+### Fixed
+
+- membership-service answers 400 with an `error` and a `message` in place of 500 when a request is refused: `MEMBERSHIP_MUST_STAY_VALID` for `PUT /memberships/{membershipId}` with `valid: false`, and `ADDRESS_REQUIRED` for a blank address there and on `POST /memberships` ([#200](https://github.com/chrysaor/JayPay/issues/200))
+- `POST /memberships/token-validate` answers `false` in place of 500 for a token signed with another key ([#211](https://github.com/chrysaor/JayPay/issues/211))
+
 ## [0.5.0] - 2026-11-27
 
 ### Added

@@ -10,7 +10,7 @@ public record RegisterMembershipCommand(String name, String email, String addres
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(email, "email");
         if (address == null || address.isBlank()) {
-            throw new IllegalArgumentException("address must not be blank");
+            throw new MembershipRequestRejected("ADDRESS_REQUIRED", "Send an address that is not blank.");
         }
         if (!isValid) {
             throw new IllegalArgumentException("a new membership must be valid");

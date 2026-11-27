@@ -3,10 +3,8 @@ package com.jaypay.membership.adapter.out.jwt;
 import com.jaypay.membership.application.port.out.AuthMembershipPort;
 import com.jaypay.membership.domain.Membership;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -59,7 +57,7 @@ public class JwtTokenProvider implements AuthMembershipPort {
         try {
             Jwts.parser().verifyWith(signKey).build().parseSignedClaims(jwtToken);
             return true;
-        } catch (MalformedJwtException | ExpiredJwtException | UnsupportedJwtException | IllegalArgumentException ex) {
+        } catch (JwtException | IllegalArgumentException ex) {
             return false;
         }
     }
