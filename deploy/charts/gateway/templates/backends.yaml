@@ -1,0 +1,18 @@
+{{- $console := .Values.adminConsole }}
+{{- $suffix := ternary "" (printf ".%s.svc.cluster.local" .Release.Namespace) .Values.standalone }}
+{{- range $index, $name := concat (values $console.services) (list $console.site $console.identity.backend) | uniq | sortAlpha }}
+{{- if $index }}
+---
+{{- end }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "gateway.labels" $ | nindent 4 }}
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ $name }}{{ $suffix }}
+        port: {{ $.Values.backendPort }}
+{{- end }}

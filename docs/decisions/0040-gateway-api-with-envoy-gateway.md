@@ -44,9 +44,12 @@ A trial outside the repository ran Envoy Gateway 1.10.0 in standalone mode on Do
 - The rule tests of auth-service. A route and the role it needs are checked by the smoke test against a running stack, not by `make verify`.
 - A rate limit that the Compose smoke and the smoke in CI can check. Only `make k8s-smoke` reaches it.
 - A supported mode on Compose. The Envoy Gateway documentation calls the standalone mode experimental and not for production. JayPay uses it for the local Compose stack only.
-- Identical resources in both stacks. A route in standalone mode points to a `Backend` with a host name, and a route in the cluster usually points to a `Service`.
+- Routes that point to a `Service` in the cluster. A route in standalone mode can only point to a `Backend` with a host name, so the cluster uses `Backend` resources too, with the full DNS name of each Service, and one chart renders both stacks ([#238](https://github.com/chrysaor/JayPay/issues/238)).
+- A gateway image that is pulled as it is. The standalone mode downloads the Envoy binary when it starts, so the Compose stack builds `jaypay/gateway` from the Envoy Gateway image and the Envoy image, both pinned by digest. A container that runs once before the gateway writes the certificates between the controller and Envoy into a volume.
+- The 403 for a staff token on a path that the table does not list. Such a request has no route to a service, falls to the admin site and gets its 404, with or without a token. A token of the staff realm for another audience gets 403, where auth-service answered 401.
+- The admin console of the local cluster on the Ingress host. The issuer of the staff tokens is the address of the console, and the gateway has one listener per site on the port that Compose publishes, so the cluster serves the console on `http://localhost:8091` through a port-forward of the gateway.
 - auth-service answers 403 for a path with an encoded slash or dot segments. Envoy Gateway redirects or normalises such a path and then looks for the route.
-- Not checked yet: Envoy Gateway in the local cluster, the rate limit through Valkey there, a real Keycloak behind the token check, and memory under load. The gateway container used 129 MiB idle in the trial.
+- Not checked yet: Envoy Gateway in the local cluster, the rate limit through Valkey there, a real Keycloak behind the token check, and memory under load. The gateway container used 129 MiB idle in the trial, and between 140 and 215 MiB with the routes of the admin console, so its limit on Compose is 384 MiB.
 
 ## When to decide again
 

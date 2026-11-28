@@ -31,7 +31,7 @@ Members of the customer site: sign up, look-up, edits and the customer tokens.
 | Memory limit | `512m` |
 | Database | PostgreSQL `membership`, table `membership` |
 | Calls | none |
-| Called by | `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `frontend-web`, `frontend-admin` |
+| Called by | `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `frontend-web`, `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Command handler `CheckMembershipHandler` for `CheckMembershipCommand`, publishing `CheckedMembershipEvent` |
 | Other stores | Vault, KV version 2 mount `kv-v1/data/encrypt`, secret `dbkey`, field `key`, read once at startup |
@@ -250,7 +250,7 @@ Takes payments from member wallets to merchants and tracks which ones are settle
 | Memory limit | `512m` |
 | Database | PostgreSQL `payment`, table `payment` |
 | Calls | `membership-service`, `money-service` |
-| Called by | `settlement-service`, `frontend-web`, `frontend-admin` |
+| Called by | `settlement-service`, `frontend-web`, `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a payment |
 | Axon | none |
 | Other stores | none |
@@ -304,7 +304,7 @@ Sums the wallet balances of the members at one address.
 | Memory limit | `512m` |
 | Database | PostgreSQL `money_aggregation`, no JPA entities |
 | Calls | `membership-service`, `money-service` |
-| Called by | `frontend-admin` |
+| Called by | `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | none |
 | Other stores | none |
@@ -332,7 +332,7 @@ Read model of the money that saga top-ups added per address, kept in DynamoDB.
 | Memory limit | `512m` |
 | Database | PostgreSQL `money_query`, no JPA entities |
 | Calls | `membership-service` |
-| Called by | `frontend-admin` |
+| Called by | `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | Event handler `MoneyIncreaseEventHandler` for `WalletRechargedEvent`, in the processing group `com.jaypay.money.query.adapter.axon`. No query handler. |
 | Other stores | DynamoDB table named by `DYNAMODB_TABLE_NAME`, `MoneyIncreaseEventByRegion` in Compose, defined in `infra/terraform/modules/dynamodb-money-sum/table.json` |
@@ -406,7 +406,7 @@ Read model of the flows that move money: it collects the step records of each sa
 | Memory limit | `512m` |
 | Database | PostgreSQL `event_flow`, tables `flow_step` and `flow` |
 | Calls | none |
-| Called by | `frontend-admin` |
+| Called by | `gateway` |
 | Kafka | Consumes `jaypay.flow.events` in the group `event-flow-service`. Produces `jaypay.logging.out.stdout`, one record for each controller call |
 | Axon | none |
 | Other stores | none |
@@ -469,7 +469,7 @@ The admin console reaches both through `/api/event-flow/` for every staff role.
 
 ## auth-service
 
-The decision on every admin console request, made from the staff token Keycloak issued. Keycloak holds the staff accounts and signs them in.
+The decision on an admin console request, made from the staff token Keycloak issued. Nothing calls it any more: the [gateway](#gateway) checks the token and the role itself, and auth-service is removed in [#240](https://github.com/chrysaor/JayPay/issues/240).
 
 | | |
 | --- | --- |
@@ -477,13 +477,13 @@ The decision on every admin console request, made from the staff token Keycloak 
 | Memory limit | `512m` |
 | Database | none |
 | Calls | none |
-| Called by | `frontend-admin` |
+| Called by | none |
 | Kafka | none |
 | Axon | none |
 | Other stores | none |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `STAFF_ISSUER_URI`, `STAFF_JWK_SET_URI`. No secrets. |
 
-nginx in frontend-admin sends an `auth_request` to `/authorize` followed by the original path before it forwards an `/api/` request. auth-service fetches the public keys of the realm `staff` from Keycloak at `STAFF_JWK_SET_URI` and caches them.
+Until the gateway took over, nginx in frontend-admin sent an `auth_request` to `/authorize` followed by the original path before it forwarded an `/api/` request. auth-service fetches the public keys of the realm `staff` from Keycloak at `STAFF_JWK_SET_URI` and caches them.
 
 ### What it does
 
@@ -561,23 +561,23 @@ The site checks the stored access token on load with `POST /memberships/token-va
 
 ## frontend-admin
 
-The admin console, served by nginx, with a proxy to Keycloak for the staff sign-in and to five services behind the auth-service gate.
+The admin console, a React app that nginx serves as static files. The browser reaches it, Keycloak and the services through the [gateway](#gateway).
 
 | | |
 | --- | --- |
-| Host port | `8091` |
+| Host port | none |
 | Memory limit | `64m` |
 | Database | none |
-| Calls | `auth-service`, `membership-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `event-flow-service` |
-| Called by | the browser, through the nginx server on port 8080 of the container |
+| Calls | none |
+| Called by | `gateway` |
 | Kafka | none |
 | Axon | none |
 | Other stores | The staff tokens in memory only. The state, PKCE verifier and return path of a sign-in in progress in the tab's `sessionStorage` under `jaypay.admin.sign-in` |
-| Configuration | `JAYPAY_AUTH_URL`, `JAYPAY_KEYCLOAK_URL`, `JAYPAY_MEMBERSHIP_URL`, `JAYPAY_PAYMENT_URL`, `JAYPAY_MONEY_AGGREGATION_URL`, `JAYPAY_MONEY_QUERY_URL`, `JAYPAY_EVENT_FLOW_URL`, `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` |
+| Configuration | none |
 
 ### What it does
 
-`frontend/apps/admin/nginx.conf.template` proxies `/realms/staff/` and `/resources/` to Keycloak at `JAYPAY_KEYCLOAK_URL`, so the browser signs in on the admin site's own origin, and answers 404 to any other `/realms/` path. It proxies `/api/membership/`, `/api/payment/`, `/api/money-aggregation/`, `/api/money-query/` and `/api/event-flow/` to the matching `JAYPAY_*_URL`. Before it forwards one of them, it sends an `auth_request` to `/authorize` followed by the original path on auth-service with the method and headers and without the body. A 401 or 403 from auth-service becomes a JSON error for the browser. Any other `/api/` path answers 404, including the old `/api/auth/staff/` sign-in. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-admin.yaml` sets them for the local cluster.
+`frontend/apps/admin/nginx.conf.template` serves the app and answers 404 to `/api/` and `/realms/`, which is what a request gets when the gateway has no route for its path and method, including the old `/api/auth/staff/` sign-in.
 
 The console has these pages:
 
@@ -591,3 +591,45 @@ The console has these pages:
 - `/account` shows the username and role and links to the Keycloak account console at `/realms/staff/account`, where staff change their password and set up an authenticator app.
 
 Staff accounts are managed in the Keycloak admin console, which replaced the staff accounts page. [infra/docker/README.md](../infra/docker/README.md#staff-accounts) describes how to open it.
+
+## gateway
+
+Envoy Gateway, the one entry of the admin console. It holds the route table, checks the staff token and the role each route needs, and forwards. Decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md).
+
+| | |
+| --- | --- |
+| Host port | `8091` |
+| Memory limit | `384m` |
+| Database | none |
+| Calls | `frontend-admin`, `membership-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `event-flow-service`, and Keycloak |
+| Called by | the browser |
+| Kafka | none |
+| Axon | none |
+| Other stores | Its own certificates in the volume `gateway-state`, written by `gateway-certificates` before it starts |
+| Configuration | `infra/docker/gateway/envoy-gateway.yaml` and the resources in `infra/docker/gateway/config/gateway.yaml`, both copied into the image `jaypay/gateway` |
+
+### What it does
+
+The routes, the staff realm and the roles are values of the chart `deploy/charts/gateway`. `make gateway-config` renders them into `infra/docker/gateway/config/gateway.yaml` for Compose, where Envoy Gateway runs in its standalone mode and reads that file, and Argo CD applies the same chart to the cluster. `make verify` fails when the file and the chart differ.
+
+On the listener `admin`, port 8091:
+
+- `/realms/staff/` and `/resources/` go to Keycloak, so the browser signs in on the origin of the console.
+- A method and path of the table below go to the service, without the `/api/<service>` prefix, when the request carries a staff token with the role. A valid token is signed by a key of the realm, has the issuer `http://localhost:8091/realms/staff` and the audience `jaypay-admin-console`, and has not expired. The gateway fetches the keys from Keycloak.
+- Without a valid token the answer is 401 `UNAUTHENTICATED`, and with a token that lacks the role or names another audience 403 `FORBIDDEN`, both as JSON.
+- Everything else goes to frontend-admin.
+
+| Method and path | Role |
+| --- | --- |
+| `GET /api/membership/memberships/{id}` | viewer |
+| `GET /api/membership/memberships/address/{address}` | viewer |
+| `PUT /api/membership/memberships/{id}` | operator |
+| `POST /api/money-aggregation/money/aggregation/get-money-sum-by-address` | viewer |
+| `GET /api/money-query/money/query/get-money-sum-by-address/{address}` | viewer |
+| `GET /api/payment/payment/normal-status` | viewer |
+| `GET /api/event-flow/flows` | viewer |
+| `GET /api/event-flow/flows/{type}/{id}` | viewer |
+
+The realm roles `viewer`, `operator` and `admin` in `realm_access.roles` are the roles. A route for viewer admits all three, a route for operator admits operator and admin. A disabled account or a removed role stops new sign-ins and refreshes at once, and an access token issued before keeps working until it expires, at most 3 minutes later.
+
+The image `jaypay/gateway` is the Envoy Gateway image with the Envoy binary of the matching release copied in, because the standalone mode would otherwise download Envoy when it starts.

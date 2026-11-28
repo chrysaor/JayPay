@@ -1,1 +1,3 @@
 gatewayClassName: envoy-gateway
+staff:
+  issuer: http://localhost:8091/realms/staff

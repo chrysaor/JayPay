@@ -1,0 +1,5 @@
+gatewayClassName: envoy-gateway
+standalone: true
+staff:
+  issuer: http://localhost:8091/realms/staff
+  jwksUri: http://keycloak:8080/realms/staff/protocol/openid-connect/certs

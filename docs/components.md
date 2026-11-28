@@ -13,7 +13,7 @@ A new component is added to this page in the PR that introduces it.
 | Debian | Source of the `C.UTF-8` locale the service images copy, the same glibc as the distroless base | `backend/Dockerfile` |
 | Gradle | Backend build | `backend/gradle/wrapper/gradle-wrapper.properties` |
 | Spring Boot | Web, data access, Kafka, Actuator | `backend/gradle/libs.versions.toml` |
-| Spring Security | Resource server in auth-service that checks Keycloak tokens, the roles and the admin gate | Spring Boot BOM |
+| Spring Security | Resource server in auth-service, which nothing calls since the gateway checks the staff tokens | Spring Boot BOM |
 | Spring Vault | Reads the encryption key of membership-service | `backend/gradle/libs.versions.toml` |
 | Axon Framework | Event sourcing and the money top-up saga | `backend/gradle/libs.versions.toml` |
 | AWS SDK for Java | DynamoDB access of money-query-service | `backend/gradle/libs.versions.toml` |
@@ -25,7 +25,7 @@ A new component is added to this page in the PR that introduces it.
 | Playwright | Drives the customer site and the admin console of a running stack in Chromium, `make e2e`. It downloads its own Chromium on the first run | `frontend/package.json` |
 | TanStack Query | Server state in both sites | `frontend/apps/*/package.json` |
 | Node | Frontend build | `frontend/Dockerfile` |
-| nginx | Serves both sites and proxies `/api`, runs the admin gate through `auth_request` | `frontend/Dockerfile` |
+| nginx | Serves both sites, and proxies `/api` for the customer site | `frontend/Dockerfile` |
 
 ## Stateful dependencies and messaging
 
@@ -61,7 +61,8 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | kindnet | Pod network that enforces NetworkPolicy, started with `--cni kindnet` | local cluster | minikube |
 | Helm | Renders the charts in `deploy/charts` | gate, Argo CD | `scripts/verify.sh` |
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
-| Envoy Gateway | Controller of the Kubernetes Gateway API. It starts the Envoy proxies of the Gateway in `deploy/envs/<env>/gateway` and their rate limit service. No route of the sites goes through it yet, see decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md) | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
+| Envoy Gateway | Controller of the Kubernetes Gateway API. It holds the routes of the admin console, checks the staff token and the role of each route, and runs Envoy: as the proxies of the Gateway in `deploy/envs/<env>/gateway` with a rate limit service in the cluster, and in its standalone mode in Compose. Decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md) | local cluster, Compose | `scripts/verify.sh`, with the checksum of the install manifest, and `infra/docker/gateway/Dockerfile` |
+| Envoy | The proxy that Envoy Gateway configures. The Compose image copies its binary from the Envoy image, the cluster install pulls it | local cluster, Compose | `infra/docker/gateway/Dockerfile`, the Envoy Gateway install |
 | Valkey | Holds the request counts of the gateway's rate limit service, in memory only | local cluster | `deploy/envoy-gateway/local/valkey.yaml` |
 | kubectl | Applies the bootstrap manifests and builds the Argo CD and Envoy Gateway overlays | developer machine, gate | installed by the developer, `scripts/verify.sh` |
 | kubeconform | Validates rendered manifests against the Kubernetes, Argo CD, Gateway API and Envoy Gateway schemas | gate | `scripts/verify.sh` |

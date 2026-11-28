@@ -38,6 +38,10 @@ for env_dir in deploy/envs/*; do
   done
 done
 
+namespace=default
+mkdir -p "$out/compose"
+render gateway deploy/charts/gateway "$out/compose/gateway.yaml" -f infra/docker/gateway/values.yaml
+
 converter=$(mktemp -d)
 mkdir -p "$converter/templates"
 printf 'apiVersion: v2\nname: to-json\nversion: 0.0.0\n' >"$converter/Chart.yaml"
@@ -72,7 +76,7 @@ EOF
 mkdir -p "$out/config"
 for env_dir in "$out"/*/; do
   env=$(basename "$env_dir")
-  [ "$env" = ci ] || [ "$env" = config ] && continue
+  [ "$env" = ci ] || [ "$env" = config ] || [ "$env" = compose ] && continue
   rm -rf "$converter/rendered"
   cp -R "$env_dir" "$converter/rendered"
   helm template to-json "$converter" | grep '^{' >"$converter.json"

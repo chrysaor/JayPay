@@ -69,7 +69,7 @@ membership-service encrypts member emails with AES-GCM and cannot read rows writ
 | OTLP gRPC and HTTP | localhost:4317, localhost:4318 |
 | Services | membership 8081, banking 8082, money 8083, remittance 8084, payment 8085, money-aggregation 8086, money-query 8087, settlement 8088, auth 8089 |
 
-The front ends use 8090 and 8091 because 3000 and 3001 are common development server ports. The front ends proxy `/api/<service>/...` to the services by their Compose names, so they need no environment. The admin console sends every `/api/<service>/` request to auth-service first through nginx `auth_request` and forwards it only on a 204, and it proxies `/realms/staff/` and `/resources/` to Keycloak for the sign-in pages.
+The sites use 8090 and 8091 because 3000 and 3001 are common development server ports. The customer site proxies `/api/<service>/...` to the services by their Compose names, so it needs no environment. The admin console on 8091 is the `gateway` container, Envoy Gateway in its standalone mode: it serves the site from `frontend-admin`, passes `/realms/staff/` and `/resources/` to Keycloak for the sign-in pages, and forwards an `/api/<service>/` request only when its staff token carries the role of the route. Its routes are `gateway/config/gateway.yaml`, which `make gateway-config` renders from the chart `deploy/charts/gateway` with `gateway/values.yaml`, so Compose and the cluster run the same routes. `make images` builds `jaypay/gateway` from the Envoy Gateway image and the Envoy binary of the matching Envoy image, because the standalone mode would otherwise download Envoy when it starts. `gateway-certificates` runs once before the gateway and writes the certificates between the controller and Envoy into the volume `gateway-state`. The gateway has no rate limit in Compose.
 
 ## Staff accounts
 
@@ -85,7 +85,7 @@ Sign in to http://localhost:8091 with the `STAFF_*` values. Manage accounts, rol
 
 The password policy asks for 12 to 128 characters, an uppercase letter, a lowercase letter, a digit and a symbol, not the username or email, not one of the last 5 passwords, and not a password from `keycloak/password-blacklists/common-passwords.txt`. Five wrong passwords lock an account for a minute, longer with each further failure up to 15 minutes, and two failures within a second lock it at once. Staff change their own password and add an authenticator app at http://localhost:8091/realms/staff/account. The app is optional. An access token lasts 2 minutes and the console refreshes it, and a session ends after 30 idle minutes or 8 hours.
 
-Keycloak runs `start` with `KC_HTTP_ENABLED`, because the local stack has no TLS. `KC_HOSTNAME` is the admin site's URL, so every token carries the issuer `http://localhost:8091/realms/staff`, which auth-service expects. [docs/architecture.md](../../docs/architecture.md#one-origin-for-the-browser-and-the-containers) explains why.
+Keycloak runs `start` with `KC_HTTP_ENABLED`, because the local stack has no TLS. `KC_HOSTNAME` is the admin site's URL, so every token carries the issuer `http://localhost:8091/realms/staff`, which the gateway expects. [docs/architecture.md](../../docs/architecture.md#one-origin-for-the-browser-and-the-containers) explains why.
 
 ## Observability
 

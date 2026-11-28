@@ -64,7 +64,8 @@ def sign_in(site, username, password):
     verifier = base64url(secrets.token_bytes(32))
     state = base64url(secrets.token_bytes(16))
     challenge = base64url(hashlib.sha256(verifier.encode()).digest())
-    jar = http.cookiejar.CookieJar()
+    local = urllib.parse.urlparse(site).hostname in ("localhost", "127.0.0.1", "::1")
+    jar = http.cookiejar.CookieJar(http.cookiejar.DefaultCookiePolicy(secure_protocols=("https", "wss", *(["http"] if local else []))))
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), StopAtCallback(callback))
     query = urllib.parse.urlencode(
         {

@@ -8,7 +8,7 @@ env:
   KC_DB_USERNAME: jaypay
   KC_DB_POOL_MAX_SIZE: "10"
   JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=25
-  KC_HOSTNAME: http://admin.jaypay.localhost:8480
+  KC_HOSTNAME: http://localhost:8091
   KC_HOSTNAME_ADMIN: http://localhost:8092
   KC_HTTP_ENABLED: "true"
   KC_HEALTH_ENABLED: "true"

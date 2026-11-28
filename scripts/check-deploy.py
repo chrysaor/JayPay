@@ -210,6 +210,19 @@ def network_policies(root, rendered_dir, write):
     return problems
 
 
+def gateway_config(root, rendered_dir, write):
+    rendered = "".join(line for line in read(os.path.join(rendered_dir, "compose", "gateway.yaml")).splitlines(keepends=True) if not line.startswith("# Source: "))
+    path = os.path.join(root, "infra", "docker", "gateway", "config", "gateway.yaml")
+    if write:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(rendered)
+        print(f"check-deploy: wrote {os.path.relpath(path, root)}")
+        return []
+    if not os.path.exists(path) or read(path) != rendered:
+        return [f"{os.path.relpath(path, root)} differs from deploy/charts/gateway rendered with infra/docker/gateway/values.yaml, run make gateway-config"]
+    return []
+
+
 def report(problems, summary):
     for problem in problems:
         print(problem)
@@ -224,6 +237,9 @@ def main():
     rendered_dir = sys.argv[2]
     if sys.argv[3:] == ["--write-network-policy"]:
         report(network_policies(root, rendered_dir, write=True), "check-deploy: run make verify STEPS=charts to check the result")
+        return
+    if sys.argv[3:] == ["--write-gateway-config"]:
+        report(gateway_config(root, rendered_dir, write=True), "check-deploy: run make verify STEPS=charts to check the result")
         return
     local = os.path.join(rendered_dir, "local.json")
     deployed_pods = rendered_pods(local, "Deployment")
@@ -253,6 +269,7 @@ def main():
     problems += rendered_secrets(root, rendered_dir)
     problems += repo_server_mount(rendered_dir)
     problems += network_policies(root, rendered_dir, write=False)
+    problems += gateway_config(root, rendered_dir, write=False)
     report(problems, f"check-deploy: deploy/envs/local and compose.yaml agree on {len(expected)} workloads and {len(dependencies)} dependencies, and every NetworkPolicy matches the calls")
 
 

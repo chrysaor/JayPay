@@ -3,3 +3,8 @@ ingressController:
   podLabels:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/component: controller
+gatewayProxy:
+  namespace: envoy-gateway-system
+  podLabels:
+    gateway.envoyproxy.io/owning-gateway-namespace: jaypay
+    gateway.envoyproxy.io/owning-gateway-name: gateway

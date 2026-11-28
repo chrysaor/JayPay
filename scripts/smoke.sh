@@ -637,7 +637,7 @@ as_staff VIEWER request "settlement list for a viewer" GET "$admin/api/payment/p
 as_staff VIEWER expect "member edit by a viewer" 403 PUT "$member_url" "$(hex 16)" "$member"
 [ "$(json_field error)" = FORBIDDEN ] || fail "member edit by a viewer answered $(response)"
 for role in VIEWER OPERATOR; do
-  as_staff "$role" expect "settling a payment by hand as $role" 403 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
+  as_staff "$role" expect "settling a payment by hand as $role" 404 POST "$admin/api/payment/payment/finish-settlement" "$(hex 16)" \
     '{"paymentId":"'$payment_id'"}'
 done
 
@@ -719,9 +719,9 @@ for service_url in "${service_urls[@]}"; do
     expect "$path on $service_url" "$unmapped" GET "$service_url$path" "$(hex 16)"
   done
 done
-expect "the actuator of a service behind the console without a token" 401 GET "$admin/api/membership/actuator/health" "$(hex 16)"
-as_staff ADMIN expect "the actuator of a service behind the console" 403 GET "$admin/api/membership/actuator/health" "$(hex 16)"
-as_staff ADMIN expect "the API docs of a service behind the console" 403 GET "$admin/api/payment/v3/api-docs" "$(hex 16)"
+expect "the actuator of a service behind the console without a token" 404 GET "$admin/api/membership/actuator/health" "$(hex 16)"
+as_staff ADMIN expect "the actuator of a service behind the console" 404 GET "$admin/api/membership/actuator/health" "$(hex 16)"
+as_staff ADMIN expect "the API docs of a service behind the console" 404 GET "$admin/api/payment/v3/api-docs" "$(hex 16)"
 expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
 eventually 60 "Prometheus does not scrape every service on port $management_port" targets_up
 log "$(cat "$work/last")"
@@ -761,10 +761,11 @@ as_keycloak_admin request "brute force status of $locked_staff" GET "$keycloak/a
 [ "$(json_field disabled)" = True ] || fail "Keycloak does not report $locked_staff as locked: $(response)"
 [ "$(json_field numFailures)" -ge 5 ] || fail "Keycloak counted fewer than five failures: $(response)"
 
-log "the gate refuses what the admin console never asks for"
-as_staff ADMIN expect "payment request through the admin console" 403 POST "$admin/api/payment/payment/request" "$(hex 16)" \
+log "the gateway has no route for what the admin console never asks for"
+as_staff ADMIN expect "payment request through the admin console" 404 POST "$admin/api/payment/payment/request" "$(hex 16)" \
   '{"requestId":"smoke-admin-'$run'","requestMembershipId":"'$membership_id'","franchiseId":"'$merchant'","requestPrice":1}'
-as_staff ADMIN expect "a path that climbs out of its segment" 403 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
+as_staff ADMIN expect "a path that climbs out of its segment" 307 GET "$member_url/..%2F..%2Fregister" "$(hex 16)"
+as_staff ADMIN expect "the path it is redirected to" 404 GET "$admin/api/membership/register" "$(hex 16)"
 
 log "a staff token means nothing to the customer site"
 sign_in_default_staff ADMIN
@@ -779,7 +780,7 @@ done
 log "traces cross the service boundaries and lead to their logs"
 for check in \
   "HTTP:$payment_trace:payment-service,membership-service,money-service" \
-  "Gate:$gate_trace:auth-service,membership-service" \
+  "Gate:$gate_trace:membership-service" \
   "Kafka:$kafka_trace:money-service,logging-consumer" \
   "Axon:$saga_trace:money-service,banking-service"; do
   IFS=: read -r boundary trace required <<<"$check"

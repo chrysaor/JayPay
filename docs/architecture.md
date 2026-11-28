@@ -58,13 +58,14 @@ Keycloak holds the staff accounts in the realm `staff`. The admin console is the
 sequenceDiagram
     autonumber
     participant browser as browser
-    participant admin as frontend-admin, nginx
+    participant admin as gateway
+    participant site as frontend-admin, nginx
     participant keycloak as keycloak
-    participant auth as auth-service
     participant membership as membership-service
 
     browser->>admin: GET /members, no tokens in memory
-    admin-->>browser: the React app
+    admin->>site: same path
+    site-->>browser: the React app
     Note over browser: random state and code verifier in sessionStorage
     browser->>admin: GET /realms/staff/protocol/openid-connect/auth, S256 challenge
     admin->>keycloak: same path
@@ -74,13 +75,13 @@ sequenceDiagram
     admin->>keycloak: same path
     keycloak-->>browser: access token for 2 minutes, refresh token, ID token
     browser->>admin: PUT /api/membership/memberships/7, Bearer access token
-    admin->>auth: PUT /authorize/api/membership/memberships/7, no body
-    Note over auth: checks the signature against the realm keys, the issuer,<br/>the audience and the expiry, and looks the request up in the table
-    alt no valid token, a viewer, or a path that is not in the table
-        auth-->>admin: 401 or 403
+    Note over admin: finds the route of the method and path, checks the signature against<br/>the realm keys, the issuer, the audience and the expiry, and the role of the route
+    alt no valid token or a viewer
         admin-->>browser: 401 or 403 with a JSON error
+    else a path without a route
+        admin->>site: same path
+        site-->>browser: 404
     else operator or admin
-        auth-->>admin: 204
         admin->>membership: PUT /memberships/7
         membership-->>browser: 200, the edited member
     end
@@ -88,9 +89,9 @@ sequenceDiagram
 
 ### One origin for the browser and the containers
 
-The browser reaches Keycloak only through the admin site: `frontend-admin` proxies `/realms/staff/` and `/resources/` to `JAYPAY_KEYCLOAK_URL` and answers 404 to any other `/realms/` path, so the master realm is not reachable on 8091. `KC_HOSTNAME` is the full URL of the admin site, `http://localhost:8091` in Compose and `http://admin.jaypay.localhost:8480` in the local cluster. Keycloak then writes the same issuer, `<admin site>/realms/staff`, into every token, whichever address a request came in on.
+The browser reaches Keycloak only through the admin site: the gateway passes `/realms/staff/` and `/resources/` to Keycloak, and any other `/realms/` path falls to `frontend-admin`, which answers 404, so the master realm is not reachable on 8091. `KC_HOSTNAME` is the full URL of the admin site, `http://localhost:8091` in Compose and in the local cluster, where a port-forward of the gateway opens that port. Keycloak then writes the same issuer, `<admin site>/realms/staff`, into every token, whichever address a request came in on.
 
-auth-service checks that issuer through `STAFF_ISSUER_URI`, but fetches the realm keys from `STAFF_JWK_SET_URI`, the address of Keycloak inside the network, `http://keycloak:8080/realms/staff/protocol/openid-connect/certs`. The issuer is never fetched, so it does not have to resolve inside a container. The callback URI `/callback` and the post sign-out URI `/signed-out` are relative to `KC_HOSTNAME`, and the browser never makes a cross-origin call, so the client needs no CORS rule.
+The gateway checks that issuer, the `staff.issuer` of its values, but fetches the realm keys from `staff.jwksUri`, the address of Keycloak inside the network, `http://keycloak:8080/realms/staff/protocol/openid-connect/certs` in Compose. The issuer is never fetched, so it does not have to resolve inside a container. The callback URI `/callback` and the post sign-out URI `/signed-out` are relative to `KC_HOSTNAME`, and the browser never makes a cross-origin call, so the client needs no CORS rule.
 
 The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://localhost:8092`. Compose publishes it on `127.0.0.1:8092` only. In the cluster it has no Ingress, and `kubectl port-forward service/keycloak 8092:8080` opens it.
 
@@ -101,15 +102,15 @@ The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://lo
 - Signing out sends the tab to Keycloak's end-session endpoint with the ID token. Keycloak ends the session, so its refresh tokens stop working, and returns to `/signed-out`.
 - A Keycloak session ends after 30 idle minutes or 8 hours.
 
-### The decision in auth-service
+### The decision in the gateway
 
-- `StaffSecurityConfig` in auth-service holds the only decision table, as Spring Security `authorizeHttpRequests` rules: one line per method and path the admin console calls, the lowest role that may call it, and `denyAll` for everything else. `AdminConsoleGateTest` pins the table for no token and for each role, and the refusal of a token signed by another key, an expired token, another issuer, another audience and a customer token.
-- auth-service is a Spring Security resource server. The realm roles `viewer`, `operator` and `admin` in the token's `realm_access.roles` become the roles of the table, and they form the hierarchy viewer < operator < admin through a Spring Security `RoleHierarchy`. A token with none of them opens nothing.
+- `adminConsole.routes` in `deploy/charts/gateway/values.yaml` holds the only decision table: one line per method and path the admin console calls, with the service and the lowest role that may call it. The chart turns it into `HTTPRoute` and `SecurityPolicy` resources for the cluster and for Compose. A request that matches no line has no route to a service and gets the 404 of the site. `make smoke` checks the table on a running stack: no token, a customer token, each role, and paths outside it.
+- The realm roles `viewer`, `operator` and `admin` in the token's `realm_access.roles` are the roles. `staff.roles` lists the realm roles that each role of a route admits, viewer, operator and admin for a viewer route and operator and admin for an operator route. A token with none of them opens nothing.
 - The audience mapper of the client puts `jaypay-admin-console` into the access token's `aud`. Customer tokens from membership-service are HS256 with `JWT_SECRET` and no audience, so neither token opens the other site.
-- auth-service checks `$request_uri` as the browser sent it. Spring Security's firewall refuses an encoded slash, backslash or dot, `;`, `//`, a dot segment and an encoded `%` with 403, so the path auth-service decides on is the path the upstream service receives. Tomcat in auth-service passes encoded slashes and backslashes through to the firewall instead of answering 400, because nginx `auth_request` turns any answer other than 2xx, 401 and 403 into 500. `AdminConsoleGateOverTomcatTest` sends these paths through a real Tomcat.
-- auth-service does not ask Keycloak on every request. Disabling an account or taking a role away refuses its next sign-in and its next refresh at once, but an access token issued before keeps working until it expires. With the 2-minute lifetime and Spring Security's clock skew of 60 seconds, `make smoke` and a manual measurement saw the first 401 181 seconds after the account was disabled.
+- A route matches the whole path with a regular expression in which a path variable is one segment without a slash. The proxy answers a path with an encoded slash with a 307 to the decoded path and resolves dot segments before it looks for a route. `make smoke` sends a path that climbs out of a member id that way and gets the 307, and the path it leads to has no route and gets 404.
+- The gateway does not ask Keycloak on every request. Disabling an account or taking a role away refuses its next sign-in and its next refresh at once, but an access token issued before keeps working until it expires, 2 minutes after it was issued plus the clock skew the proxy allows.
 
-Spring Security stays in the adapters of auth-service, which keeps no database: `domain` holds `StaffRole`, and `adapter.in.web` holds the decision table and the token conversion. `SecurityStaysInAdaptersTest` fails when `domain` or `application` imports Spring Security.
+auth-service still holds the table it used until the gateway took over, `StaffSecurityConfig`, and its tests. Nothing calls it, and [#240](https://github.com/chrysaor/JayPay/issues/240) removes it.
 
 ## Failure paths between services
 
@@ -219,5 +220,5 @@ flowchart LR
 
 Two things differ from Compose:
 
-- The two sites get their upstreams as full names such as `http://auth-service.jaypay.svc.cluster.local:8080`, because the nginx `resolver` ignores the search domains of the pod. The admin console's `auth_request` to auth-service uses the same name.
+- The customer site gets its upstreams as full names such as `http://money-service.jaypay.svc.cluster.local:8080`, because the nginx `resolver` ignores the search domains of the pod. The gateway names its backends the same way.
 - Secret values come from the Secret `jaypay` instead of `infra/docker/.env`, under the same key names.

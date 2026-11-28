@@ -8,6 +8,10 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 - The local cluster runs Envoy Gateway 1.10.0 with a Gateway of its own and a Valkey for its rate limit counts. `make k8s-up` installs it from an install manifest pinned by checksum, Argo CD syncs the Gateway from `deploy/envs/local/gateway`, and `make k8s-smoke` checks that it answers. No route goes through it yet, the sites still use the Ingress. The node needs 544 MiB more memory in requests ([#237](https://github.com/chrysaor/JayPay/issues/237))
 
+### Changed
+
+- The admin console goes through the gateway on Compose and on the local cluster. Envoy Gateway serves the site on port 8091, passes the staff sign-in to Keycloak, and checks the staff token and the role of each route in place of nginx and auth-service, from one route table in `deploy/charts/gateway` that `make gateway-config` renders for Compose. A path of the console API that the table does not list answers 404 in place of 403, a staff token for another audience 403 in place of 401, and the console of the local cluster is at `http://localhost:8091` through the port-forward of `make k8s-smoke` in place of `http://admin.jaypay.localhost:8480`. Compose gains the containers `gateway` and `gateway-certificates`, the image `jaypay/gateway` and the volume `gateway-state`. auth-service still runs and nothing calls it ([#238](https://github.com/chrysaor/JayPay/issues/238))
+
 ## [0.6.0] - 2026-11-28
 
 ### Added

@@ -1,10 +1,17 @@
+{{- if .Values.standalone }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gatewayClassName }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+{{- else }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
   name: {{ .Release.Name }}
   labels:
-    app.kubernetes.io/name: {{ .Release.Name }}
-    app.kubernetes.io/part-of: jaypay
+    {{- include "gateway.labels" . | nindent 4 }}
 spec:
   provider:
     type: Kubernetes
@@ -16,25 +23,29 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
       envoyService:
         type: ClusterIP
+{{- end }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: {{ .Release.Name }}
   labels:
-    app.kubernetes.io/name: {{ .Release.Name }}
-    app.kubernetes.io/part-of: jaypay
+    {{- include "gateway.labels" . | nindent 4 }}
 spec:
   gatewayClassName: {{ .Values.gatewayClassName }}
+  {{- if not .Values.standalone }}
   infrastructure:
     parametersRef:
       group: gateway.envoyproxy.io
       kind: EnvoyProxy
       name: {{ .Release.Name }}
+  {{- end }}
   listeners:
-    - name: http
+    {{- range $name, $port := .Values.listeners }}
+    - name: {{ $name }}
       protocol: HTTP
-      port: {{ .Values.port }}
+      port: {{ $port }}
       allowedRoutes:
         namespaces:
           from: Same
+    {{- end }}

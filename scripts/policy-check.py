@@ -56,16 +56,30 @@ def probe_pod(namespace, label, image):
     }
 
 
-def ingress_controller(manifests):
+def outside_callers(manifests):
+    found = {}
     for manifest in manifests:
         if manifest.get("kind") != "NetworkPolicy":
             continue
         for rule in manifest["spec"].get("ingress", []):
             for peer in rule["from"]:
                 if "namespaceSelector" in peer:
+                    labels = peer["podSelector"]["matchLabels"]
+                    caller = network_policy.GATEWAY if network_policy.GATEWAY_POD_LABEL in labels else network_policy.INGRESS
                     namespace = peer["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
-                    return namespace, ",".join(f"{key}={value}" for key, value in sorted(peer["podSelector"]["matchLabels"].items()))
-    sys.exit("policy-check: FAILED: no NetworkPolicy admits the ingress controller")
+                    found[caller] = (namespace, ",".join(f"{key}={value}" for key, value in sorted(labels.items())))
+    missing = sorted(set(network_policy.OUTSIDE) - set(found))
+    if missing:
+        sys.exit(f"policy-check: FAILED: no NetworkPolicy admits {' or '.join(missing)}")
+    return found
+
+
+def first_running_pod(context, namespace, selector):
+    args = ["--namespace", namespace, "get", "pods", "--selector", selector, "--field-selector", "status.phase=Running", "--output", "json"]
+    pods = [pod["metadata"]["name"] for pod in json.loads(kubectl(context, *args).stdout)["items"] if pod["metadata"].get("deletionTimestamp") is None]
+    if not pods:
+        sys.exit(f"policy-check: FAILED: no running pod in {namespace} matches {selector}")
+    return pods[0]
 
 
 def running_pods(context, namespace, selector=None):
@@ -102,7 +116,7 @@ def main():
             if isinstance(port, int):
                 targets[f"{service}.{namespace}.svc.cluster.local:{port}"] = (service, target)
 
-    ingress_namespace, ingress_selector = ingress_controller(manifests)
+    outside = outside_callers(manifests)
     kubectl(context, "apply", "--filename", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": OUTSIDE_NAMESPACE}}))
     try:
         for probe_namespace, label in ((namespace, PROBE), (OUTSIDE_NAMESPACE, OUTSIDE_LABEL)):
@@ -112,10 +126,9 @@ def main():
 
         callers = [(name, namespace, pod, name) for name, pod in sorted(running_pods(context, namespace).items())]
         callers.append((f"a pod labelled {OUTSIDE_LABEL} in the namespace {OUTSIDE_NAMESPACE}", OUTSIDE_NAMESPACE, PROBE, None))
-        controllers = running_pods(context, ingress_namespace, ingress_selector)
-        if not controllers:
-            sys.exit(f"policy-check: FAILED: no running pod in {ingress_namespace} matches {ingress_selector}")
-        callers.append((network_policy.INGRESS, ingress_namespace, next(iter(controllers.values())), network_policy.INGRESS))
+        stranger = callers[-1][0]
+        for caller, (caller_namespace, selector) in sorted(outside.items()):
+            callers.append((caller, caller_namespace, first_running_pod(context, caller_namespace, selector), caller))
 
         failures, untestable, opened, refused = [], [], 0, 0
         for name, pod_namespace, pod, identity in callers:
@@ -135,7 +148,7 @@ def main():
                 else:
                     refused += 1
             print(f"policy-check: {name}: reaches {sorted({service for target, (service, port) in targets.items() if outcome.get(target) == 'open'})}")
-        required = {PROBE, "frontend-web", "frontend-admin", network_policy.INGRESS, callers[-2][0]}
+        required = {PROBE, "frontend-web", "frontend-admin", network_policy.INGRESS, stranger}
         for name in sorted(required & set(untestable)):
             failures.append(f"{name} has neither nc nor bash, so the check could not run from it")
         if untestable:
