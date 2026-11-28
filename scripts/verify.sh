@@ -12,6 +12,8 @@ KUBECTL_IMAGE=registry.k8s.io/kubectl:v1.34.9@sha256:06a7ce6adc8e89486cedf0afe1e
 KUBERNETES_VERSION=$(sed -n 's/^kubernetes_version=v//p' scripts/k8s.sh)
 ARGOCD_VERSION=v3.5.9
 ARGOCD_INSTALL_SHA256=6eb366a0a0719a82ea084e382ce09ac67be53da3c3190c2ede8f82e4102e87d6
+ENVOY_GATEWAY_VERSION=v1.10.0
+ENVOY_GATEWAY_INSTALL_SHA256=f87f4d59b983aa760da52a2a0002c612028106fe69beefdf3d30cfb03905944e
 ALL_STEPS=(changelog contract docs english env terraform actionlint charts frontend backend)
 
 step_changelog() {
@@ -54,38 +56,46 @@ step_actionlint() {
   docker run --rm -v "$root:/repo" -w /repo "$ACTIONLINT_IMAGE" -color "${workflows[@]}"
 }
 
-argocd_install() {
-  local out=$1 cache=${ARGOCD_CACHE:-$root/build/argocd} overlay stage status
-  local install=$cache/core-install-$ARGOCD_VERSION.yaml
-  mkdir -p "$cache" "$out" build/argocd || return
+pinned_install() {
+  local name=$1 file=$2 version=$3 sha256=$4 url=$5 out=$6 cache overlay stage status image
+  cache=${INSTALL_CACHE:-$root/build/install}
+  local install=$cache/$name-$version.yaml
+  mkdir -p "$cache" "$out" build/install || return
   if [ ! -f "$install" ]; then
-    curl -fsSL -o "$install.part" "https://raw.githubusercontent.com/argoproj/argo-cd/$ARGOCD_VERSION/manifests/core-install.yaml" &&
-      mv "$install.part" "$install" || return
+    curl -fsSL -o "$install.part" "$url" && mv "$install.part" "$install" || return
   fi
-  echo "$ARGOCD_INSTALL_SHA256  $install" | shasum -a 256 -c --quiet - ||
-    { echo "argocd: core-install.yaml of $ARGOCD_VERSION does not match ARGOCD_INSTALL_SHA256" >&2; return 1; }
-  for overlay in deploy/argocd/*/; do
-    stage=$(mktemp -d build/argocd/stage.XXXXXX) || return
-    cp "$overlay"* "$stage/" && cp "$install" "$stage/core-install.yaml" &&
+  echo "$sha256  $install" | shasum -a 256 -c --quiet - ||
+    { echo "$name: $file of $version does not match its pinned SHA-256" >&2; return 1; }
+  for overlay in deploy/"$name"/*/; do
+    stage=$(mktemp -d build/install/stage.XXXXXX) || return
+    cp "$overlay"* "$stage/" && cp "$install" "$stage/$file" &&
       docker run --rm -v "$root/$stage:/overlay:ro" "$KUBECTL_IMAGE" kustomize /overlay >"$out/$(basename "$overlay").yaml"
     status=$?
     rm -rf "$stage"
     [ "$status" -eq 0 ] || return "$status"
+    for image in $(sed -n 's/^ *-* *image: *//p' "$install" | tr -d '"' | sort -u); do
+      grep -qF "$image" "$out/$(basename "$overlay").yaml" ||
+        { echo "$name: $overlay does not run $image, the image that $file of $version names" >&2; return 1; }
+    done
   done
 }
 
 step_render() {
   local out=build/charts
   rm -rf "$out" && mkdir -p "$out" &&
-    argocd_install "$out/argocd" &&
+    pinned_install argocd core-install.yaml "$ARGOCD_VERSION" "$ARGOCD_INSTALL_SHA256" \
+      "https://raw.githubusercontent.com/argoproj/argo-cd/$ARGOCD_VERSION/manifests/core-install.yaml" "$out/argocd" &&
+    pinned_install envoy-gateway install.yaml "$ENVOY_GATEWAY_VERSION" "$ENVOY_GATEWAY_INSTALL_SHA256" \
+      "https://github.com/envoyproxy/gateway/releases/download/$ENVOY_GATEWAY_VERSION/install.yaml" "$out/envoy-gateway" &&
     docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$root:/repo" -w /repo \
       --entrypoint sh "$HELM_IMAGE" scripts/render-charts.sh "$out"
 }
 
 step_charts() {
-  local out=build/charts schemas=build/argocd/schemas
+  local out=build/charts schemas=build/install/schemas
   rm -rf "$schemas" && step_render &&
     python3 scripts/crd-schemas.py "$out/argocd.json" "$schemas" &&
+    python3 scripts/crd-schemas.py "$out/envoy-gateway.json" "$schemas" &&
     docker run --rm -v "$root/$out:/rendered:ro" -v "$root/$schemas:/schemas:ro" "$KUBECONFORM_IMAGE" \
       -strict -summary -kubernetes-version "$KUBERNETES_VERSION" -ignore-filename-pattern '\.json$' -skip CustomResourceDefinition \
       -schema-location default -schema-location '/schemas/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' /rendered &&

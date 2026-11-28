@@ -172,6 +172,15 @@ install_argocd() {
   cluster apply --server-side --force-conflicts --filename build/charts/argocd/local.yaml >/dev/null
 }
 
+install_envoy_gateway() {
+  cluster apply --server-side --force-conflicts --filename build/charts/envoy-gateway/local.yaml >/dev/null
+}
+
+gateway_service() {
+  cluster --namespace envoy-gateway-system get service --output name \
+    --selector "gateway.envoyproxy.io/owning-gateway-namespace=$namespace,gateway.envoyproxy.io/owning-gateway-name=gateway"
+}
+
 up() {
   local started=$SECONDS deployed name workload_files dependency_files
   scripts/verify.sh charts
@@ -181,6 +190,8 @@ up() {
     kube apply --server-side --filename - >/dev/null
   log "installing Argo CD"
   with_retries install_argocd
+  log "installing Envoy Gateway"
+  with_retries install_envoy_gateway
   trap stop_pulls EXIT
   pull_dependency_images
   publish_working_tree
@@ -192,6 +203,11 @@ up() {
     argocd rollout status "deployment/$name" --timeout=600s >/dev/null
   done
   log "Argo CD ready after $((SECONDS - started))s"
+  cluster wait --for=condition=Established crd/gateways.gateway.networking.k8s.io crd/envoyproxies.gateway.envoyproxy.io --timeout=60s >/dev/null
+  for name in envoy-gateway valkey; do
+    cluster --namespace envoy-gateway-system rollout status "deployment/$name" --timeout=600s >/dev/null
+  done
+  log "Envoy Gateway ready after $((SECONDS - started))s"
   cluster apply --server-side --filename "$rendered/gitops.yaml" >/dev/null
   for name in ${changed_images[@]+"${changed_images[@]}"}; do
     if grep -qx "deployment.apps/$name" <<<"$deployed"; then
@@ -232,7 +248,7 @@ forward() {
 }
 
 smoke() {
-  local web admin clickhouse prometheus banking money
+  local web admin clickhouse prometheus banking money grafana vault
   web=$(kube get ingress frontend-web --output jsonpath='{.spec.rules[0].host}')
   admin=$(kube get ingress frontend-admin --output jsonpath='{.spec.rules[0].host}')
   trap stop_forwards EXIT
@@ -251,6 +267,10 @@ smoke() {
   forward vault "$namespace" service/vault :8200
   vault=$forwarded_port
   until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
+  forward gateway envoy-gateway-system "$(gateway_service)" :80
+  [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:$forwarded_port/")" = 404 ] ||
+    fail "the gateway did not answer 404 to a path that no route lists"
+  log "the gateway answers 404 to a path that no route lists"
   SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" \
     SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$prometheus" \
     SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_KEYCLOAK_URL=http://localhost:8092 SMOKE_MONEY_URL="http://127.0.0.1:$money" \

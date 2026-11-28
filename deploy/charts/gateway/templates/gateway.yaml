@@ -1,0 +1,40 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/part-of: jaypay
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: {{ .Values.replicas }}
+        container:
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      envoyService:
+        type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/part-of: jaypay
+spec:
+  gatewayClassName: {{ .Values.gatewayClassName }}
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: {{ .Release.Name }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: {{ .Values.port }}
+      allowedRoutes:
+        namespaces:
+          from: Same

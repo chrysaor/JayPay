@@ -61,8 +61,10 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | kindnet | Pod network that enforces NetworkPolicy, started with `--cni kindnet` | local cluster | minikube |
 | Helm | Renders the charts in `deploy/charts` | gate, Argo CD | `scripts/verify.sh` |
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
-| kubectl | Applies the bootstrap manifests and builds the Argo CD overlay | developer machine, gate | installed by the developer, `scripts/verify.sh` |
-| kubeconform | Validates rendered manifests against the Kubernetes and Argo CD schemas | gate | `scripts/verify.sh` |
+| Envoy Gateway | Controller of the Kubernetes Gateway API. It starts the Envoy proxies of the Gateway in `deploy/envs/<env>/gateway` and their rate limit service. No route of the sites goes through it yet, see decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md) | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
+| Valkey | Holds the request counts of the gateway's rate limit service, in memory only | local cluster | `deploy/envoy-gateway/local/valkey.yaml` |
+| kubectl | Applies the bootstrap manifests and builds the Argo CD and Envoy Gateway overlays | developer machine, gate | installed by the developer, `scripts/verify.sh` |
+| kubeconform | Validates rendered manifests against the Kubernetes, Argo CD, Gateway API and Envoy Gateway schemas | gate | `scripts/verify.sh` |
 | BusyBox | Probe pods of `make k8s-policy-check`, and the `wget` of the health checks in the service and Collector images | local cluster, compose | `infra/docker/otel-collector/Dockerfile`, `backend/Dockerfile` |
 
 Approved for the cloud phases and not in the repository yet: External Secrets with AWS Secrets Manager, CloudNativePG, Strimzi, Amazon EKS.
