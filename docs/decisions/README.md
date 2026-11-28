@@ -73,6 +73,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0037](0037-sign-in-refusals-answer-401.md) | The sign-in endpoints refuse with 401, and an access token names its member | 0.6.0 (unreleased) | accepted | [#224](https://github.com/chrysaor/JayPay/issues/224) |
 | [0038](0038-cold-start-restarts-are-accepted.md) | Restarts on a cold start of the cluster are accepted | 0.6.0 (unreleased) | accepted | [#205](https://github.com/chrysaor/JayPay/issues/205) |
 | [0039](0039-no-mutation-testing-for-now.md) | No mutation testing for now | 0.6.0 (unreleased) | accepted | [#149](https://github.com/chrysaor/JayPay/issues/149) |
+| [0040](0040-gateway-api-with-envoy-gateway.md) | The gateway is the Kubernetes Gateway API with Envoy Gateway | 0.7.0 (unreleased) | accepted | [#115](https://github.com/chrysaor/JayPay/issues/115) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 
@@ -83,7 +84,6 @@ The open issues with the `needs-decision` label. Each waits for the owner. A rec
 | Decision | Options in the issue | Blocks release | Issue |
 | --- | --- | --- | --- |
 | Are the service boundaries right for a payment service? | A: keep the eleven services and add merchant data, a ledger and a settlement record. B: A plus merging settlement into payment-service, the two reporting services into one, and removing logging-consumer. C: B plus a merchant service. The review recommends B | not scheduled | [#135](https://github.com/chrysaor/JayPay/issues/135) |
-| Which API gateway goes in front of the services | Spring Cloud Gateway, Kubernetes Gateway API with Envoy Gateway, Apache APISIX or Kong in DB-less mode, or nginx as it is. Also: rate limits with Redis or in memory, and Ingress or the Gateway API in the cluster | not scheduled | [#115](https://github.com/chrysaor/JayPay/issues/115) |
 | Whether the third-party images join the image scan | Scan them or not, fail on a HIGH finding with no fixed version or not, and accept the Keycloak findings until a fixed image is published or not | not scheduled | [#121](https://github.com/chrysaor/JayPay/issues/121) |
 | Supply chain of the release workflow | Splitting verify from publish, Gradle checksums and the otel-collector image need no new component. Signing images does, and waits for the owner's approval | not scheduled | [#102](https://github.com/chrysaor/JayPay/issues/102) |
 | Trust between services | The issue lists the gaps (service identity for internal endpoints, one database role per service, Kafka and Axon Server authentication, egress policy) and no options yet | not scheduled | [#100](https://github.com/chrysaor/JayPay/issues/100) |
