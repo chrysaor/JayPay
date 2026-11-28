@@ -6,7 +6,7 @@ What each release was about, newest first: the theme, the changes that matter, t
 
 | Milestone | Theme | Issues |
 | --- | --- | --- |
-| 0.7.0 | API gateway: one Spring Cloud Gateway in front of the services that checks Keycloak tokens, routes, limits request rates and logs | [#115](https://github.com/chrysaor/JayPay/issues/115) |
+| 0.7.0 | API gateway: the Kubernetes Gateway API with Envoy Gateway in front of the services, which checks tokens, routes, limits request rates and logs, and authentication for the customer site | [#115](https://github.com/chrysaor/JayPay/issues/115), [#91](https://github.com/chrysaor/JayPay/issues/91) |
 | 0.8.0 | Payment domain: merchant, ledger and settlement record, option B of [#135](https://github.com/chrysaor/JayPay/issues/135), steps 1 to 3 | [#135](https://github.com/chrysaor/JayPay/issues/135), [#161](https://github.com/chrysaor/JayPay/issues/161), [#162](https://github.com/chrysaor/JayPay/issues/162), [#163](https://github.com/chrysaor/JayPay/issues/163) |
 
 The decisions that wait for the owner are listed under [Open decisions](decisions/README.md#open-decisions).
