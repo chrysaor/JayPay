@@ -76,6 +76,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0040](0040-gateway-api-with-envoy-gateway.md) | The gateway is the Kubernetes Gateway API with Envoy Gateway | 0.7.0 (unreleased) | accepted | [#115](https://github.com/chrysaor/JayPay/issues/115) |
 | [0041](0041-schema-changes-only-go-forward.md) | A schema change only goes forward, and the previous release runs on the new schema | 0.7.0 (unreleased) | accepted | [#242](https://github.com/chrysaor/JayPay/issues/242) |
 | [0042](0042-rate-limits-of-the-customer-api.md) | The customer API is limited to 300 requests a minute per address, and sign-in to 30 | 0.7.0 (unreleased) | accepted | [#239](https://github.com/chrysaor/JayPay/issues/239) |
+| [0043](0043-seed-data-in-plain-files-with-generated-credentials.md) | Seed data is kept in plain files, and the credentials of its accounts are generated at install | 0.7.0 (unreleased) | accepted | [#251](https://github.com/chrysaor/JayPay/issues/251) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 
