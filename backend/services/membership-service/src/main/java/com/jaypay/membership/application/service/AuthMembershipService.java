@@ -4,6 +4,8 @@ import com.jaypay.common.UseCase;
 import com.jaypay.membership.application.port.in.AuthMembershipUseCase;
 import com.jaypay.membership.application.port.in.LoginMembershipCommand;
 import com.jaypay.membership.application.port.in.MembershipNotFoundException;
+import com.jaypay.membership.application.port.in.MembershipNotValidException;
+import com.jaypay.membership.application.port.in.TokenRefusedException;
 import com.jaypay.membership.application.port.in.RefreshTokenCommand;
 import com.jaypay.membership.application.port.in.ValidateTokenCommand;
 import com.jaypay.membership.application.port.out.AuthMembershipPort;
@@ -27,94 +29,65 @@ public class AuthMembershipService implements AuthMembershipUseCase {
 
     @Override
     public JwtToken loginMembership(LoginMembershipCommand command) {
-
         String membershipId = command.membershipId();
-        Membership membership = findMembershipPort.findMembership(
-                new Membership.MembershipId(membershipId)
-        ).orElseThrow(() -> new MembershipNotFoundException(membershipId));
-
-        if (membership.isValid()) {
-            String jwtToken = authMembershipPort.generateJwtToken(
-                    new Membership.MembershipId(membershipId)
-            );
-            String refreshToken = authMembershipPort.generateRefreshToken(
-                    new Membership.MembershipId(membershipId)
-            );
-
-            modifyMembershipPort.modifyMembership(
-                    new Membership.MembershipId(membershipId),
-                    new Membership.MembershipName(membership.getName()),
-                    new Membership.MembershipEmail(membership.getEmail()),
-                    new Membership.MembershipAddress(membership.getAddress()),
-                    new Membership.MembershipIsValid(membership.isValid()),
-                    new Membership.MembershipIsCorp(membership.isCorp()),
-                    new Membership.MembershipRefreshToken(refreshToken)
-            );
-
-            return JwtToken.generateJwtToken(
-                    new JwtToken.MembershipId(membershipId),
-                    new JwtToken.MembershipJwtToken(jwtToken),
-                    new JwtToken.MembershipRefreshToken(refreshToken)
-            );
+        Membership.MembershipId id = new Membership.MembershipId(membershipId);
+        Membership membership = findMembershipPort.findMembership(id)
+                .orElseThrow(() -> new MembershipNotFoundException(membershipId));
+        if (!membership.isValid()) {
+            throw new MembershipNotValidException(membershipId);
         }
-
-        return null;
+        String jwtToken = authMembershipPort.generateJwtToken(id);
+        String refreshToken = authMembershipPort.generateRefreshToken(id);
+        modifyMembershipPort.modifyMembership(
+                id,
+                new Membership.MembershipName(membership.getName()),
+                new Membership.MembershipEmail(membership.getEmail()),
+                new Membership.MembershipAddress(membership.getAddress()),
+                new Membership.MembershipIsValid(membership.isValid()),
+                new Membership.MembershipIsCorp(membership.isCorp()),
+                new Membership.MembershipRefreshToken(refreshToken)
+        );
+        return JwtToken.generateJwtToken(
+                new JwtToken.MembershipId(membershipId),
+                new JwtToken.MembershipJwtToken(jwtToken),
+                new JwtToken.MembershipRefreshToken(refreshToken)
+        );
     }
 
     @Override
     public JwtToken refreshJwtTokenByRefreshToken(RefreshTokenCommand command) {
-        String requestedRefreshToken = command.refreshToken();
-        boolean isValid = authMembershipPort.validateJwtToken(requestedRefreshToken);
-
-        if(isValid) {
-            Membership.MembershipId membershipId = authMembershipPort.parseMembershipIdFromToken(requestedRefreshToken);
-            String membershipIdString = membershipId.getMembershipId();
-
-            Membership membership = findMembershipPort.findMembership(membershipId).orElseThrow();
-            if(!membership.getRefreshToken().equals(
-                    command.refreshToken()
-            )) {
-                return null;
-            }
-
-            if (membership.isValid()){
-                String newJwtToken = authMembershipPort.generateJwtToken(
-                        new Membership.MembershipId(membershipIdString)
-                );
-
-                return JwtToken.generateJwtToken(
-                        new JwtToken.MembershipId(membershipIdString),
-                        new JwtToken.MembershipJwtToken(newJwtToken),
-                        new JwtToken.MembershipRefreshToken(requestedRefreshToken)
-                );
-            }
+        String refreshToken = command.refreshToken();
+        Membership membership = memberOf(refreshToken);
+        if (!refreshToken.equals(membership.getRefreshToken())) {
+            throw new TokenRefusedException("This is not the refresh token of the last sign-in.");
         }
-
-        return null;
+        if (!membership.isValid()) {
+            throw new MembershipNotValidException(membership.getMembershipId());
+        }
+        Membership.MembershipId id = new Membership.MembershipId(membership.getMembershipId());
+        return JwtToken.generateJwtToken(
+                new JwtToken.MembershipId(membership.getMembershipId()),
+                new JwtToken.MembershipJwtToken(authMembershipPort.generateJwtToken(id)),
+                new JwtToken.MembershipRefreshToken(refreshToken)
+        );
     }
 
     @Override
     public boolean validateJwtToken(ValidateTokenCommand command) {
-        String jwtToken = command.jwtToken();
-        return authMembershipPort.validateJwtToken(jwtToken);
+        return authMembershipPort.validateJwtToken(command.jwtToken());
     }
 
     @Override
     public Membership getMembershipByJwtToken(ValidateTokenCommand command) {
-        String jwtToken = command.jwtToken();
-        boolean isValid = authMembershipPort.validateJwtToken(jwtToken);
-
-        if(isValid) {
-            Membership.MembershipId membershipId = authMembershipPort.parseMembershipIdFromToken(jwtToken);
-            Membership membership = findMembershipPort.findMembership(membershipId).orElseThrow();
-
-            if (!membership.getRefreshToken().equals(command.jwtToken())) {
-                return null;
-            }
-
-            return membership.withEmail(encryptionPort.decrypt(membership.getEmail()));
-        }
-        return null;
+        Membership membership = memberOf(command.jwtToken());
+        return membership.withEmail(encryptionPort.decrypt(membership.getEmail()));
     }
 
+    private Membership memberOf(String token) {
+        if (!authMembershipPort.validateJwtToken(token)) {
+            throw new TokenRefusedException("The token is not one this service signed, or it has expired.");
+        }
+        return findMembershipPort.findMembership(authMembershipPort.parseMembershipIdFromToken(token))
+                .orElseThrow(() -> new TokenRefusedException("The member of this token does not exist."));
+    }
 }

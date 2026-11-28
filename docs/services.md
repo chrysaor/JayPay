@@ -53,10 +53,10 @@ The other services call `GET /memberships/{membershipId}` to check that a member
 - `GET /memberships/{membershipId}` returns one member, or answers 404 when the id names no member.
 - `GET /memberships/address/{addressName}` returns the members at one address.
 - `PUT /memberships/{membershipId}` edits a member.
-- `POST /memberships/login` issues the two tokens for a valid member.
+- `POST /memberships/login` issues the two tokens for a valid member. It answers 404 `MEMBERSHIP_NOT_FOUND` for an id that names no member and 401 `MEMBERSHIP_NOT_VALID` for a member that is not valid.
 - `POST /memberships/token-validate` answers whether a token has a valid signature and has not expired.
-- `POST /memberships/refresh-token` issues a new access token for the stored refresh token.
-- `POST /memberships/auth` returns the member that a token belongs to.
+- `POST /memberships/refresh-token` issues a new access token for the refresh token of the last sign-in. It answers 401 `TOKEN_REFUSED` for any other token and 401 `MEMBERSHIP_NOT_VALID` for a member that is not valid.
+- `POST /memberships/auth` returns the member of an access token or a refresh token that validates, and answers 401 `TOKEN_REFUSED` otherwise.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
@@ -64,8 +64,7 @@ The other services call `GET /memberships/{membershipId}` to check that a member
 
 - Login takes a member id only, with no password or other credential.
 - `PUT /memberships/{membershipId}` edits the member named by `membershipId` in the request body and ignores the id in the path.
-- `POST /memberships/auth` returns a member only when the token in the request equals the stored refresh token, so an access token never matches.
-- Login answers 200 with an empty body for a member that is not valid.
+- An access token and a refresh token differ only in how long they live, 20 and 60 seconds.
 
 ## banking-service
 
