@@ -65,12 +65,10 @@ def outside_callers(manifests):
             for peer in rule["from"]:
                 if "namespaceSelector" in peer:
                     labels = peer["podSelector"]["matchLabels"]
-                    caller = network_policy.GATEWAY if network_policy.GATEWAY_POD_LABEL in labels else network_policy.INGRESS
                     namespace = peer["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"]
-                    found[caller] = (namespace, ",".join(f"{key}={value}" for key, value in sorted(labels.items())))
-    missing = sorted(set(network_policy.OUTSIDE) - set(found))
-    if missing:
-        sys.exit(f"policy-check: FAILED: no NetworkPolicy admits {' or '.join(missing)}")
+                    found[network_policy.GATEWAY] = (namespace, ",".join(f"{key}={value}" for key, value in sorted(labels.items())))
+    if not found:
+        sys.exit(f"policy-check: FAILED: no NetworkPolicy admits {network_policy.GATEWAY}")
     return found
 
 
@@ -148,7 +146,7 @@ def main():
                 else:
                     refused += 1
             print(f"policy-check: {name}: reaches {sorted({service for target, (service, port) in targets.items() if outcome.get(target) == 'open'})}")
-        required = {PROBE, "frontend-web", "frontend-admin", network_policy.INGRESS, stranger}
+        required = {PROBE, "frontend-web", "frontend-admin", stranger}
         for name in sorted(required & set(untestable)):
             failures.append(f"{name} has neither nc nor bash, so the check could not run from it")
         if untestable:

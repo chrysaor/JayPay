@@ -31,7 +31,7 @@ help:
 	@echo "make smoke                     drive the running stack end to end"
 	@echo "make e2e                       drive the web site and the admin console of the running stack in a browser"
 	@echo "make k8s-up | k8s-down         start or delete the local minikube cluster, profile jaypay"
-	@echo "make k8s-smoke                 drive the cluster end to end through its ingress"
+	@echo "make k8s-smoke                 drive the cluster end to end through its gateway"
 	@echo "make k8s-gitops-check          prove that Argo CD follows a commit and reverts a manual change"
 	@echo "make k8s-policy-check          prove that NetworkPolicy lets through the allowed calls and refuses the rest"
 	@echo "make network-policy            regenerate deploy/envs/*/network-policy/calls.yaml from the calls the workloads make"

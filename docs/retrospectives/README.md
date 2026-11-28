@@ -54,3 +54,4 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-28 | [A top-up handled during an outage was left out of the region total](2026-11-28-top-up-during-an-outage-left-out-of-the-region-total.md) | [#228](https://github.com/chrysaor/JayPay/issues/228) |
 | 2026-11-28 | [The other callers still read an outage as a refusal](2026-11-28-other-callers-read-an-outage-as-a-refusal.md) | [#229](https://github.com/chrysaor/JayPay/pull/229) |
 | 2026-11-28 | [A member who registered another bank account kept the first one](2026-11-28-account-lookup-kept-the-first-registered-account.md) | [#225](https://github.com/chrysaor/JayPay/issues/225) |
+| 2026-11-28 | [A changed configuration file did not reach the pods of the local cluster](2026-11-28-a-changed-config-file-did-not-reach-the-pods.md) | [#247](https://github.com/chrysaor/JayPay/pull/247) |

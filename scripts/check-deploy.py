@@ -49,6 +49,19 @@ def rendered_pods(manifests_path, kind):
     return pods
 
 
+def pods_blind_to_their_files(manifests_path):
+    problems = []
+    for line in read(manifests_path).splitlines():
+        manifest = json.loads(line)
+        if manifest.get("kind") not in ("Deployment", "StatefulSet"):
+            continue
+        template = manifest["spec"]["template"]
+        mounted = [volume["configMap"]["name"] for volume in template["spec"].get("volumes", []) if "configMap" in volume]
+        if mounted and not template["metadata"].get("annotations", {}).get("checksum/files"):
+            problems.append(f"{manifest['metadata']['name']}: mounts the ConfigMap {mounted[0]} without a checksum/files annotation on its pods, so a changed file would not restart them")
+    return problems
+
+
 def rendered_containers(manifests_path, kind):
     return {name: pod["containers"][0] for name, pod in rendered_pods(manifests_path, kind).items()}
 
@@ -258,6 +271,7 @@ def main():
         if name in services:
             problems += compare_security(name, services[name], dependency_pods[name])
     problems += compose_hardening(services)
+    problems += pods_blind_to_their_files(local)
     problems += unpulled_images(rendered_dir)
     problems += rendered_secrets(root, rendered_dir)
     problems += repo_server_mount(rendered_dir)

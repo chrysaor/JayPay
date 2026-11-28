@@ -40,6 +40,10 @@ spec:
     metadata:
       labels:
         {{- include "dependency.labels" . | nindent 8 }}
+      {{- with include "dependency.filesChecksum" . }}
+      annotations:
+        checksum/files: {{ . }}
+      {{- end }}
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -117,4 +121,12 @@ data:
   {{- range $key, $path := .files }}
   {{ $key }}: {{ $.root.Files.Get $path | required (printf "%s is empty or missing" $path) | quote }}
   {{- end }}
+{{- end }}
+
+{{- define "dependency.filesChecksum" -}}
+{{- $content := "" }}
+{{- range $path, $_ := .Files.Glob (printf "files/%s**" .Release.Name) }}
+{{- $content = printf "%s%s\n%s\n" $content $path ($.Files.Get $path) }}
+{{- end }}
+{{- with $content }}{{ sha256sum . }}{{ end }}
 {{- end }}

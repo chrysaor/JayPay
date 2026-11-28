@@ -1,4 +1,1 @@
-ingress:
-  enabled: true
-  className: nginx
-  host: web.jaypay.localhost
+replicas: 1

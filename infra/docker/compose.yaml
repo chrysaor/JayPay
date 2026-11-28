@@ -506,20 +506,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/event_flow
     depends_on: *jpa-service-depends-on
 
-  auth-service:
-    <<: *service
-    image: jaypay/auth-service
-    ports:
-      - "127.0.0.1:8089:8080"
-    environment:
-      <<: *service-env
-      STAFF_ISSUER_URI: http://localhost:8091/realms/staff
-      STAFF_JWK_SET_URI: http://keycloak:8080/realms/staff/protocol/openid-connect/certs
-    depends_on:
-      <<: *service-depends-on
-      keycloak:
-        condition: service_healthy
-
   logging-consumer:
     <<: *service
     image: jaypay/logging-consumer

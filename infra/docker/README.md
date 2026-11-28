@@ -67,7 +67,7 @@ membership-service encrypts member emails with AES-GCM and cannot read rows writ
 | PostgreSQL, user `jaypay` | localhost:5432 |
 | Kafka | localhost:9092 |
 | OTLP gRPC and HTTP | localhost:4317, localhost:4318 |
-| Services | membership 8081, banking 8082, money 8083, remittance 8084, payment 8085, money-aggregation 8086, money-query 8087, settlement 8088, auth 8089 |
+| Services | membership 8081, banking 8082, money 8083, remittance 8084, payment 8085, money-aggregation 8086, money-query 8087, settlement 8088, event-flow 8093 |
 
 The sites use 8090 and 8091 because 3000 and 3001 are common development server ports. Both are ports of the `gateway` container, Envoy Gateway in its standalone mode. On 8090 it serves the customer site from `frontend-web` and forwards the `/api/<service>/` requests of its screens. On 8091 it serves the admin console from `frontend-admin`, passes `/realms/staff/` and `/resources/` to Keycloak for the sign-in pages, and forwards an `/api/<service>/` request only when its staff token carries the role of the route. Its routes are `gateway/config/gateway.yaml`, which `make gateway-config` renders from the chart `deploy/charts/gateway` with `gateway/values.yaml`, so Compose and the cluster run the same routes. `make images` builds `jaypay/gateway` from the Envoy Gateway image and the Envoy binary of the matching Envoy image, because the standalone mode would otherwise download Envoy when it starts. `gateway-certificates` runs once before the gateway and writes the certificates between the controller and Envoy into the volume `gateway-state`. The gateway has no rate limit in Compose.
 

@@ -40,11 +40,11 @@ One maintainer develops JayPay with coding agents. The agents follow the rules i
 
 ## Architecture
 
-Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console. Both are reached through the gateway, Envoy Gateway, which forwards `/api/<service>/...` to the services. For the admin console, staff sign in through Keycloak, and the gateway forwards a request only when the staff token carries the role its route needs.
+Ten Spring Boot services run in Docker Compose. Nine of them have a host port and their own PostgreSQL database. Eight of the nine serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console. Both are reached through the gateway, Envoy Gateway, which forwards `/api/<service>/...` to the services. For the admin console, staff sign in through Keycloak, and the gateway forwards a request only when the staff token carries the role its route needs.
 
 ### Request path
 
-The browser calls only its own site, and each site is a port of the gateway: 8090 for the customer site and 8091 for the admin console. The gateway strips `/api/<service>` and forwards the rest of the path to that service, for the methods and paths in the route table of the site, and a path without a route gets the 404 of the site. For the admin console it first checks the Keycloak token: it answers 401 without a valid token and 403 when the role is not enough. It also passes the sign-in pages of the Keycloak realm `staff`, so the browser and the tokens see one origin. In the cluster it limits how many requests one address may send to the customer API. Nothing calls auth-service any more, and [#240](https://github.com/chrysaor/JayPay/issues/240) removes it. settlement-service starts its own requests from a batch job.
+The browser calls only its own site, and each site is a port of the gateway: 8090 for the customer site and 8091 for the admin console. The gateway strips `/api/<service>` and forwards the rest of the path to that service, for the methods and paths in the route table of the site, and a path without a route gets the 404 of the site. For the admin console it first checks the Keycloak token: it answers 401 without a valid token and 403 when the role is not enough. It also passes the sign-in pages of the Keycloak realm `staff`, so the browser and the tokens see one origin. In the cluster it limits how many requests one address may send to the customer API. settlement-service starts its own requests from a batch job.
 
 ![The gateway serves the customer site from frontend-web and forwards to banking, money, remittance, membership and payment. It serves the admin console from frontend-admin, passes the staff sign-in to Keycloak, checks the token and the role against the realm keys and forwards to membership, payment, money-aggregation, money-query and event-flow. settlement-service calls banking and payment from its batch job.](docs/diagrams/request-path.svg)
 
@@ -107,7 +107,7 @@ Every host port binds to `127.0.0.1`.
 | PostgreSQL, user `jaypay` | `localhost:5432` |
 | Kafka | `localhost:9092` |
 | OTLP gRPC and HTTP | `localhost:4317`, `localhost:4318` |
-| Services | `localhost:8081` to `localhost:8089`, listed in the next table. Actuator listens on port 9080 inside the container, which no host port publishes |
+| Services | `localhost:8081` to `localhost:8088` and `localhost:8093`, listed in the next table. Actuator listens on port 9080 inside the container, which no host port publishes |
 
 The passwords are in `infra/docker/.env`. [infra/docker/README.md](infra/docker/README.md) describes every key in it. The admin console asks for a staff account: the first `make up` imports the Keycloak realm `staff` with an admin, an operator and a viewer from `STAFF_<ROLE>_USERNAME` and `STAFF_<ROLE>_PASSWORD` in that file. Staff accounts are managed in the Keycloak admin console.
 
@@ -126,7 +126,6 @@ Every service and site has a section in [docs/services.md](docs/services.md) wit
 | [money-query-service](docs/services.md#money-query-service) | Read model of saga top-ups per address, read over HTTP | 8087 | DynamoDB `MoneyIncreaseEventByRegion`, PostgreSQL `money_query` with no tables | Axon event handler, writes the log topic |
 | [settlement-service](docs/services.md#settlement-service) | Spring Batch job every 30 seconds that settles each paid payment once and pays its payout through firm banking | 8088 | PostgreSQL `settlement` for the batch tables | none |
 | [event-flow-service](docs/services.md#event-flow-service) | Collects the steps of each saga top-up and serves the flows and their timelines to the admin console | 8093 | PostgreSQL `event_flow` | Kafka `jaypay.flow.events` in, writes the log topic |
-| [auth-service](docs/services.md#auth-service) | Unused since the gateway checks the staff token. Removed in [#240](https://github.com/chrysaor/JayPay/issues/240) | 8089 | none | none |
 | [logging-consumer](docs/services.md#logging-consumer) | Writes each record of the log topic to its own log | none | none | Kafka `jaypay.logging.out.stdout` in |
 | [frontend-web](docs/services.md#frontend-web) | Customer site: nginx serves the React app | none | The session in the browser | none |
 | [frontend-admin](docs/services.md#frontend-admin) | Admin console: nginx serves the React app | none | The staff tokens in the tab's memory | none |
@@ -142,7 +141,7 @@ Every Spring Boot service sends its logs and traces to the OpenTelemetry Collect
 
 ```mermaid
 flowchart LR
-    services["Eleven Spring Boot services"]
+    services["Ten Spring Boot services"]
     collector["OpenTelemetry Collector<br/>drops /actuator spans"]
     clickhouse[("ClickHouse<br/>otel.otel_logs, otel.otel_traces<br/>kept 72 hours")]
     prometheus[("Prometheus<br/>kept 3 days")]
@@ -218,7 +217,7 @@ The local stack uses DynamoDB Local and keeps its data in a volume. One file, `i
 
 JayPay is a study project and is not safe to run with real money or real users.
 
-- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8089` and the customer site do not. Anyone on the machine can call a service directly, internal endpoints included. Actuator answers only on the management port 9080, which no host port publishes, but any container in the Compose network reaches it. The customer site forwards only the eleven requests its screens make and answers 404 to every other `/api/` path, but it forwards those without a login, so anyone can sign in as any member id, read any member and top up or spend any wallet.
+- The admin console checks staff accounts, but the service ports `127.0.0.1:8081` to `8088` and `8093` and the customer site do not. Anyone on the machine can call a service directly, internal endpoints included. Actuator answers only on the management port 9080, which no host port publishes, but any container in the Compose network reaches it. The customer site forwards only the eleven requests its screens make and answers 404 to every other `/api/` path, but it forwards those without a login, so anyone can sign in as any member id, read any member and top up or spend any wallet.
 - Keycloak offers an authenticator app to every staff account but does not require one.
 - Disabling a staff account in Keycloak stops its next sign-in at once, but an access token it already holds keeps working for up to 3 minutes.
 - The local stack runs Keycloak over plain HTTP.

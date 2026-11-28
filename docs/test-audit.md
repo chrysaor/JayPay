@@ -74,7 +74,7 @@ The cases:
 | Read the region total | MoneySumByAddressServicesTest | - | - | - | DynamoDBAdapterTest |
 | Sum the balances at an address | GetMoneySumByAggregationServiceTest, GetMoneySumControllerTest | - | - | - | GetMoneySumControllerTest |
 
-## event-flow-service, logging-consumer and auth-service
+## event-flow-service and logging-consumer
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
@@ -82,11 +82,10 @@ The cases:
 | Find flows | EventFlowKafkaTest | EventFlowKafkaTest | - | - | - |
 | Forget old flows | EventFlowKafkaTest | - | - | - | - |
 | Log every message of the logging topic | LoggingConsumerKafkaTest | - | - | - | - |
-| Admit a staff request | AdminConsoleGateTest, AdminConsoleGateOverTomcatTest | AdminConsoleGateTest | - | - | - |
 
 ## Code no test reaches
 
-From the JaCoCo report of all modules, 293 classes with code.
+From the JaCoCo report of all modules at the time of the audit, 293 classes with code. auth-service, which the audit counted, is gone since the gateway checks the staff token, and `make smoke` checks that table on a running stack.
 
 | Class | Not reached | What it means |
 | --- | --- | --- |

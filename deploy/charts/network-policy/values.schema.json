@@ -2,21 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["ingressController", "gatewayProxy", "ingress", "gateway", "calls"],
+  "required": ["gatewayProxy", "gateway", "calls"],
   "definitions": {
     "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "port": { "type": ["string", "integer"] }
   },
   "properties": {
-    "ingressController": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["namespace", "podLabels"],
-      "properties": {
-        "namespace": { "$ref": "#/definitions/name" },
-        "podLabels": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } }
-      }
-    },
     "gatewayProxy": {
       "type": "object",
       "additionalProperties": false,
@@ -25,11 +16,6 @@
         "namespace": { "$ref": "#/definitions/name" },
         "podLabels": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } }
       }
-    },
-    "ingress": {
-      "type": "object",
-      "propertyNames": { "$ref": "#/definitions/name" },
-      "additionalProperties": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/port" } }
     },
     "gateway": {
       "type": "object",

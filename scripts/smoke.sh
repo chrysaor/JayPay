@@ -13,12 +13,12 @@ clickhouse=${SMOKE_CLICKHOUSE_URL:-http://localhost:8123}
 prometheus=${SMOKE_PROMETHEUS_URL:-http://localhost:9090}
 grafana=${SMOKE_GRAFANA_URL:-http://localhost:3030}
 vault=${SMOKE_VAULT_URL:-http://localhost:8200}
-read -r -a service_urls <<<"${SMOKE_SERVICE_URLS:-$(printf 'http://localhost:%s ' 8081 8082 8083 8084 8085 8086 8087 8088 8089 8093)}"
+read -r -a service_urls <<<"${SMOKE_SERVICE_URLS:-$(printf 'http://localhost:%s ' 8081 8082 8083 8084 8085 8086 8087 8088 8093)}"
 management_port=9080
 stack=${SMOKE_STACK:-compose}
 services=(
   membership-service banking-service money-service remittance-service payment-service
-  money-aggregation-service money-query-service settlement-service event-flow-service auth-service logging-consumer
+  money-aggregation-service money-query-service settlement-service event-flow-service logging-consumer
 )
 
 work=$(mktemp -d)
@@ -725,7 +725,6 @@ done
 expect "the actuator of a service behind the console without a token" 404 GET "$admin/api/membership/actuator/health" "$(hex 16)"
 as_staff ADMIN expect "the actuator of a service behind the console" 404 GET "$admin/api/membership/actuator/health" "$(hex 16)"
 as_staff ADMIN expect "the API docs of a service behind the console" 404 GET "$admin/api/payment/v3/api-docs" "$(hex 16)"
-expect "the actuator of the auth service through the console" 404 GET "$admin/api/auth/actuator/health" "$(hex 16)"
 eventually 60 "Prometheus does not scrape every service on port $management_port" targets_up
 log "$(cat "$work/last")"
 

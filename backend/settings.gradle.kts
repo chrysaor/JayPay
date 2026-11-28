@@ -17,7 +17,6 @@ rootProject.name = "jaypay"
 
 include(
     ":libs:common",
-    ":services:auth-service",
     ":services:banking-service",
     ":services:event-flow-service",
     ":services:logging-consumer",

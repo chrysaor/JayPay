@@ -8,12 +8,11 @@ A new component is added to this page in the PR that introduces it.
 
 | Component | Role | Version pinned in |
 | --- | --- | --- |
-| Java | Language of the eleven services. The images run a `jlink` runtime cut from the Temurin JDK with only the modules the services load | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
+| Java | Language of the ten services. The images run a `jlink` runtime cut from the Temurin JDK with only the modules the services load | `backend/gradle/libs.versions.toml`, `backend/Dockerfile` |
 | Distroless base, glibc without OpenSSL | Base of the service images: glibc, CA certificates, time zones and `/etc/passwd`, no shell or package manager | `backend/Dockerfile` |
 | Debian | Source of the `C.UTF-8` locale the service images copy, the same glibc as the distroless base | `backend/Dockerfile` |
 | Gradle | Backend build | `backend/gradle/wrapper/gradle-wrapper.properties` |
 | Spring Boot | Web, data access, Kafka, Actuator | `backend/gradle/libs.versions.toml` |
-| Spring Security | Resource server in auth-service, which nothing calls since the gateway checks the staff tokens | Spring Boot BOM |
 | Spring Vault | Reads the encryption key of membership-service | `backend/gradle/libs.versions.toml` |
 | Axon Framework | Event sourcing and the money top-up saga | `backend/gradle/libs.versions.toml` |
 | AWS SDK for Java | DynamoDB access of money-query-service | `backend/gradle/libs.versions.toml` |
@@ -57,7 +56,6 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | Component | Role | Runs in | Version pinned in |
 | --- | --- | --- | --- |
 | minikube | Local cluster, profile `jaypay` | developer machine | installed by the developer, Kubernetes version in `scripts/k8s.sh` |
-| ingress-nginx | Ingress of the customer site, which nothing uses since the gateway serves it. [#240](https://github.com/chrysaor/JayPay/issues/240) removes it | local cluster, minikube addon | minikube |
 | kindnet | Pod network that enforces NetworkPolicy, started with `--cni kindnet` | local cluster | minikube |
 | Helm | Renders the charts in `deploy/charts` | gate, Argo CD | `scripts/verify.sh` |
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |

@@ -230,9 +230,13 @@ dir=$(copy_repo charts-gateway-limit)
 perl -pi -e 's/limit: signIn \}/limit: signUp }/ if /refresh-token/' "$dir/deploy/charts/gateway/values.yaml"
 expect charts fail "$dir" "names the limit signUp, which is not a limit of its own in customerSite.limits"
 
+dir=$(copy_repo charts-files-checksum)
+perl -0pi -e 's/      \{\{- with include "dependency.filesChecksum" \. \}\}\n      annotations:\n        checksum\/files: \{\{ \. \}\}\n      \{\{- end \}\}\n//' "$dir/deploy/charts/dependency/templates/_helpers.tpl"
+expect charts fail "$dir" "prometheus: mounts the ConfigMap prometheus-files without a checksum/files annotation"
+
 dir=$(copy_repo charts-policy-management)
-perl -0pi -e 's/(\n  auth-service:\n(?:    .*\n)*?    management: \[)prometheus/$1frontend-web, prometheus/' "$dir/deploy/envs/local/network-policy/calls.yaml"
-expect charts fail "$dir" "lets frontend-web reach the management port of auth-service, which only prometheus may reach"
+perl -0pi -e 's/(\n  banking-service:\n(?:    .*\n)*?    management: \[)prometheus/$1frontend-web, prometheus/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets frontend-web reach the management port of banking-service, which only prometheus may reach"
 
 dir=$(copy_repo charts-policy-default)
 perl -pi -e 's/^  podSelector: \{\}$/  podSelector: {matchLabels: {app.kubernetes.io\/name: nothing}}/' "$dir/deploy/charts/network-policy/templates/network-policy.yaml"
