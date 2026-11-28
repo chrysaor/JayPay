@@ -1,6 +1,6 @@
 # Services
 
-This page describes each of the eleven Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
+This page describes each of the ten Spring Boot services in `backend/services` and the two nginx sites in `frontend/apps`. The values in each table come from `infra/docker/compose.yaml`, `deploy/envs/local/network-policy/calls.yaml`, the service's `application.yml` and its code. `make verify` compares the host port, the memory limit and the HTTP calls of every table with those files. Every service also listens on the management port 9080, set once in `backend/libs/common/src/main/resources/jaypay-common.yml`, for health, the liveness and readiness probes and the Prometheus metrics. No host port publishes it, and in the cluster only Prometheus reaches it. The host port serves neither Actuator nor the OpenAPI pages, which springdoc serves only under the Spring profile `local`.
 
 The services that use PostgreSQL let Hibernate create and update their tables with `SPRING_JPA_HIBERNATE_DDL_AUTO`, `update` in both local stacks. Hibernate adds a check constraint that lists the values of each enum column, and `update` never changes it, so on every start each service drops the checks that cover a single enum column, on a new database and on one that an older version created. The database then takes any status value, and only the code checks it. Checks named on an entity, such as the `wallet` balance and the `payment` fee, stay.
 
@@ -466,43 +466,6 @@ The admin console reaches both through `/api/event-flow/` for every staff role.
 - A request that is refused and then sent again under the same request id keeps the first, failed copy of its first step.
 - A flow whose records were lost while Kafka was down shows fewer steps or stays in progress.
 - A settlement waiting for a merchant account sends its first step again on every run until the account appears. The service keeps the first copy, so the flow shows when the wait began.
-
-## auth-service
-
-The decision on an admin console request, made from the staff token Keycloak issued. Nothing calls it any more: the [gateway](#gateway) checks the token and the role itself, and auth-service is removed in [#240](https://github.com/chrysaor/JayPay/issues/240).
-
-| | |
-| --- | --- |
-| Host port | `8089` |
-| Memory limit | `512m` |
-| Database | none |
-| Calls | none |
-| Called by | none |
-| Kafka | none |
-| Axon | none |
-| Other stores | none |
-| Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `STAFF_ISSUER_URI`, `STAFF_JWK_SET_URI`. No secrets. |
-
-Until the gateway took over, nginx in frontend-admin sent an `auth_request` to `/authorize` followed by the original path before it forwarded an `/api/` request. auth-service fetches the public keys of the realm `staff` from Keycloak at `STAFF_JWK_SET_URI` and caches them.
-
-### What it does
-
-- `/authorize/**` answers 204 when the decision table in `StaffSecurityConfig` lets the token's role make the original request, 401 without a valid token, and 403 otherwise.
-- A valid token is signed by a key of the realm, has the issuer `STAFF_ISSUER_URI` and the audience `jaypay-admin-console`, and has not expired, with 60 seconds of clock skew.
-- The realm roles `viewer`, `operator` and `admin` in `realm_access.roles` are the roles. They form the hierarchy viewer, operator, admin, and the highest one counts.
-- A disabled account or a removed role stops new sign-ins and refreshes at once. An access token issued before keeps working until it expires, at most 3 minutes later.
-
-[docs/architecture.md](architecture.md) shows the sign-in and an admin console request step by step.
-
-### Endpoints
-
-- `/authorize/**`, any method, is the decision for nginx `auth_request`.
-
-[docs/api-contract.md](api-contract.md) lists every endpoint of every service.
-
-### Known limitations
-
-- auth-service does not ask Keycloak about each token, so revoking an account takes up to the lifetime of its access token plus the clock skew.
 
 ## logging-consumer
 

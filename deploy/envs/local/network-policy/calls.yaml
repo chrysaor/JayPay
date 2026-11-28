@@ -1,5 +1,3 @@
-ingress:
-  frontend-web: [http]
 gateway:
   banking-service: [http]
   event-flow-service: [http]
@@ -13,10 +11,8 @@ gateway:
   payment-service: [http]
   remittance-service: [http]
 calls:
-  auth-service:
-    management: [prometheus]
   axon-server:
-    grpc: [auth-service, axon-server, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    grpc: [axon-server, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
     http: [axon-server]
   banking-service:
     http: [money-service, remittance-service, settlement-service]
@@ -28,9 +24,7 @@ calls:
   event-flow-service:
     management: [prometheus]
   kafka:
-    kafka: [auth-service, banking-service, event-flow-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
-  keycloak:
-    http: [auth-service]
+    kafka: [banking-service, event-flow-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   logging-consumer:
     management: [prometheus]
   membership-service:
@@ -44,7 +38,7 @@ calls:
     http: [money-aggregation-service, payment-service, remittance-service]
     management: [prometheus]
   otel-collector:
-    otlp-http: [auth-service, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
+    otlp-http: [banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   payment-service:
     http: [settlement-service]
     management: [prometheus]

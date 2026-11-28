@@ -23,16 +23,16 @@ The weekly run is Monday 03:00 KST.
 
 ## Admin console access
 
-The admin console requires a staff account in the Keycloak realm `staff`. Keycloak stores the passwords, signs staff in with the Authorization Code flow and PKCE, and locks an account for a minute after 5 wrong passwords in a row, longer with each further failure up to 15 minutes. nginx asks auth-service about every `/api` request before it forwards it, and auth-service checks the Keycloak token's signature, issuer, audience and expiry. The roles viewer, operator and admin, the decision table and the password policy are described in [infra/docker/README.md](infra/docker/README.md#staff-accounts) and [docs/architecture.md](docs/architecture.md#admin-console-sign-in-through-keycloak).
+The admin console requires a staff account in the Keycloak realm `staff`. Keycloak stores the passwords, signs staff in with the Authorization Code flow and PKCE, and locks an account for a minute after 5 wrong passwords in a row, longer with each further failure up to 15 minutes. The gateway checks the Keycloak token's signature, issuer, audience and expiry, and the role of the route, before it forwards an `/api` request. The roles viewer, operator and admin, the decision table and the password policy are described in [infra/docker/README.md](infra/docker/README.md#staff-accounts) and [docs/architecture.md](docs/architecture.md#admin-console-sign-in-through-keycloak).
 
 The realm file `infra/docker/keycloak/import/staff.json` holds no password or secret. The first three accounts and their passwords come from `STAFF_*` keys in `infra/docker/.env`, and the Keycloak `admin` password from `KEYCLOAK_ADMIN_PASSWORD`. `scripts/init-env.py` generates them and git ignores the file. The repository holds no default username or password. The Keycloak admin console listens on `127.0.0.1:8092` only and is not proxied by the admin site.
 
 What the gate does not cover:
 
-- The service ports `127.0.0.1:8081` to `8089` reach the services without a staff token. They serve neither Actuator nor the OpenAPI pages. Actuator exposes only health and the Prometheus metrics, on the management port 9080. No host port publishes it, but in Compose every container on the network reaches it. In the cluster a NetworkPolicy admits only Prometheus, and the kubelet probes it. springdoc is off unless a service runs with the Spring profile `local`.
+- The service ports `127.0.0.1:8081` to `8088` and `8093` reach the services without a staff token. They serve neither Actuator nor the OpenAPI pages. Actuator exposes only health and the Prometheus metrics, on the management port 9080. No host port publishes it, but in Compose every container on the network reaches it. In the cluster a NetworkPolicy admits only Prometheus, and the kubelet probes it. springdoc is off unless a service runs with the Spring profile `local`.
 - The gateway forwards for the customer site on 8090 only the requests its screens make, listed in `customerSite.routes` of `deploy/charts/gateway/values.yaml`, and every other `/api/` path answers 404. It forwards those without a login, and a member id is all that sign-in asks for.
 - An authenticator app is optional for staff accounts. Requiring it is one line in the realm, the `CONFIGURE_TOTP` required action, which `make smoke` would then have to answer.
-- An access token stays valid for 2 minutes and auth-service accepts 60 seconds of clock skew. Disabling an account stops its sign-in and refresh at once, but its access token keeps working for up to 3 minutes. Signing out ends the Keycloak session.
+- An access token stays valid for 2 minutes, plus the clock skew the gateway allows. Disabling an account stops its sign-in and refresh at once, but its access token keeps working for up to 3 minutes. Signing out ends the Keycloak session.
 - The local stacks serve Keycloak over plain HTTP, and the brute force lockout counts failures per account, not per address.
 
 ## Local stacks

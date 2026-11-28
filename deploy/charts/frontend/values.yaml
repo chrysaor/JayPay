@@ -3,10 +3,6 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 replicas: 1
-ingress:
-  enabled: false
-  className: ""
-  host: ""
 resources:
   requests:
     cpu: 50m

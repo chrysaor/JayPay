@@ -93,7 +93,7 @@ The browser reaches Keycloak only through the admin site: the gateway passes `/r
 
 The gateway checks that issuer, the `staff.issuer` of its values, but fetches the realm keys from `staff.jwksUri`, the address of Keycloak inside the network, `http://keycloak:8080/realms/staff/protocol/openid-connect/certs` in Compose. The issuer is never fetched, so it does not have to resolve inside a container. The callback URI `/callback` and the post sign-out URI `/signed-out` are relative to `KC_HOSTNAME`, and the browser never makes a cross-origin call, so the client needs no CORS rule.
 
-The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://localhost:8092`. Compose publishes it on `127.0.0.1:8092` only. In the cluster it has no Ingress, and `kubectl port-forward service/keycloak 8092:8080` opens it.
+The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://localhost:8092`. Compose publishes it on `127.0.0.1:8092` only. In the cluster it has no route, and `kubectl port-forward service/keycloak 8092:8080` opens it.
 
 ### Tokens and the session
 
@@ -109,8 +109,6 @@ The Keycloak admin console has its own hostname, `KC_HOSTNAME_ADMIN`, `http://lo
 - The audience mapper of the client puts `jaypay-admin-console` into the access token's `aud`. Customer tokens from membership-service are HS256 with `JWT_SECRET` and no audience, so neither token opens the other site.
 - A route matches the whole path with a regular expression in which a path variable is one segment without a slash. The proxy answers a path with an encoded slash with a 307 to the decoded path and resolves dot segments before it looks for a route. `make smoke` sends a path that climbs out of a member id that way and gets the 307, and the path it leads to has no route and gets 404.
 - The gateway does not ask Keycloak on every request. Disabling an account or taking a role away refuses its next sign-in and its next refresh at once, but an access token issued before keeps working until it expires, 2 minutes after it was issued plus the clock skew the proxy allows.
-
-auth-service still holds the table it used until the gateway took over, `StaffSecurityConfig`, and its tests. Nothing calls it, and [#240](https://github.com/chrysaor/JayPay/issues/240) removes it.
 
 ## Failure paths between services
 
@@ -200,7 +198,7 @@ flowchart RL
 
 ## Workloads on Kubernetes
 
-[deploy/README.md](../deploy/README.md) packages the same thirteen workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
+[deploy/README.md](../deploy/README.md) packages the same twelve workloads as Helm charts, and Keycloak with the other dependencies. Nothing is deployed from this repository yet. Each workload becomes a Deployment, a Service and a ServiceAccount with its Compose name, so `http://membership-service:8080` and the other service URLs keep working inside one namespace.
 
 ```mermaid
 flowchart LR

@@ -126,7 +126,7 @@ start_cluster() {
     minikube update-context --profile "$profile" >/dev/null
   else
     minikube start --profile "$profile" --driver docker --container-runtime docker \
-      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-14g}" --cni kindnet --addons ingress \
+      --kubernetes-version "$kubernetes_version" --cpus "${K8S_CPUS:-max}" --memory "${K8S_MEMORY:-14g}" --cni kindnet \
       --mount --mount-string "$host_git:$(dirname "$repo_path")"
   fi
 }
@@ -213,7 +213,6 @@ up() {
       kube rollout restart deployment "$name"
     fi
   done
-  cluster --namespace ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=300s >/dev/null
   dependency_files=$(ls "$env_dir"/dependency/*.yaml | wc -l | tr -d ' ')
   workload_files=$(ls "$env_dir"/*/*.yaml | wc -l | tr -d ' ')
   until_true "the dependencies are synced and healthy" applications_converged dependency "$dependency_files"

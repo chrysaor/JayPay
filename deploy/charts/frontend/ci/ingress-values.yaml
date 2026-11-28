@@ -1,6 +1,0 @@
-image:
-  tag: v0.2.0
-ingress:
-  enabled: true
-  className: selftest
-  host: admin.jaypay.example
