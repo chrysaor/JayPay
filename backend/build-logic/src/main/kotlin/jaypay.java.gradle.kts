@@ -11,7 +11,7 @@ val libs = the<VersionCatalogsExtension>().named("libs")
 fun lib(alias: String) = libs.findLibrary(alias).get()
 
 group = "com.jaypay"
-version = "0.5.0"
+version = "0.6.0"
 
 java {
     toolchain {
