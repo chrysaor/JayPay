@@ -26,6 +26,9 @@ import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -42,6 +45,10 @@ class RegionTotalTest {
     private static final Duration PATIENCE = Duration.ofSeconds(20);
     private static final AtomicInteger MEMBERS = new AtomicInteger(700);
     private static final DynamoDbLocal DYNAMODB = DynamoDbLocal.withTable("region-total-test");
+    private static final int FAILURES = 2;
+    private static final Map<String, AtomicInteger> FAILING = new ConcurrentHashMap<>();
+    private static final Set<String> UNKNOWN = ConcurrentHashMap.newKeySet();
+    private static final Map<String, AtomicInteger> ASKED = new ConcurrentHashMap<>();
     private static final HttpServer MEMBERSHIP = startMembership();
 
     @Autowired
@@ -57,6 +64,8 @@ class RegionTotalTest {
     static void otherServices(DynamicPropertyRegistry registry) {
         registry.add("service.membership.url", () -> "http://127.0.0.1:" + MEMBERSHIP.getAddress().getPort());
         registry.add("dynamodb.table-name", DYNAMODB::tableName);
+        registry.add("region-total.membership-patience", () -> "1s");
+        registry.add("region-total.membership-retry-after", () -> "50ms");
     }
 
     @Test
@@ -101,6 +110,45 @@ class RegionTotalTest {
         assertThat(regionTotal(member)).isEqualTo(2000);
     }
 
+    @Test
+    void aRechargeHandledWhileMembershipServiceFailsIsCountedOnceMembershipServiceAnswersAgain() throws Exception {
+        String member = newMember();
+        FAILING.put(member, new AtomicInteger(FAILURES));
+
+        events.publish(new WalletRechargedEvent(UUID.randomUUID().toString(), member, 3000));
+        waitUntilEarlierEventsAreHandled();
+
+        assertThat(regionTotal(member)).isEqualTo(3000);
+        assertThat(ASKED.get(member)).hasValue(FAILURES + 1);
+    }
+
+    @Test
+    void aRechargeMembershipServiceDoesNotAnswerForInTimeIsLeftOutAndTheNextRechargesAreCounted() throws Exception {
+        String member = newMember();
+        String next = newMember();
+        FAILING.put(member, new AtomicInteger(Integer.MAX_VALUE));
+
+        events.publish(new WalletRechargedEvent(UUID.randomUUID().toString(), member, 3000));
+        events.publish(new WalletRechargedEvent(UUID.randomUUID().toString(), next, 700));
+        waitUntilEarlierEventsAreHandled();
+
+        assertThat(ASKED.get(member)).hasValueGreaterThan(FAILURES).hasValueLessThan(40);
+        assertThat(regionTotal(member)).isZero();
+        assertThat(regionTotal(next)).isEqualTo(700);
+    }
+
+    @Test
+    void aRechargeOfAMemberThatDoesNotExistIsLeftOutWithoutAskingAgain() throws Exception {
+        String member = newMember();
+        UNKNOWN.add(member);
+
+        events.publish(new WalletRechargedEvent(UUID.randomUUID().toString(), member, 3000));
+        waitUntilEarlierEventsAreHandled();
+
+        assertThat(ASKED.get(member)).hasValue(1);
+        assertThat(regionTotal(member)).isZero();
+    }
+
     private void waitUntilEarlierEventsAreHandled() throws Exception {
         String marker = newMember();
         events.publish(new WalletRechargedEvent(UUID.randomUUID().toString(), marker, 1));
@@ -138,6 +186,13 @@ class RegionTotalTest {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/memberships/", exchange -> {
                 String member = exchange.getRequestURI().getPath().substring("/memberships/".length());
+                ASKED.computeIfAbsent(member, asked -> new AtomicInteger()).incrementAndGet();
+                AtomicInteger failures = FAILING.get(member);
+                if (UNKNOWN.contains(member) || failures != null && failures.getAndDecrement() > 0) {
+                    exchange.sendResponseHeaders(UNKNOWN.contains(member) ? 404 : 503, -1);
+                    exchange.close();
+                    return;
+                }
                 byte[] body = ("{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
                         + "\"address\":\"" + addressOf(member) + "\",\"valid\":true,\"corp\":false}").getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");

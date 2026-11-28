@@ -2,6 +2,7 @@ package com.jaypay.money.query.adapter.out.service;
 
 import com.jaypay.common.CommonHttpClient;
 import com.jaypay.money.query.application.port.out.MemberAddressInfo;
+import com.jaypay.money.query.domain.MemberAddressNotConfirmedException;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
@@ -15,6 +16,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MembershipServiceAdapterTest {
 
@@ -30,6 +32,11 @@ class MembershipServiceAdapterTest {
         membershipService = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         membershipService.createContext("/", exchange -> {
             boolean known = exchange.getRequestURI().getPath().equals("/memberships/7");
+            if (exchange.getRequestURI().getPath().equals("/memberships/failing")) {
+                exchange.sendResponseHeaders(503, -1);
+                exchange.close();
+                return;
+            }
             byte[] body = (known ? MEMBERSHIP_SERVICE_RESPONSE : "{\"status\":404}").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(known ? 200 : 404, body.length);
@@ -49,9 +56,21 @@ class MembershipServiceAdapterTest {
 
     @Test
     void readsTheMemberAddressFromTheMembershipService() {
-        MemberAddressInfo info = adapter.getMemberAddressInfo("7");
+        MemberAddressInfo info = adapter.getMemberAddressInfo("7").orElseThrow();
 
         assertThat(info.getMembershipId()).isEqualTo("7");
         assertThat(info.getAddress()).isEqualTo("Seocho");
+    }
+
+    @Test
+    void aMemberThatDoesNotExistHasNoAddress() {
+        assertThat(adapter.getMemberAddressInfo("8")).isEmpty();
+    }
+
+    @Test
+    void anAnswerThatIsNotAMemberAndNoAnswerAreNotConfirmed() {
+        assertThatThrownBy(() -> adapter.getMemberAddressInfo("failing")).isInstanceOf(MemberAddressNotConfirmedException.class);
+        membershipService.stop(0);
+        assertThatThrownBy(() -> adapter.getMemberAddressInfo("7")).isInstanceOf(MemberAddressNotConfirmedException.class);
     }
 }

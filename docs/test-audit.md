@@ -70,7 +70,7 @@ The cases:
 
 | Use case | Normal | Refused | Repeated | Lost answer | Outage |
 | --- | --- | --- | --- | --- | --- |
-| Add an increase to the region total | MoneySumByAddressServicesTest, RegionTotalTest | RegionTotalTest (rolled back recharge) | RegionTotalTest, DynamoDBAdapterTest | - | DynamoDBAdapterTest (table), none (membership-service, [#228](https://github.com/chrysaor/JayPay/issues/228)) |
+| Add an increase to the region total | MoneySumByAddressServicesTest, RegionTotalTest | RegionTotalTest (rolled back recharge, member that does not exist) | RegionTotalTest, DynamoDBAdapterTest | - | DynamoDBAdapterTest (table), RegionTotalTest and MembershipServiceAdapterTest (membership-service) |
 | Read the region total | MoneySumByAddressServicesTest | - | - | - | DynamoDBAdapterTest |
 | Sum the balances at an address | GetMoneySumByAggregationServiceTest, GetMoneySumControllerTest | - | - | - | GetMoneySumControllerTest |
 
@@ -106,6 +106,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 - remittance-service had no test for the remittances of a member. It now has one.
 - [#225](https://github.com/chrysaor/JayPay/issues/225) found that a member who registered another bank account kept the first one, and fixed it.
 - [#223](https://github.com/chrysaor/JayPay/issues/223) found that a payment, a remittance, a bank account registration and the sum of balances read an outage of a service they call as a refusal or failed on it, and decision [0035](decisions/0035-an-outage-of-a-checked-service-answers-503.md) fixed the answer.
+- [#228](https://github.com/chrysaor/JayPay/issues/228) found that a top-up handled during an outage of membership-service never reached the region total. It is now asked again a fixed number of times.
 - Three gaps are filed: [#223](https://github.com/chrysaor/JayPay/issues/223), [#224](https://github.com/chrysaor/JayPay/issues/224) and [#225](https://github.com/chrysaor/JayPay/issues/225).
 
 Mutation testing would show which of the tested lines a test would notice changing. It needs a new build plugin, which waits for the owner's decision.

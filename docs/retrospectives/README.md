@@ -51,5 +51,6 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | 2026-11-27 | [The first-start saga test stopped the processor before its worker ran](2026-11-27-first-start-saga-test-failed-without-a-reason.md) | [#187](https://github.com/chrysaor/JayPay/pull/187), [#188](https://github.com/chrysaor/JayPay/pull/188) |
 | 2026-11-27 | [A remittance refund asked after the sender became invalid never landed](2026-11-27-refund-refused-for-an-invalid-sender.md) | [#184](https://github.com/chrysaor/JayPay/issues/184) |
 | 2026-11-27 | [Checks that passed without checking](2026-11-27-checks-that-passed-without-checking.md) | [#208](https://github.com/chrysaor/JayPay/issues/208) |
+| 2026-11-28 | [A top-up handled during an outage was left out of the region total](2026-11-28-top-up-during-an-outage-left-out-of-the-region-total.md) | [#228](https://github.com/chrysaor/JayPay/issues/228) |
 | 2026-11-28 | [The other callers still read an outage as a refusal](2026-11-28-other-callers-read-an-outage-as-a-refusal.md) | [#229](https://github.com/chrysaor/JayPay/pull/229) |
 | 2026-11-28 | [A member who registered another bank account kept the first one](2026-11-28-account-lookup-kept-the-first-registered-account.md) | [#225](https://github.com/chrysaor/JayPay/issues/225) |
