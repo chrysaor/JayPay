@@ -91,6 +91,14 @@ dir=$(copy_repo english)
 printf '\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-hangul.md"
 expect english fail "$dir" planted-hangul.md
 
+dir=$(copy_repo english-jamo)
+printf '\xe3\x85\x8e\xe3\x85\x8f\n' >"$dir/docs/planted-jamo.md"
+expect english fail "$dir" planted-jamo.md
+
+dir=$(copy_repo english-nul)
+printf 'text\0\xed\x95\x9c\xea\xb8\x80\n' >"$dir/docs/planted-nul.md"
+expect english fail "$dir" planted-nul.md
+
 dir=$(copy_repo changelog-order)
 perl -pi -e 's/^## \[0\.2\.0\]/## [0.0.9]/' "$dir/CHANGELOG.md"
 expect changelog fail "$dir" "\[0.0.9\] must be newer than \[0.1.0\]"
@@ -147,8 +155,8 @@ perl -0pi -e 's/(\n      SERVICE_BANKING_URL: [^\n]*)/$1\n      ZOOKEEPER_CONNEC
 expect env fail "$dir" ZOOKEEPER_CONNECT
 
 dir=$(copy_repo terraform)
-printf 'locals {\n  selftest   = 1\n}\n' >>"$dir/infra/terraform/envs/dev/main.tf"
-expect terraform fail "$dir" selftest
+printf 'locals {\n  misaligned   = 1\n}\n' >>"$dir/infra/terraform/envs/dev/main.tf"
+expect terraform fail "$dir" misaligned
 
 dir=$(copy_repo terraform-schema)
 perl -0pi -e 's/\n\}\s*\z/,\n  "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_IMAGE"}\n}\n/' "$dir/infra/terraform/modules/dynamodb-money-sum/table.json"

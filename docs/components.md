@@ -22,6 +22,7 @@ A new component is added to this page in the PR that introduces it.
 | Micrometer and the OpenTelemetry Logback appender | Metrics, traces and logs out of every service | Spring Boot BOM, `backend/gradle/libs.versions.toml` |
 | ArchUnit, Testcontainers | Hexagonal layer rules and tests against real PostgreSQL and Kafka | `backend/gradle/libs.versions.toml`, Spring Boot BOM |
 | React, TypeScript, Vite, Vitest | The customer site and the admin console | `frontend/package.json` and the `package.json` of each app |
+| Playwright | Drives the customer site and the admin console of a running stack in Chromium, `make e2e`. It downloads its own Chromium on the first run | `frontend/package.json` |
 | TanStack Query | Server state in both sites | `frontend/apps/*/package.json` |
 | Node | Frontend build | `frontend/Dockerfile` |
 | nginx | Serves both sites and proxies `/api`, runs the admin gate through `auth_request` | `frontend/Dockerfile` |

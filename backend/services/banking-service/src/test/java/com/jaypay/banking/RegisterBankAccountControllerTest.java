@@ -1,12 +1,13 @@
 package com.jaypay.banking;
 
-import com.jayway.jsonpath.JsonPath;
-import com.jaypay.banking.application.port.out.GetMembershipPort;
-import com.jaypay.banking.application.port.out.MembershipStatus;
-import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
-import com.jaypay.common.kafka.KafkaTestBroker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jaypay.banking.application.port.out.GetMembershipPort;
+import com.jaypay.banking.application.port.out.MembershipStatus;
+import com.jaypay.banking.domain.MembershipNotConfirmedException;
+import com.jaypay.common.event.CheckRegisteredBankAccountCommand;
+import com.jaypay.common.kafka.KafkaTestBroker;
+import com.jayway.jsonpath.JsonPath;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +67,53 @@ class RegisterBankAccountControllerTest {
                 .andExpect(jsonPath("$.bankAccountNumber").value("12345"))
                 .andExpect(jsonPath("$.linkedStatusIsValid").value(true))
                 .andExpect(jsonPath("$.aggregateIdentifier").isNotEmpty());
+    }
+
+    @Test
+    void registersNothingForAMemberThatMembershipDoesNotConfirm() throws Exception {
+        when(getMembershipPort.getMembership("71")).thenReturn(new MembershipStatus("71", false));
+
+        String answer = mockMvc.perform(post("/banking/account/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"membershipId": "71", "bankName": "Shinhan bank", "bankAccountNumber": "71-1", "valid": true}
+                                """))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(answer).doesNotContain("71-1");
+        mockMvc.perform(get("/banking/account/{membershipId}", "71")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aRegistrationWhileMembershipServiceDoesNotConfirmTheMemberAnswers503AndRegistersNothing() throws Exception {
+        when(getMembershipPort.getMembership("73")).thenThrow(new MembershipNotConfirmedException("73", "status 503"));
+
+        mockMvc.perform(post("/banking/account/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"membershipId": "73", "bankName": "Shinhan bank", "bankAccountNumber": "73-1", "valid": true}
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("MEMBERSHIP_NOT_CONFIRMED"));
+
+        mockMvc.perform(get("/banking/account/{membershipId}", "73")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void theAccountAMemberRegistersNextIsTheOneThatIsFound() throws Exception {
+        when(getMembershipPort.getMembership("72")).thenReturn(new MembershipStatus("72", true));
+        for (String account : new String[]{"72-1", "72-2"}) {
+            mockMvc.perform(post("/banking/account/register")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"membershipId": "72", "bankName": "Shinhan bank", "bankAccountNumber": "%s", "valid": true}
+                                    """.formatted(account)))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/banking/account/{membershipId}", "72"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankAccountNumber").value("72-2"));
     }
 
     @Test

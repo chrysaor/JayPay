@@ -1,6 +1,7 @@
 package com.jaypay.banking.adapter.out.service;
 
 import com.jaypay.banking.application.port.out.MembershipStatus;
+import com.jaypay.banking.domain.MembershipNotConfirmedException;
 import com.jaypay.common.CommonHttpClient;
 import com.sun.net.httpserver.HttpServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -15,6 +16,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MembershipServiceAdapterTest {
 
@@ -50,15 +52,40 @@ class MembershipServiceAdapterTest {
     }
 
     @Test
-    void returnsNoStatusForAnInvalidMembership() {
-        assertThat(adapter.getMembership("2")).isNull();
+    void reportsAMembershipThatIsNotValidAsNotValid() {
+        assertThat(adapter.getMembership("2").isValid()).isFalse();
+    }
+
+    @Test
+    void reportsAMemberThatDoesNotExistAsNotValid() {
+        respond("/memberships/3", 404, "");
+
+        assertThat(adapter.getMembership("3").isValid()).isFalse();
+    }
+
+    @Test
+    void anAnswerOf5xxIsNotAMemberThatIsNotValid() {
+        respond("/memberships/4", 503, "");
+
+        assertThatThrownBy(() -> adapter.getMembership("4")).isInstanceOf(MembershipNotConfirmedException.class);
+    }
+
+    @Test
+    void noAnswerIsNotAMemberThatIsNotValid() {
+        membershipService.stop(0);
+
+        assertThatThrownBy(() -> adapter.getMembership("1")).isInstanceOf(MembershipNotConfirmedException.class);
     }
 
     private void respond(String path, String body) {
+        respond(path, 200, body);
+    }
+
+    private void respond(String path, int status, String body) {
         membershipService.createContext(path, exchange -> {
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.close();
         });

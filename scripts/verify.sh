@@ -9,7 +9,7 @@ ACTIONLINT_IMAGE=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d
 HELM_IMAGE=alpine/helm:4.3.2@sha256:a3b9d617c0c30a6c488cebb429c4ba83995a26dc2184599af5fd408a361b2e67
 KUBECONFORM_IMAGE=ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
 KUBECTL_IMAGE=registry.k8s.io/kubectl:v1.34.9@sha256:06a7ce6adc8e89486cedf0afe1e818c10e1f4da2d45493bf2ee87336838e3187
-KUBERNETES_VERSION=1.34.0
+KUBERNETES_VERSION=$(sed -n 's/^kubernetes_version=v//p' scripts/k8s.sh)
 ARGOCD_VERSION=v3.5.9
 ARGOCD_INSTALL_SHA256=6eb366a0a0719a82ea084e382ce09ac67be53da3c3190c2ede8f82e4102e87d6
 ALL_STEPS=(changelog contract docs english env terraform actionlint charts frontend backend)

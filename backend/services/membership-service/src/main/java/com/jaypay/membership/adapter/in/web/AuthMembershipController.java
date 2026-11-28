@@ -7,7 +7,6 @@ import com.jaypay.membership.application.port.in.LoginMembershipCommand;
 import com.jaypay.membership.application.port.in.RefreshTokenCommand;
 import com.jaypay.membership.application.port.in.ValidateTokenCommand;
 import com.jaypay.membership.domain.JwtToken;
-import com.jaypay.membership.domain.Membership;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -52,8 +51,7 @@ public class AuthMembershipController {
                 .jwtToken(request.getJwtToken())
                 .build();
 
-        Membership membership = authMembershipUseCase.getMembershipByJwtToken(command);
-        return membership == null ? null : MembershipResponseMapper.toResponse(membership);
+        return MembershipResponseMapper.toResponse(authMembershipUseCase.getMembershipByJwtToken(command));
     }
 
 }

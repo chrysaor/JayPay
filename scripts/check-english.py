@@ -4,7 +4,24 @@ import re
 import sys
 
 SKIPPED_DIRS = {".git", ".claude", ".audit", ".gradle", ".terraform", "node_modules", "build", "dist"}
-HANGUL = re.compile(rb"\xea[\xb0-\xbf][\x80-\xbf]|[\xeb\xec][\x80-\xbf]{2}|\xed[\x80-\x9e][\x80-\xbf]")
+HANGUL = re.compile(
+    rb"\xe1[\x84-\x87][\x80-\xbf]"
+    rb"|\xe3\x84[\xb0-\xbf]|\xe3\x85[\x80-\xbf]|\xe3\x86[\x80-\x8f]"
+    rb"|\xea\xa5[\xa0-\xbf]"
+    rb"|\xea[\xb0-\xbf][\x80-\xbf]|[\xeb\xec][\x80-\xbf]{2}|\xed[\x80-\x9f][\x80-\xbf]"
+    rb"|\xef\xbe[\xa0-\xbf]|\xef\xbf[\x80-\x9c]"
+)
+
+
+def is_text(content):
+    if b"\0" not in content:
+        return True
+    try:
+        content.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
 
 root = sys.argv[1] if len(sys.argv) > 1 else "."
 found = 0
@@ -17,7 +34,7 @@ for folder, dirs, files in os.walk(root):
                 content = handle.read()
         except OSError:
             continue
-        if b"\0" in content:
+        if not is_text(content):
             continue
         lines = content.split(b"\n")
         for number, line in enumerate(lines, 1):

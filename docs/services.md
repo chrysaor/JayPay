@@ -4,6 +4,8 @@ This page describes each of the eleven Spring Boot services in `backend/services
 
 The services that use PostgreSQL let Hibernate create and update their tables with `SPRING_JPA_HIBERNATE_DDL_AUTO`, `update` in both local stacks. Hibernate adds a check constraint that lists the values of each enum column, and `update` never changes it, so on every start each service drops the checks that cover a single enum column, on a new database and on one that an older version created. The database then takes any status value, and only the code checks it. Checks named on an entity, such as the `wallet` balance and the `payment` fee, stay.
 
+Each of these services keeps a fixed pool of three connections, set once as `spring.datasource.hikari.maximum-pool-size` in `jaypay-common.yml`, and Keycloak keeps up to ten. An idle connection costs PostgreSQL about 1.8 MiB, so the nine services and Keycloak hold about 37 connections at most, where the Hikari default of ten each held 93 and filled the 256 MiB limit the postgres container had then. `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` changes the pool of one service without a new image. The limit is 512 MiB, so the shared buffers can fill with data and leave more than half of it free. `make smoke` fails when PostgreSQL uses more than 80% of its memory limit. See decisions [0033](decisions/0033-three-postgres-connections-per-service.md) and [0034](decisions/0034-postgres-memory-limit-of-512-mib.md).
+
 ## Log levels
 
 Every service logs at the Spring Boot default, `INFO`, and its levels follow the rule in [CONTRIBUTING.md](../CONTRIBUTING.md#logging). Spring Boot reads a level from the environment, so `LOGGING_LEVEL_COM_JAYPAY=DEBUG` turns on the `DEBUG` lines of our code in one service without a new image. A variable such as `LOGGING_LEVEL_COM_JAYPAY_MONEY` narrows it to one package.
@@ -51,10 +53,10 @@ The other services call `GET /memberships/{membershipId}` to check that a member
 - `GET /memberships/{membershipId}` returns one member, or answers 404 when the id names no member.
 - `GET /memberships/address/{addressName}` returns the members at one address.
 - `PUT /memberships/{membershipId}` edits a member.
-- `POST /memberships/login` issues the two tokens for a valid member.
+- `POST /memberships/login` issues the two tokens for a valid member. It answers 404 `MEMBERSHIP_NOT_FOUND` for an id that names no member and 401 `MEMBERSHIP_NOT_VALID` for a member that is not valid.
 - `POST /memberships/token-validate` answers whether a token has a valid signature and has not expired.
-- `POST /memberships/refresh-token` issues a new access token for the stored refresh token.
-- `POST /memberships/auth` returns the member that a token belongs to.
+- `POST /memberships/refresh-token` issues a new access token for the refresh token of the last sign-in. It answers 401 `TOKEN_REFUSED` for any other token and 401 `MEMBERSHIP_NOT_VALID` for a member that is not valid.
+- `POST /memberships/auth` returns the member of an access token or a refresh token that validates, and answers 401 `TOKEN_REFUSED` otherwise.
 
 [docs/api-contract.md](api-contract.md) lists every endpoint of every service.
 
@@ -62,8 +64,7 @@ The other services call `GET /memberships/{membershipId}` to check that a member
 
 - Login takes a member id only, with no password or other credential.
 - `PUT /memberships/{membershipId}` edits the member named by `membershipId` in the request body and ignores the id in the path.
-- `POST /memberships/auth` returns a member only when the token in the request equals the stored refresh token, so an access token never matches.
-- Login answers 200 with an empty body for a member that is not valid.
+- An access token and a refresh token differ only in how long they live, 20 and 60 seconds.
 
 ## banking-service
 
@@ -337,7 +338,7 @@ Read model of the money that saga top-ups added per address, kept in DynamoDB.
 | Other stores | DynamoDB table named by `DYNAMODB_TABLE_NAME`, `MoneyIncreaseEventByRegion` in Compose, defined in `infra/terraform/modules/dynamodb-money-sum/table.json` |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `DYNAMODB_TABLE_NAME`, `AWS_REGION`, `AWS_ENDPOINT_URL_DYNAMODB`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. Secrets are `SPRING_DATASOURCE_PASSWORD` and, against AWS, `AWS_SECRET_ACCESS_KEY`. |
 
-money-query-service calls membership-service to read the address of the member in each event.
+money-query-service calls membership-service to read the address of the member in each event. When membership-service fails or does not answer, it asks again every two seconds for 15 seconds (`region-total.membership-retry-after`, `region-total.membership-patience`), and the events behind wait. Axon interrupts an event handler after 30 seconds, so the patience plus one request timeout of 10 seconds has to stay below that. After that time it leaves the top-up out of the region total and logs one `ERROR` with the recharge id, the member and the amount. A top-up of a member that does not exist is left out with a `WARN`.
 
 ### What it does
 

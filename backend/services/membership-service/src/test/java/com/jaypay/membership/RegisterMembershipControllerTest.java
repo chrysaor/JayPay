@@ -36,4 +36,15 @@ class RegisterMembershipControllerTest {
                 .andExpect(jsonPath("$.corp").value(false))
                 .andExpect(jsonPath("$.refreshToken").doesNotExist());
     }
+
+    @Test
+    void refusesABlankAddressWith400() throws Exception {
+        mockMvc.perform(post("/memberships")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "name", "email": "email", "address": " ", "corp": false}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("ADDRESS_REQUIRED"));
+    }
 }

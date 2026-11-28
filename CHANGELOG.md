@@ -4,6 +4,31 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-28
+
+### Added
+
+- CI starts the Compose stack and runs `make smoke` on every push to `develop` (`smoke.yml`, which can also be started by hand), and `release.yml` runs the same smoke on a release branch or a tag and publishes images only after it passed. A failed run uploads the service logs as the `stack-logs` artifact, with every value of `infra/docker/.env` and the Vault root token and unseal key redacted. Pull requests do not run it ([#143](https://github.com/chrysaor/JayPay/issues/143))
+- `docs/test-audit.md` lists every use case of every service against the normal path, the refusals, a repeated request, a lost answer and an outage of a service it calls, with the test that covers each or none ([#149](https://github.com/chrysaor/JayPay/issues/149))
+- `make e2e` drives the customer site and the admin console of the running stack in Chromium with Playwright: a merchant and a member sign up, the member links a bank account, adds money, pays and signs in again, and staff sign in through Keycloak and follow that payment step by step in the event flow. CI runs it after the smoke on every push to `develop` and to a release branch ([#144](https://github.com/chrysaor/JayPay/issues/144))
+
+### Changed
+
+- Each service keeps three PostgreSQL connections in place of ten, so the postgres container runs at about half of its 256 MiB memory limit in place of 95 to 99%, where Kubernetes would kill it on the next growth. `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` raises the pool of one service, and `make smoke` now fails when PostgreSQL uses more than 80% of its limit ([#215](https://github.com/chrysaor/JayPay/issues/215))
+- The postgres container has a memory limit of 512 MiB in place of 256 MiB on Compose and on the local cluster. Its shared buffers fill as data is read, which took it to 94% of the old limit, and now leaves it at 43% ([#217](https://github.com/chrysaor/JayPay/issues/217))
+- `make k8s-up` starts the local cluster node with 14 GiB of memory in place of 10 GiB, less than the 10.9 GiB its pods request. The Docker VM needs at least 14 GiB, and `K8S_MEMORY` sets another size ([#219](https://github.com/chrysaor/JayPay/issues/219))
+
+### Fixed
+
+- membership-service answers 400 with an `error` and a `message` in place of 500 when a request is refused: `MEMBERSHIP_MUST_STAY_VALID` for `PUT /memberships/{membershipId}` with `valid: false`, and `ADDRESS_REQUIRED` for a blank address there and on `POST /memberships` ([#200](https://github.com/chrysaor/JayPay/issues/200))
+- `POST /memberships/token-validate` answers `false` in place of 500 for a token signed with another key ([#211](https://github.com/chrysaor/JayPay/issues/211))
+- `POST /memberships/login` answers 404 `MEMBERSHIP_NOT_FOUND` in place of 500 for a member that does not exist ([#149](https://github.com/chrysaor/JayPay/issues/149))
+- `POST /memberships/auth` answers the member of an access token. Before, it answered only for the refresh token of the last sign-in. A sign-in or a token refresh of a member that is not valid answers 401 `MEMBERSHIP_NOT_VALID`, and a token that is refused on `POST /memberships/refresh-token` or `POST /memberships/auth` answers 401 `TOKEN_REFUSED`. Before, each answered 200 with an empty body ([#224](https://github.com/chrysaor/JayPay/issues/224))
+- `GET /banking/account/{membershipId}` answers the bank account the member registered last. Before, a member who registered another account kept the first one for top-ups and settlement payouts ([#225](https://github.com/chrysaor/JayPay/issues/225))
+- While membership-service fails or does not answer, a payment, a remittance and a bank account registration answer 503 `MEMBERSHIP_NOT_CONFIRMED` and change nothing, and the same request sent later goes through once. Before, a payment and a remittance answered 400 as if the member were not valid, and a registration answered 500. `POST /money/aggregation/get-money-sum-by-address` answers 503 `MONEY_SUM_NOT_CONFIRMED` in place of 500 when membership-service or money-service fails. A bank account registration for a member that does not exist or is not valid registers nothing in place of answering 500 ([#223](https://github.com/chrysaor/JayPay/issues/223))
+- While banking-service fails or does not answer, a remittance to a bank account answers 503 `BANK_ACCOUNT_NOT_CONFIRMED` and changes nothing, and the same request sent later sends the money once. Before, it answered 400 `INVALID_BANK_ACCOUNT` as if the bank did not know the account ([#176](https://github.com/chrysaor/JayPay/issues/176))
+- A saga top-up that money-query-service handles while membership-service fails is counted in the region total when membership-service answers within 15 seconds. money-query-service asks again every two seconds. Before, it was left out for good after one attempt. After the 15 seconds the top-up is left out and one `ERROR` names the recharge, the member and the amount ([#228](https://github.com/chrysaor/JayPay/issues/228))
+
 ## [0.5.0] - 2026-11-27
 
 ### Added

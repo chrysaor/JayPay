@@ -40,6 +40,21 @@ describe('signing in', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This membership cannot sign in.')
   })
 
+  test('a sign-in the server refuses shows the reason the server gave', async () => {
+    fakeRoutes({
+      'POST /api/membership/memberships/login': {
+        status: 401,
+        body: { error: 'MEMBERSHIP_NOT_VALID', message: 'The membership 9 is not valid, so it cannot sign in.' },
+      },
+    })
+    const user = renderApp('/sign-in')
+
+    await user.type(await screen.findByLabelText('Membership ID'), '9')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The membership 9 is not valid, so it cannot sign in.')
+  })
+
   test('an unreachable server is reported on sign in', async () => {
     unreachableServer()
     const user = renderApp('/sign-in')

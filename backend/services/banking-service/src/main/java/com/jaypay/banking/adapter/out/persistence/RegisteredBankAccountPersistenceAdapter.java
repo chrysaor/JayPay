@@ -29,8 +29,7 @@ public class RegisteredBankAccountPersistenceAdapter implements RegisterBankAcco
 
     @Override
     public Optional<RegisteredBankAccount> getRegisteredBankAccount(String membershipId) {
-        return bankAccountRepository.findByMembershipId(membershipId).stream()
-                .findFirst()
+        return bankAccountRepository.findFirstByMembershipIdOrderByRegisteredBankAccountIdDesc(membershipId)
                 .map(RegisteredBankAccountPersistenceAdapter::toDomain);
     }
 

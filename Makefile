@@ -14,7 +14,7 @@ BACKEND_VERSION_FILE := backend/build-logic/src/main/kotlin/jaypay.java.gradle.k
 GIT_COMMON_DIR :=$(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test coverage scorecard verify verify-selftest images scan scan-images push up smoke down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
+.PHONY: help build test coverage scorecard verify verify-selftest images scan scan-images push up smoke e2e down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
@@ -29,6 +29,7 @@ help:
 	@echo "make push TAG=<tag>            push images to $(REGISTRY)/jaypay-<name>:<tag>"
 	@echo "make up | down                 start or stop the local stack in infra/docker"
 	@echo "make smoke                     drive the running stack end to end"
+	@echo "make e2e                       drive the web site and the admin console of the running stack in a browser"
 	@echo "make k8s-up | k8s-down         start or delete the local minikube cluster, profile jaypay"
 	@echo "make k8s-smoke                 drive the cluster end to end through its ingress"
 	@echo "make k8s-gitops-check          prove that Argo CD follows a commit and reverts a manual change"
@@ -98,6 +99,9 @@ up: infra/docker/.env
 
 smoke:
 	scripts/smoke.sh
+
+e2e: $(FRONTEND_DEPS)
+	scripts/e2e.sh
 
 down:
 	cd infra/docker && docker compose down

@@ -28,7 +28,7 @@ class BankingPersistenceTest {
         registeredBankAccountRepository.saveAndFlush(new RegisteredBankAccountJpaEntity("7", "Shinhan bank", "12345", true, "aggregate-7"));
         entityManager.clear();
 
-        assertThat(registeredBankAccountRepository.findByMembershipId("7"))
+        assertThat(registeredBankAccountRepository.findFirstByMembershipIdOrderByRegisteredBankAccountIdDesc("7").stream())
                 .extracting(
                         RegisteredBankAccountJpaEntity::getMembershipId,
                         RegisteredBankAccountJpaEntity::getBankName,

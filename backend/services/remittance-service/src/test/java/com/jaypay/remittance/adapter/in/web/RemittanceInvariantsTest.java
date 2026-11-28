@@ -59,6 +59,7 @@ class RemittanceInvariantsTest {
     private static final AtomicLong MEMBERS = new AtomicLong(9000);
     private static final Set<String> INVALID = ConcurrentHashMap.newKeySet();
     private static final Set<String> UNKNOWN = ConcurrentHashMap.newKeySet();
+    private static final Set<String> MEMBERSHIP_FAILING = ConcurrentHashMap.newKeySet();
     private static final Set<String> CREDIT_REFUSED = ConcurrentHashMap.newKeySet();
     private static final Set<String> MONEY_SILENT = ConcurrentHashMap.newKeySet();
     private static final Set<String> REFUND_UNKNOWN = ConcurrentHashMap.newKeySet();
@@ -69,6 +70,7 @@ class RemittanceInvariantsTest {
     private static final Map<String, AtomicInteger> FAILING = new ConcurrentHashMap<>();
     private static final List<String> MONEY_CALLS = new CopyOnWriteArrayList<>();
     private static final Set<String> INVALID_ACCOUNTS = ConcurrentHashMap.newKeySet();
+    private static final Set<String> UNCHECKED_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> REFUSED_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> SILENT_ACCOUNTS = ConcurrentHashMap.newKeySet();
     private static final Set<String> FAILING_ACCOUNTS = ConcurrentHashMap.newKeySet();
@@ -100,6 +102,17 @@ class RemittanceInvariantsTest {
     @AfterAll
     static void stopFakeJayPay() {
         JAYPAY.stop(0);
+    }
+
+    @Test
+    void listsARemittanceForItsSenderAndItsReceiverAndForNobodyElse() throws Exception {
+        String sender = memberWithBalance(20000);
+        String receiver = memberWithBalance(0);
+        String id = remit(toMember(UUID.randomUUID().toString(), sender, receiver, "5000")).get("remittanceId").asText();
+
+        assertThat(history(sender)).extracting(remittance -> remittance.get("remittanceId").asText()).containsExactly(id);
+        assertThat(history(receiver)).extracting(remittance -> remittance.get("remittanceId").asText()).containsExactly(id);
+        assertThat(history(memberWithBalance(0))).isEmpty();
     }
 
     @Test
@@ -159,6 +172,30 @@ class RemittanceInvariantsTest {
         assertThat(remittance.get("remittanceStatus").asText()).isEqualTo("COMPLETED");
         assertThat(BALANCES.get(sender)).isZero();
         assertThat(BALANCES.get(receiver)).isEqualTo(10_000_000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"sender", "receiver"})
+    void aRemittanceMembershipServiceFailsWith5xxTakesNothingAndTheRepeatMovesTheMoneyOnce(String unconfirmed) throws Exception {
+        String sender = memberWithBalance(10000);
+        String receiver = memberWithBalance(0);
+        String requestId = UUID.randomUUID().toString();
+        String failing = unconfirmed.equals("sender") ? sender : receiver;
+        MEMBERSHIP_FAILING.add(failing);
+
+        HttpResponse<String> duringTheOutage = post(toMember(requestId, sender, receiver, "4000"));
+
+        assertThat(duringTheOutage.statusCode()).as(duringTheOutage.body()).isEqualTo(503);
+        assertThat(error(duringTheOutage)).isEqualTo("MEMBERSHIP_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(10000);
+
+        MEMBERSHIP_FAILING.remove(failing);
+        remit(toMember(requestId, sender, receiver, "4000"));
+
+        assertThat(BALANCES.get(sender)).isEqualTo(6000);
+        assertThat(BALANCES.get(receiver)).isEqualTo(4000);
+        assertThat(flowSteps(requestId, 3)).extracting(RemittanceInvariantsTest::stepAndOutcome)
+                .containsExactly("REMITTANCE_REQUESTED SUCCEEDED", "SENDER_DEBITED SUCCEEDED", "RECEIVER_CREDITED SUCCEEDED");
     }
 
     @Test
@@ -672,6 +709,27 @@ class RemittanceInvariantsTest {
     }
 
     @Test
+    void aRemittanceWhoseBankAccountBankingServiceFailsToCheckTakesNothingAndTheRepeatSendsTheMoneyOnce() throws Exception {
+        String sender = memberWithBalance(20000);
+        String account = "1003-" + sender;
+        String requestId = UUID.randomUUID().toString();
+        UNCHECKED_ACCOUNTS.add(account);
+
+        HttpResponse<String> duringTheOutage = post(toBank(requestId, sender, "Jay Bank", account, "7000"));
+
+        assertThat(duringTheOutage.statusCode()).as(duringTheOutage.body()).isEqualTo(503);
+        assertThat(error(duringTheOutage)).isEqualTo("BANK_ACCOUNT_NOT_CONFIRMED");
+        assertThat(BALANCES.get(sender)).isEqualTo(20000);
+        assertThat(transfersTo(account)).isEmpty();
+
+        UNCHECKED_ACCOUNTS.remove(account);
+        remit(toBank(requestId, sender, "Jay Bank", account, "7000"));
+
+        assertThat(BALANCES.get(sender)).isEqualTo(13000);
+        assertThat(transfersTo(account)).hasSize(1);
+    }
+
+    @Test
     void refusesABankAccountTheBankDoesNotKnow() throws Exception {
         String sender = memberWithBalance(20000);
         String account = "1002-" + sender;
@@ -1026,6 +1084,13 @@ class RemittanceInvariantsTest {
                 + "\",\"toBankAccountNumber\":\"" + account + "\",\"remittanceType\":1,\"amount\":" + amount + "}";
     }
 
+    private JsonNode history(String membershipId) throws Exception {
+        HttpResponse<String> response = HTTP.send(
+                HttpRequest.newBuilder(uri("/remittance/" + membershipId)).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        return JSON.readTree(response.body());
+    }
+
     private JsonNode remit(String body) throws Exception {
         HttpResponse<String> response = post(body);
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
@@ -1076,6 +1141,10 @@ class RemittanceInvariantsTest {
                     respond(exchange, 404, "");
                     return;
                 }
+                if (MEMBERSHIP_FAILING.contains(member)) {
+                    respond(exchange, 503, "");
+                    return;
+                }
                 respond(exchange, 200, "{\"membershipId\":\"" + member + "\",\"name\":\"Member\",\"email\":\"member@example.com\","
                         + "\"address\":\"Seocho\",\"valid\":" + !INVALID.contains(member) + ",\"corp\":false}");
             });
@@ -1085,6 +1154,10 @@ class RemittanceInvariantsTest {
             server.createContext("/banking/info", exchange -> {
                 JsonNode account = JSON.readTree(exchange.getRequestBody().readAllBytes());
                 String number = account.get("bankAccountNumber").asText();
+                if (UNCHECKED_ACCOUNTS.contains(number)) {
+                    respond(exchange, 503, "");
+                    return;
+                }
                 respond(exchange, 200, INVALID_ACCOUNTS.contains(number) ? "" : "{\"bankName\":\"" + account.get("bankName").asText()
                         + "\",\"bankAccountNumber\":\"" + number + "\",\"valid\":true}");
             });

@@ -67,11 +67,11 @@ The `changelog` step of `make verify` checks the format. On a PR into `develop`,
 
 1. `make release-branch VERSION=X.Y.Z`, then `git push -u origin release/X.Y.Z`. It stops before it does anything when the working tree or the index holds uncommitted changes, which would end up in the release commit, and it fails when Unreleased is empty. Otherwise the branch starts with one commit, `chore: release X.Y.Z`, that sets the backend version and turns Unreleased into `## [X.Y.Z] - <today>` with an empty Unreleased above it.
 2. On the release branch, turn `## X.Y.Z (unreleased)` in [docs/news.md](docs/news.md) into `## X.Y.Z (<today>)` and complete that section and the In progress table, and drop `(unreleased)` from the decision records of the release and from the index in `docs/decisions/README.md`. `make release-branch` does not change these files. Commit and push.
-3. Each push to the release branch runs `release.yml`. It verifies, builds every image, fails on HIGH or CRITICAL findings, and publishes `ghcr.io/chrysaor/jaypay-<name>:X.Y.Z-rc.<sha>`. Deploy the candidate and check it.
+3. Each push to the release branch runs `release.yml`. It runs the smoke of `smoke.yml` against the Compose stack, verifies, builds every image, fails on HIGH or CRITICAL findings, and only once the smoke passed publishes `ghcr.io/chrysaor/jaypay-<name>:X.Y.Z-rc.<sha>`. Deploy the candidate and check it.
 4. Open a PR from `release/X.Y.Z` into `master`, and merge it once the owner confirms.
 5. After the merge, and with the owner's confirmation, tag the merge commit and push the tag:
    `git tag vX.Y.Z <merge-commit> && git push origin vX.Y.Z`
-   `release.yml` rebuilds and scans the images, publishes `ghcr.io/chrysaor/jaypay-<name>:vX.Y.Z`, and creates the GitHub Release with the `## [X.Y.Z]` section of `CHANGELOG.md` as its notes. Both the release branch and the tag runs read that section first and fail before they build anything when it is missing. Creating the Release is retried, and a rerun passes when the Release exists.
+   `release.yml` runs the smoke again, rebuilds and scans the images, publishes `ghcr.io/chrysaor/jaypay-<name>:vX.Y.Z` once the smoke passed, and creates the GitHub Release with the `## [X.Y.Z]` section of `CHANGELOG.md` as its notes. On both the release branch and the tag, the release job reads that section first and fails before it builds anything when it is missing. Creating the Release is retried, and a rerun passes when the Release exists.
 6. Merge `release/X.Y.Z` back into `develop`.
 
 ## Running locally
@@ -83,6 +83,6 @@ make smoke
 make down
 ```
 
-The first `make up` writes `infra/docker/.env` with random secrets. `make smoke` drives the running stack end to end.
+The first `make up` writes `infra/docker/.env` with random secrets. `make smoke` drives the running stack end to end, and `make e2e` drives the two sites of the running stack in a browser. CI runs the same targets in `smoke.yml` on every push to `develop` and in `release.yml` on every push to a release branch or a tag, but not on pull requests, and uploads the service logs with the values of `.env` redacted when the smoke fails.
 
 `make scan` runs the Trivy filesystem scan and the gitleaks history scan from `SECURITY.md`.

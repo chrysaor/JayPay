@@ -3,9 +3,11 @@ package com.jaypay.banking.application.service;
 import com.jaypay.banking.application.port.in.RegisterBankAccountCommand;
 import com.jaypay.banking.application.port.out.GetMembershipPort;
 import com.jaypay.banking.application.port.out.GetRegisteredBankAccountPort;
+import com.jaypay.banking.application.port.out.MembershipStatus;
 import com.jaypay.banking.application.port.out.RegisterBankAccountPort;
 import com.jaypay.banking.application.port.out.RegisteredBankAccountAggregatePort;
 import com.jaypay.banking.application.port.out.RequestBankAccountInfoPort;
+import com.jaypay.banking.domain.ExternalBankingInfo;
 import com.jaypay.common.logging.LogRecorder;
 import org.axonframework.commandhandling.CommandExecutionException;
 import org.junit.jupiter.api.Test;
@@ -22,9 +24,25 @@ class RegisterBankAccountServiceTest {
 
     private final RegisterBankAccountPort registerBankAccountPort = mock(RegisterBankAccountPort.class);
     private final RegisteredBankAccountAggregatePort aggregatePort = mock(RegisteredBankAccountAggregatePort.class);
+    private final GetMembershipPort getMembershipPort = mock(GetMembershipPort.class);
+    private final RequestBankAccountInfoPort requestBankAccountInfoPort = mock(RequestBankAccountInfoPort.class);
     private final RegisterBankAccountService service = new RegisterBankAccountService(
-            mock(GetMembershipPort.class), registerBankAccountPort, mock(RequestBankAccountInfoPort.class),
+            getMembershipPort, registerBankAccountPort, requestBankAccountInfoPort,
             mock(GetRegisteredBankAccountPort.class), aggregatePort);
+
+    @Test
+    void registersNothingForAnAccountTheBankReportsAsNotValid() {
+        when(getMembershipPort.getMembership("8")).thenReturn(new MembershipStatus("8", true));
+        when(requestBankAccountInfoPort.getBankAccountInfo("jaybank", "100-200-400")).thenReturn(
+                ExternalBankingInfo.generatedExternalBankingInfo(
+                        new ExternalBankingInfo.BankName("jaybank"),
+                        new ExternalBankingInfo.BankAccountNumber("100-200-400"),
+                        new ExternalBankingInfo.IsValid(false)));
+
+        assertThat(service.registerBankAccount(new RegisterBankAccountCommand("8", "jaybank", "100-200-400", true))).isNull();
+
+        verifyNoInteractions(aggregatePort, registerBankAccountPort);
+    }
 
     @Test
     void logsARegistrationByEventThatAxonRefusedAsErrorWithTheMemberAndTheExceptionButNotTheAccountNumber() {

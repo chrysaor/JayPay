@@ -1,6 +1,9 @@
 spring:
   jackson:
     use-jackson2-defaults: true
+  datasource:
+    hikari:
+      maximum-pool-size: 3
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     template:
