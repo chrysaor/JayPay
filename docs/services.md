@@ -339,7 +339,7 @@ Read model of the money that saga top-ups added per address, kept in DynamoDB.
 | Other stores | DynamoDB table named by `DYNAMODB_TABLE_NAME`, `MoneyIncreaseEventByRegion` in Compose, defined in `infra/terraform/modules/dynamodb-money-sum/table.json` |
 | Configuration | `KAFKA_BOOTSTRAP_SERVERS`, `AXON_AXONSERVER_SERVERS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOG_FORMAT`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `SPRING_JPA_HIBERNATE_DDL_AUTO`, `SERVICE_MEMBERSHIP_URL`, `DYNAMODB_TABLE_NAME`, `AWS_REGION`, `AWS_ENDPOINT_URL_DYNAMODB`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. Secrets are `SPRING_DATASOURCE_PASSWORD` and, against AWS, `AWS_SECRET_ACCESS_KEY`. |
 
-money-query-service calls membership-service to read the address of the member in each event.
+money-query-service calls membership-service to read the address of the member in each event. When membership-service fails or does not answer, it asks again every two seconds for 15 seconds (`region-total.membership-retry-after`, `region-total.membership-patience`), and the events behind wait. Axon interrupts an event handler after 30 seconds, so the patience plus one request timeout of 10 seconds has to stay below that. After that time it leaves the top-up out of the region total and logs one `ERROR` with the recharge id, the member and the amount. A top-up of a member that does not exist is left out with a `WARN`.
 
 ### What it does
 
