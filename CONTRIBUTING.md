@@ -31,6 +31,27 @@ Who merges:
 7. Merge after CI passes.
 8. Close the issue. `Closes` only fires on `master`, so merging into `develop` leaves it open.
 
+## Schema changes
+
+The application goes back, the database only goes forward. A change that reached a database is never reverted: dropped data does not return, and data written since would be lost. When a release fails, the previous application version runs again on the schema as it is. A wrong schema change is corrected by a new change.
+
+So the previous release must run on the schema that a release leaves.
+
+- Safe in one release: a new table, and a new column that is nullable or has a default. The previous release ignores what it does not know.
+- Split over releases: dropping or renaming a column or a table, narrowing a type, and adding NOT NULL or a constraint to a column that exists.
+
+A rename of `status` to `state` takes three releases:
+
+| Release | Schema | Application | Going back to the release before |
+| --- | --- | --- | --- |
+| N | adds `state` and copies the values | writes both and reads `state` | works, the release before uses `status` |
+| N+1 | nothing | uses `state` only | works |
+| N+2 | drops `status` | nothing | works back to N+1 only |
+
+Drop the old column only when going back past that release is no longer needed. Say in the changelog line of that release how far back it can go.
+
+Restoring a database to an earlier state is a matter of backup and recovery. The local stacks have neither.
+
 ## Logging
 
 Each backend log line takes the level of what it tells the operator:
