@@ -6,7 +6,7 @@ mkdir -p "$root/build"
 work=$(mktemp -d "$root/build/verify-selftest.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 failures=0
-export ARGOCD_CACHE=$root/build/argocd
+export INSTALL_CACHE=$root/build/install
 
 copy_repo() {
   local dest="$work/$1"
@@ -252,11 +252,23 @@ expect charts fail "$dir" "additional properties 'selfHealing' not allowed"
 
 dir=$(copy_repo charts-argocd-version)
 perl -pi -e 's/^ARGOCD_INSTALL_SHA256=.*/ARGOCD_INSTALL_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' "$dir/scripts/verify.sh"
-expect charts fail "$dir" "does not match ARGOCD_INSTALL_SHA256"
+expect charts fail "$dir" "argocd: core-install.yaml of"
 
 dir=$(copy_repo charts-argocd-patch)
 perl -pi -e 's/name: argocd-repo-server$/name: argocd-repo-servers/' "$dir/deploy/argocd/local/kustomization.yaml"
 expect charts fail "$dir" "argocd-repo-server does not mount jaypay-git"
+
+dir=$(copy_repo charts-envoy-gateway-version)
+perl -pi -e 's/^ENVOY_GATEWAY_INSTALL_SHA256=.*/ENVOY_GATEWAY_INSTALL_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' "$dir/scripts/verify.sh"
+expect charts fail "$dir" "envoy-gateway: install.yaml of"
+
+dir=$(copy_repo charts-envoy-gateway-image)
+perl -pi -e 's{image: docker.io/envoyproxy/ratelimit:.*}{image: docker.io/envoyproxy/ratelimit:planted}' "$dir/deploy/envoy-gateway/local/envoy-gateway-config.yaml"
+expect charts fail "$dir" "does not run docker.io/envoyproxy/ratelimit"
+
+dir=$(copy_repo charts-gateway-field)
+perl -pi -e 's/^(\s*)protocol: HTTP/$1protocol: HTTP\n$1planted: true/' "$dir/deploy/charts/gateway/templates/gateway.yaml"
+expect charts fail "$dir" "additional properties 'planted' not allowed"
 
 [ "$failures" -eq 0 ] || { echo "$failures self-test case(s) failed"; exit 1; }
 echo "verify.sh catches every planted failure"

@@ -4,6 +4,10 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+### Added
+
+- The local cluster runs Envoy Gateway 1.10.0 with a Gateway of its own and a Valkey for its rate limit counts. `make k8s-up` installs it from an install manifest pinned by checksum, Argo CD syncs the Gateway from `deploy/envs/local/gateway`, and `make k8s-smoke` checks that it answers. No route goes through it yet, the sites still use the Ingress. The node needs 544 MiB more memory in requests ([#237](https://github.com/chrysaor/JayPay/issues/237))
+
 ## [0.6.0] - 2026-11-28
 
 ### Added

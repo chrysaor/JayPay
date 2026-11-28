@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gateway
+description: The Gateway of one environment and the Envoy proxies that serve it, rendered from deploy/envs/<env>/gateway/<gateway>.yaml
+type: application
+version: 0.1.0
