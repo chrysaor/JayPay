@@ -47,6 +47,7 @@ Merging into `master` and creating a `vX.Y.Z` tag need the user's explicit confi
 - No comments in code or config. Names and tests carry the meaning.
 - SOLID, applied with judgment. An interface with one implementation that is not a boundary, and a layer that only passes calls through, are anti-patterns. Delete them.
 - Hexagonal dependency direction inside each service: `domain` ← `application` ← `adapter`. `domain` imports neither of the others. `application` talks to the outside only through its `port.in` and `port.out` interfaces.
+- A schema change only goes forward, and the previous release must run on the schema a release leaves. Nothing reverts a change in a database: a failed release is answered by running the previous application version on the schema as it is, and a wrong change by a new change. Adding a column or a table is safe. Dropping or renaming a column, narrowing a type or adding NOT NULL to a column that exists is split over releases: add in one, remove in a later one. See `CONTRIBUTING.md` and decision 0041.
 - Secrets come from environment variables only. Never commit them, never give them defaults. Local values live in `infra/docker/.env`, which git ignores.
 
 ## Dependencies

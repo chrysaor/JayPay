@@ -74,6 +74,7 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0038](0038-cold-start-restarts-are-accepted.md) | Restarts on a cold start of the cluster are accepted | 0.6.0 | accepted | [#205](https://github.com/chrysaor/JayPay/issues/205) |
 | [0039](0039-no-mutation-testing-for-now.md) | No mutation testing for now | 0.6.0 | accepted | [#149](https://github.com/chrysaor/JayPay/issues/149) |
 | [0040](0040-gateway-api-with-envoy-gateway.md) | The gateway is the Kubernetes Gateway API with Envoy Gateway | 0.7.0 (unreleased) | accepted | [#115](https://github.com/chrysaor/JayPay/issues/115) |
+| [0041](0041-schema-changes-only-go-forward.md) | A schema change only goes forward, and the previous release runs on the new schema | 0.7.0 (unreleased) | accepted | [#242](https://github.com/chrysaor/JayPay/issues/242) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 
@@ -83,6 +84,7 @@ The open issues with the `needs-decision` label. Each waits for the owner. A rec
 
 | Decision | Options in the issue | Blocks release | Issue |
 | --- | --- | --- | --- |
+| Which schema migration tool, and when it runs | Flyway, Liquibase, Atlas or keep Hibernate. When the service starts or in a Job before the rollout | 0.8.0 | [#243](https://github.com/chrysaor/JayPay/issues/243) |
 | Are the service boundaries right for a payment service? | A: keep the eleven services and add merchant data, a ledger and a settlement record. B: A plus merging settlement into payment-service, the two reporting services into one, and removing logging-consumer. C: B plus a merchant service. The review recommends B | not scheduled | [#135](https://github.com/chrysaor/JayPay/issues/135) |
 | Whether the third-party images join the image scan | Scan them or not, fail on a HIGH finding with no fixed version or not, and accept the Keycloak findings until a fixed image is published or not | not scheduled | [#121](https://github.com/chrysaor/JayPay/issues/121) |
 | Supply chain of the release workflow | Splitting verify from publish, Gradle checksums and the otel-collector image need no new component. Signing images does, and waits for the owner's approval | not scheduled | [#102](https://github.com/chrysaor/JayPay/issues/102) |
