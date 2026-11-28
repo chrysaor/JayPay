@@ -71,6 +71,8 @@ Keep it to one page. Leave out secrets, account values and request examples that
 | [0035](0035-an-outage-of-a-checked-service-answers-503.md) | A request whose member or bank account cannot be checked answers 503 and leaves no flow step | 0.6.0 (unreleased) | accepted | [#176](https://github.com/chrysaor/JayPay/issues/176), [#223](https://github.com/chrysaor/JayPay/issues/223), [retrospective](../retrospectives/2026-11-28-other-callers-read-an-outage-as-a-refusal.md) |
 | [0036](0036-region-total-asks-for-the-address-for-a-fixed-time.md) | The region total asks for a member's address for a fixed time, then leaves the top-up out | 0.6.0 (unreleased) | accepted | [#228](https://github.com/chrysaor/JayPay/issues/228), [retrospective](../retrospectives/2026-11-28-top-up-during-an-outage-left-out-of-the-region-total.md) |
 | [0037](0037-sign-in-refusals-answer-401.md) | The sign-in endpoints refuse with 401, and an access token names its member | 0.6.0 (unreleased) | accepted | [#224](https://github.com/chrysaor/JayPay/issues/224) |
+| [0038](0038-cold-start-restarts-are-accepted.md) | Restarts on a cold start of the cluster are accepted | 0.6.0 (unreleased) | accepted | [#205](https://github.com/chrysaor/JayPay/issues/205) |
+| [0039](0039-no-mutation-testing-for-now.md) | No mutation testing for now | 0.6.0 (unreleased) | accepted | [#149](https://github.com/chrysaor/JayPay/issues/149) |
 
 The release of each record comes from the changelog section that lists its PR, or from where the PR's merge falls between the release tags.
 
