@@ -17,7 +17,7 @@ The cases:
 | Register a member | RegisterMembershipControllerTest | RegisterMembershipControllerTest (blank address) | - | - | VaultAdapterTest (Vault at start) |
 | Modify a member | MembershipResponseTest | ModifyMembershipControllerTest | - | - | - |
 | Find a member by id or address | MembershipResponseTest, MembershipPersistenceTest | none (unknown id) | - | - | - |
-| Sign in | AuthMembershipControllerTest | AuthMembershipControllerTest (unknown member), none (member that is not valid, [#224](https://github.com/chrysaor/JayPay/issues/224)) | - | - | - |
+| Sign in | AuthMembershipControllerTest | AuthMembershipControllerTest (unknown member, member that is not valid) | - | - | - |
 | Refresh a token | AuthMembershipControllerTest | AuthMembershipControllerTest | - | - | - |
 | Validate a token | AuthMembershipControllerTest, JwtTokenProviderTest | JwtTokenProviderTest | - | - | - |
 | Member of a token | MembershipResponseTest | AuthMembershipControllerTest | - | - | - |
@@ -91,7 +91,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 | Class | Not reached | What it means |
 | --- | --- | --- |
 | `GetMoneySumByAggregationService`, `GetMoneySumController` | every line | Closed here by GetMoneySumByAggregationServiceTest. The controller is covered by GetMoneySumControllerTest |
-| `AuthMembershipService` | 9 of 12 branches | Closed here by AuthMembershipControllerTest, except the answers [#224](https://github.com/chrysaor/JayPay/issues/224) has to decide |
+| `AuthMembershipService` | 9 of 12 branches | Closed here by AuthMembershipControllerTest, and by the answers decision [0037](decisions/0037-sign-in-refusals-answer-401.md) fixed |
 | `RegisterBankAccountService`, `BankAccountAdapter` | 3 of 6 and 4 of 4 branches | The refusals of a registration are closed by [#225](https://github.com/chrysaor/JayPay/issues/225). The branches of `BankAccountAdapter` are the fake bank's refusal of a transfer, which `BankTransferTest` replaces with its own bank |
 | `FlowRetentionScheduler`, `SettlementBatchScheduler` | every line, 5 each | Each only calls its use case on a schedule. The use cases are tested, the schedule is not |
 | `DummyDataGenerator`, `DummyMoneyDataSimulator` in `tools/utility` | every line, 130 | Developer tools that fill a running stack. Not part of a service |

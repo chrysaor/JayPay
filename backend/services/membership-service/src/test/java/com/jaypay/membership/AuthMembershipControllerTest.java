@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -25,6 +26,9 @@ class AuthMembershipControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Test
     void aSignInAnswersTokensThatValidate() throws Exception {
@@ -61,21 +65,45 @@ class AuthMembershipControllerTest {
     void anAccessTokenIsNotARefreshToken() throws Exception {
         String accessToken = JsonPath.read(signIn(register()).andReturn().getResponse().getContentAsString(), "$.jwtToken");
 
-        String answer = send("/memberships/refresh-token", "refreshToken", accessToken)
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
+        send("/memberships/refresh-token", "refreshToken", accessToken)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("TOKEN_REFUSED"));
+    }
 
-        assertThat(answer).isEmpty();
+    @Test
+    void anAccessTokenAndTheRefreshTokenNameTheirMember() throws Exception {
+        String membershipId = register();
+        String login = signIn(membershipId).andReturn().getResponse().getContentAsString();
+
+        for (String field : new String[]{"jwtToken", "refreshToken"}) {
+            send("/memberships/auth", "jwtToken", JsonPath.read(login, "$." + field))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.membershipId").value(membershipId))
+                    .andExpect(jsonPath("$.email").value("kim@example.com"));
+        }
+    }
+
+    @Test
+    void aMemberThatIsNotValidNeitherSignsInNorRefreshesAToken() throws Exception {
+        String membershipId = register();
+        String refreshToken = JsonPath.read(signIn(membershipId).andReturn().getResponse().getContentAsString(), "$.refreshToken");
+        jdbc.update("update membership set is_valid = false where membership_id = ?", Long.valueOf(membershipId));
+
+        signIn(membershipId)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("MEMBERSHIP_NOT_VALID"));
+        send("/memberships/refresh-token", "refreshToken", refreshToken)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("MEMBERSHIP_NOT_VALID"));
     }
 
     @Test
     void aTextThatIsNoTokenRefreshesNothingAndNamesNoMember() throws Exception {
-        assertThat(send("/memberships/refresh-token", "refreshToken", "not-a-token")
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString()).isEmpty();
-        assertThat(send("/memberships/auth", "jwtToken", "not-a-token")
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString()).isEmpty();
+        for (String[] request : new String[][]{{"/memberships/refresh-token", "refreshToken"}, {"/memberships/auth", "jwtToken"}}) {
+            send(request[0], request[1], "not-a-token")
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error").value("TOKEN_REFUSED"));
+        }
     }
 
     @Test
