@@ -1,9 +1,3 @@
-upstreams:
-  JAYPAY_BANKING_URL: banking-service
-  JAYPAY_MEMBERSHIP_URL: membership-service
-  JAYPAY_MONEY_URL: money-service
-  JAYPAY_PAYMENT_URL: payment-service
-  JAYPAY_REMITTANCE_URL: remittance-service
 ingress:
   enabled: true
   className: nginx

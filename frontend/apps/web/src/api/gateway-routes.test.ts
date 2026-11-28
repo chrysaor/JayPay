@@ -30,28 +30,16 @@ const screenCalls: Record<string, () => Promise<unknown>> = {
   requestPayment: () => payment.requestPayment({ requestId: 'r', requestMembershipId: '1', franchiseId: '2', requestPrice: 1 }),
 }
 
-type Route = { key: string; matches: (request: string) => string | null; upstream: string }
+type Route = { key: string; service: string; pattern: RegExp }
 
 function routes(): Route[] {
-  const template = readFileSync(resolve(import.meta.dirname, '../../nginx.conf.template'), 'utf8')
-  const table = /map "\$request_method \$uri" \$jaypay_upstream \{\n([\s\S]*?)\n\}/.exec(template)?.[1] ?? ''
-  return table
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('"'))
-    .map((line) => {
-      const [, key = '', upstream = ''] = /^"([^"]+)"\s+(\S+);$/.exec(line) ?? []
-      if (!key.startsWith('~')) return { key, upstream, matches: (request) => (request === key ? upstream : null) }
-      const pattern = new RegExp(key.slice(1))
-      return {
-        key,
-        upstream,
-        matches: (request) => {
-          const groups = pattern.exec(request)?.groups
-          return groups ? upstream.replace(/\$(\w+)/g, (_, name: string) => groups[name] ?? '') : null
-        },
-      }
-    })
+  const values = readFileSync(resolve(import.meta.dirname, '../../../../../deploy/charts/gateway/values.yaml'), 'utf8')
+  const site = /^customerSite:\n((?: .*\n)*)/m.exec(values)?.[1] ?? ''
+  return [...site.matchAll(/^ {4}- \{ service: ([a-z-]+), method: ([A-Z]+), path: "?([^",}]+)"?[ ,]/gm)].map(([, service = '', method = '', path = '']) => ({
+    key: `${method} ${path}`,
+    service,
+    pattern: new RegExp(`^${method} /api/${service}${path}$`),
+  }))
 }
 
 function functionsOf(...modules: object[]) {
@@ -64,33 +52,28 @@ async function screenRequests() {
   return received.map((request) => `${request.method} ${request.url}`)
 }
 
-function expectedUpstream(request: string) {
-  const [, service = '', path = ''] = /^\w+ \/api\/([a-z]+)(\/.*)$/.exec(request) ?? []
-  return `\${JAYPAY_${service.toUpperCase()}_URL}${path}`
-}
-
-describe('the customer site nginx', () => {
+describe('the customer site routes of the gateway', () => {
   it('lists every API call the screens make', () => {
     expect(Object.keys(screenCalls).sort()).toEqual(functionsOf(auth, banking, membership, money, payment, remittance).sort())
   })
 
-  it('forwards each screen request to its service, and only to that path', async () => {
+  it('has exactly one route for each screen request, to the service its path names', async () => {
     const table = routes()
     for (const request of await screenRequests()) {
-      const forwarded = table.map((route) => route.matches(request)).filter((target) => target !== null)
-      expect(forwarded, request).toEqual([expectedUpstream(request)])
+      const matched = table.filter((route) => route.pattern.test(request))
+      expect(matched.map((route) => route.service), request).toEqual([/^\w+ \/api\/([a-z-]+)\//.exec(request)?.[1]])
     }
   })
 
-  it('forwards nothing the screens do not request', async () => {
+  it('has no route the screens do not request', async () => {
     const requests = await screenRequests()
-    const unused = routes().filter((route) => !requests.some((request) => route.matches(request) !== null))
+    const unused = routes().filter((route) => !requests.some((request) => route.pattern.test(request)))
     expect(unused.map((route) => route.key)).toEqual([])
   })
 
-  it('anchors every pattern at both ends and captures only digits', () => {
-    const patterns = routes().filter((route) => route.key.startsWith('~'))
-    expect(patterns.length).toBeGreaterThan(0)
-    for (const { key } of patterns) expect(key, key).toMatch(/^~\^[A-Z]+ (\/[a-z-]+|\/\(\?<\w+>\[0-9\]\+\))+\$$/)
+  it('lets a path variable be digits only', () => {
+    const table = routes()
+    expect(table.length).toBeGreaterThan(0)
+    for (const { key } of table) expect(key, key).toMatch(/^[A-Z]+ (\/[a-z-]+|\/\[0-9\]\+)+$/)
   })
 })

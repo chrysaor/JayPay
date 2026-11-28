@@ -8,6 +8,7 @@ resources:
   limits:
     memory: 128Mi
 listeners:
+  web: 8090
   admin: 8091
 backendPort: 8080
 connectTimeout: 5s
@@ -38,3 +39,26 @@ adminConsole:
     - { role: viewer, service: payment, method: GET, path: /payment/normal-status }
     - { role: viewer, service: event-flow, method: GET, path: /flows }
     - { role: viewer, service: event-flow, method: GET, path: "/flows/[^/]+/[^/]+" }
+customerSite:
+  site: frontend-web
+  services:
+    membership: membership-service
+    banking: banking-service
+    money: money-service
+    remittance: remittance-service
+    payment: payment-service
+  routes:
+    - { service: membership, method: POST, path: /memberships, limit: signIn }
+    - { service: membership, method: POST, path: /memberships/login, limit: signIn }
+    - { service: membership, method: POST, path: /memberships/refresh-token, limit: signIn }
+    - { service: membership, method: POST, path: /memberships/token-validate }
+    - { service: membership, method: GET, path: "/memberships/[0-9]+" }
+    - { service: banking, method: GET, path: "/banking/account/[0-9]+" }
+    - { service: banking, method: POST, path: /banking/account/register }
+    - { service: money, method: POST, path: /money/member-money }
+    - { service: money, method: POST, path: /money/increase }
+    - { service: remittance, method: POST, path: /remittance/request }
+    - { service: payment, method: POST, path: /payment/request }
+  limits:
+    all: { requests: 300, unit: Minute }
+    signIn: { requests: 30, unit: Minute }

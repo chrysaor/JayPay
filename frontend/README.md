@@ -28,18 +28,18 @@ npm run build
 
 ## Environment
 
-Copy `.env.example` to `.env` to point the dev servers somewhere else. Both dev servers read `frontend/.env`, and variables set in the shell win over the file. The web image reads the same names from the container environment. The admin image reads none: the gateway forwards the admin console's API and sign-in requests, and the image default of an admin row applies to the web image only. Each site reads only the variables of the services it proxies.
+Copy `.env.example` to `.env` to point the dev servers somewhere else. Both dev servers read `frontend/.env`, and variables set in the shell win over the file. Only the dev servers read these variables. The images read none: they serve files, and the gateway forwards the API requests of both sites and the sign-in of the admin console. Each dev server reads only the variables of the services its site calls.
 
-| Variable | Path | Read by | Dev default | Image default |
-| --- | --- | --- | --- | --- |
-| `JAYPAY_MEMBERSHIP_URL` | `/api/membership` | web, admin | `http://localhost:8081` | `http://membership-service:8080` |
-| `JAYPAY_BANKING_URL` | `/api/banking` | web | `http://localhost:8082` | `http://banking-service:8080` |
-| `JAYPAY_MONEY_URL` | `/api/money` | web | `http://localhost:8083` | `http://money-service:8080` |
-| `JAYPAY_REMITTANCE_URL` | `/api/remittance` | web | `http://localhost:8084` | `http://remittance-service:8080` |
-| `JAYPAY_PAYMENT_URL` | `/api/payment` | web, admin | `http://localhost:8085` | `http://payment-service:8080` |
-| `JAYPAY_MONEY_AGGREGATION_URL` | `/api/money-aggregation` | admin | `http://localhost:8086` | `http://money-aggregation-service:8080` |
-| `JAYPAY_MONEY_QUERY_URL` | `/api/money-query` | admin | `http://localhost:8087` | `http://money-query-service:8080` |
-| `JAYPAY_EVENT_FLOW_URL` | `/api/event-flow` | admin | `http://localhost:8093` | `http://event-flow-service:8080` |
+| Variable | Path | Read by | Dev default |
+| --- | --- | --- | --- |
+| `JAYPAY_MEMBERSHIP_URL` | `/api/membership` | web, admin | `http://localhost:8081` |
+| `JAYPAY_BANKING_URL` | `/api/banking` | web | `http://localhost:8082` |
+| `JAYPAY_MONEY_URL` | `/api/money` | web | `http://localhost:8083` |
+| `JAYPAY_REMITTANCE_URL` | `/api/remittance` | web | `http://localhost:8084` |
+| `JAYPAY_PAYMENT_URL` | `/api/payment` | web, admin | `http://localhost:8085` |
+| `JAYPAY_MONEY_AGGREGATION_URL` | `/api/money-aggregation` | admin | `http://localhost:8086` |
+| `JAYPAY_MONEY_QUERY_URL` | `/api/money-query` | admin | `http://localhost:8087` |
+| `JAYPAY_EVENT_FLOW_URL` | `/api/event-flow` | admin | `http://localhost:8093` |
 
 The dev defaults match the host ports in `infra/docker/compose.yaml`.
 

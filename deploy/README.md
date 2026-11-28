@@ -64,7 +64,6 @@ The `values.yaml` of each chart lists every key with its default, and `values.sc
 | `env` | spring-service | Plain environment variables, by name. |
 | `secretEnv` | spring-service | Environment variables read from the Secret, as `NAME: SECRET_KEY`. |
 | `secretName` | spring-service | The Secret that `secretEnv` reads. `jaypay` by default. |
-| `upstreams` | frontend | The backend that each `JAYPAY_<SERVICE>_URL` of the nginx template proxies to, as a Service name. |
 | `ingress.enabled`, `ingress.className`, `ingress.host` | frontend | An Ingress to the site. Off by default. |
 | `resources` | both | Requests and limits. The memory limit equals the `mem_limit` of the workload in `compose.yaml`. |
 
@@ -131,9 +130,7 @@ The Spring Boot services expose `/actuator/health/liveness` and `/actuator/healt
 
 ## The sites and Keycloak in a cluster
 
-The nginx template of the customer site resolves its upstreams at request time with `resolver ${NGINX_LOCAL_RESOLVERS}`. The image fills that variable from the `nameserver` lines of `/etc/resolv.conf`, which in a pod is the cluster DNS Service. The nginx resolver ignores the `search` domains of `/etc/resolv.conf`, so a short name such as `money-service` does not resolve in a cluster. The image's default URLs, such as `http://money-service:8080`, work only in Compose, where Docker's DNS answers short names.
-
-The frontend chart therefore turns every entry of `upstreams` into a full name in the release namespace. For `JAYPAY_MONEY_URL: money-service` in namespace `jaypay`, nginx gets `http://money-service.jaypay.svc.cluster.local:8080`. The admin console has no upstreams: its nginx serves files only, and the gateway forwards its API and sign-in requests.
+Both sites serve files only: `frontend/site.conf.template` answers 404 under `/api/` and `/realms/` and serves the single-page app for every other path. The gateway forwards the API requests of both sites and the sign-in of the admin console, so a site pod calls nothing and reads no environment.
 
 The Keycloak release sets `KC_HOSTNAME` to the address of the admin console, `http://localhost:8091`, the same as in Compose. The gateway expects the issuer `http://localhost:8091/realms/staff` in `deploy/envs/local/gateway.yaml` and fetches the realm keys from Keycloak inside the cluster, the `staff.jwksUri` of `deploy/envs/local/gateway/gateway.yaml`. The admin console is therefore reached through a port-forward of the gateway's Service to local port 8091, which `make k8s-smoke` opens. The Keycloak admin console has no route. `kubectl port-forward service/keycloak 8092:8080` opens it at http://localhost:8092, the `KC_HOSTNAME_ADMIN` of the release, and `make k8s-smoke` uses the same forward for the Keycloak admin API.
 
@@ -141,7 +138,7 @@ The `postgres` release runs `create-databases.sh` as a `postStart` hook, as Comp
 
 ## Gateway
 
-Decision [0040](../docs/decisions/0040-gateway-api-with-envoy-gateway.md) makes the Kubernetes Gateway API with Envoy Gateway the gateway in front of the services. The admin console goes through it: its listener `admin` on port 8091 serves the site, passes the staff sign-in to Keycloak, and checks the staff token and the role of every API route before it forwards. The customer site still takes its requests from the Ingress until [#239](https://github.com/chrysaor/JayPay/issues/239) moves its routes.
+Decision [0040](../docs/decisions/0040-gateway-api-with-envoy-gateway.md) makes the Kubernetes Gateway API with Envoy Gateway the gateway in front of the services. The admin console goes through it: its listener `admin` on port 8091 serves the site, passes the staff sign-in to Keycloak, and checks the staff token and the role of every API route before it forwards. Its listener `web` on port 8090 serves the customer site and forwards the API routes of its screens, under a rate limit. The Ingress of frontend-web stays until [#240](https://github.com/chrysaor/JayPay/issues/240) removes it, and nothing uses it.
 
 It comes in two parts, like Argo CD and the workloads:
 
@@ -154,14 +151,17 @@ It comes in two parts, like Argo CD and the workloads:
 | `listeners` | The HTTP listeners, one per site, as name and port. |
 | `standalone` | `true` only for the Compose render, which has no `EnvoyProxy`. |
 | `staff` | The issuer, the address of the realm keys, the audience and the realm roles that each role of a route admits. |
+| `customerSite` | The site, the services by their `/api/<name>` prefix, one route per method and path with an optional `limit`, and the `limits` by name as requests per unit. `all` covers every route, and another name covers the routes that carry it. |
 | `adminConsole` | The site, the Keycloak paths, the services by their `/api/<name>` prefix, and one route per method and path with the lowest role that may call it. |
 | `backendPort`, `connectTimeout` | The port of every backend and the time the proxy waits for a connection. |
 | `replicas` | The number of Envoy proxies, 1 by default. |
 | `resources` | Requests and limits of the Envoy container. |
 
+Each route of `customerSite.routes` becomes a match of an `HTTPRoute` on the regular expression `/api/<name><path>`, one `HTTPRoute` per service, without a token check until [#91](https://github.com/chrysaor/JayPay/issues/91). One `BackendTrafficPolicy` covers those routes with the rate limits of decision [0042](../docs/decisions/0042-rate-limits-of-the-customer-api.md): a rule per limit, each counting per client address over all the routes together, and the rule of a named limit matches only the methods and paths of the routes that carry the name. The gateway answers 429 above a limit. The client address is the address that connects to the proxy. Behind a load balancer every request would come from the balancer, so an environment with one has to tell the Gateway where the client address is, with `clientIPDetection` in a `ClientTrafficPolicy`, before the limits mean anything. The Compose render has no rate limit.
+
 Each route of `adminConsole.routes` becomes a match of an `HTTPRoute` on the regular expression `/api/<name><path>`. The routes of one role and one service share an `HTTPRoute`, which a `SecurityPolicy` of that role covers: it accepts a token of the staff realm with the audience `jaypay-admin-console` and one of the role's realm roles in `realm_access.roles`, and denies everything else. A `BackendTrafficPolicy` turns the 401 and the 403 of the proxy into the JSON errors the console reads. A path or method without a route falls to the site, whose nginx answers 404 under `/api/` and `/realms/`. The routes point at `Backend` resources that name each Service by its full DNS name, so the same chart renders the resources that the Compose gateway reads, where the names are Compose service names. `make gateway-config` writes that render to `infra/docker/gateway/config/gateway.yaml`, and the gate fails when it is stale.
 
-The rate limit service keeps its counts in Valkey, so a limit holds across every proxy. Valkey keeps nothing on disk. A count lasts for the window of its limit and a restart only forgets the current windows. With `failClosed: false` a request passes when the rate limit service or Valkey does not answer. Valkey runs in the cluster only. The Compose stack runs the gateway without a rate limit, see the decision. No route has a rate limit yet.
+The rate limit service keeps its counts in Valkey, so a limit holds across every proxy. Valkey keeps nothing on disk. A count lasts for the window of its limit and a restart only forgets the current windows. With `failClosed: false` a request passes when the rate limit service or Valkey does not answer. Valkey runs in the cluster only. The Compose stack runs the gateway without a rate limit, see the decision.
 
 A trial before this change put routes, a token check and a rate limit on this setup by hand ([#237](https://github.com/chrysaor/JayPay/issues/237)): tokens that the Keycloak of the cluster issued passed the check, a role that was too low got 403, and with two proxies the fourth request of a limit of three a minute got 429 on the second proxy.
 
@@ -174,7 +174,6 @@ The calls come from the files that already make them, and nobody lists them by h
 | Source | Example | Call |
 | --- | --- | --- |
 | Environment variables | `SERVICE_MEMBERSHIP_URL: http://membership-service:8080`, `SPRING_CLOUD_VAULT_HOST: vault` | banking-service to membership-service on `http`, membership-service to vault on every port |
-| The `upstreams` of a site | `JAYPAY_MONEY_URL: money-service` | frontend-web to money-service on `http` |
 | The configuration files that a pod mounts | `membership-service:9080` in `prometheus.yml`, `tcp://clickhouse:9000` in the Collector's `config.yaml`, `host: clickhouse` with `port: 9000` in the Grafana data sources | prometheus to membership-service on `management`, otel-collector and grafana to clickhouse on `native` |
 | An Ingress | the Ingress of `frontend-web` | the ingress controller to frontend-web on `http` |
 | A `Backend` of the gateway and the `remoteJWKS` of a `SecurityPolicy` | `membership-service.jaypay.svc.cluster.local`, port 8080 | the gateway to membership-service on `http`, the gateway to keycloak on `http` |
@@ -201,10 +200,9 @@ minikube's default network does not enforce NetworkPolicy, so `make k8s-up` star
 The comparison checks the facts that break a workload when they drift. It leaves the values of plain settings to the environment, because a cluster reaches its dependencies at other addresses than Compose does.
 
 - The Compose services that are a JayPay workload and the workloads in `deploy/envs/local` are the same set.
-- Every workload gets the environment variable names that Compose passes to it, and no other names. A site also gets one `JAYPAY_<SERVICE>_URL` for every upstream in its nginx template.
+- Every workload gets the environment variable names that Compose passes to it, and no other names.
 - A variable that Compose interpolates from `.env`, such as `${POSTGRES_PASSWORD}`, comes from the Secret key with the same name. A variable that Compose sets in plain text is not a secret.
 - Every Secret key is in `infra/docker/.env.example`.
-- Every upstream of a site names a Service that `deploy/envs/local` renders.
 - The memory limit equals `mem_limit` in Compose.
 - Every dependency is a Compose service, with the same image and the same memory limit.
 - No environment other than `local` uses `imagePullPolicy: Never`.
@@ -212,7 +210,7 @@ The comparison checks the facts that break a workload when they drift. It leaves
 - The Argo CD repo server mounts the published repository.
 - Every environment denies ingress by default, and its NetworkPolicies admit exactly the calls that its workloads make. See [Network policy](#network-policy).
 
-`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable, a wrong upstream, a rendered Secret, a field the ApplicationSet does not know, a wrong checksum of the Argo CD install, a repo server patch that matches nothing, a wrong checksum of the Envoy Gateway install, a rate limit image that differs from the install, a field the Gateway does not know, a Collector image that differs from its Dockerfile, a policy that admits a call nobody makes, a policy that lets a site reach a management port, a call that no policy admits, a default policy that selects nothing and a call to a port the Service does not expose, and checks that the step fails on each one.
+`make verify-selftest` plants a field Kubernetes does not know, a `latest` tag, `Never` in a second environment, a dependency image that differs from Compose, a missing dependency file, a missing workload, a missing variable, a rendered Secret, a field the ApplicationSet does not know, a wrong checksum of the Argo CD install, a repo server patch that matches nothing, a wrong checksum of the Envoy Gateway install, a rate limit image that differs from the install, a field the Gateway does not know, a route with a limit that has no definition, a Collector image that differs from its Dockerfile, a policy that admits a call nobody makes, a policy that lets a site reach a management port, a call that no policy admits, a default policy that selects nothing and a call to a port the Service does not expose, and checks that the step fails on each one.
 
 ## Local cluster
 
@@ -225,7 +223,7 @@ make k8s-down
 ```
 
 - `make k8s-up` builds the images with `make images`, runs `make verify STEPS=charts`, and starts the minikube profile `jaypay` with the kindnet network and the ingress addon. It writes the cluster's credentials to `build/k8s/kubeconfig`, so the current context of `~/.kube/config` stays as it is. It creates the namespace and the Secret `jaypay` from `infra/docker/.env`, installs Argo CD and Envoy Gateway, publishes the working tree to the Git repository that Argo CD reads, loads the working tree images into the node and applies the `gitops` render. From then on Argo CD deploys everything in `deploy/envs/local`. The script only waits until every Application is synced to the published commit and healthy, and reports when the dependencies got there. Run it again at any time. It publishes a commit only when the working tree changed, loads only the images that changed and restarts only the workloads that run them.
-- `make k8s-smoke` forwards `127.0.0.1:8480` to the ingress controller and `127.0.0.1:8091` to the gateway, and runs `scripts/smoke.sh` against `http://web.jaypay.localhost:8480` and `http://localhost:8091`. curl resolves every `*.localhost` name to the loopback address. Set `K8S_INGRESS_PORT` to use another port. It also forwards a free local port to the `clickhouse` and `prometheus` Services, so the log, trace and scrape checks run as in Compose, and to `banking-service` and `money-service`, because the saga and Kafka top-ups that the smoke test drives are not on the customer site. It forwards `127.0.0.1:8092` to `keycloak` for the Keycloak admin API. With `SMOKE_STACK=kubernetes` the smoke test recreates the `dynamodb` pod instead of the container, and it counts the log lines of a service since its container in the pod started.
+- `make k8s-smoke` forwards `127.0.0.1:8090` and `127.0.0.1:8091` to the gateway, and runs `scripts/smoke.sh` against `http://localhost:8090` and `http://localhost:8091`. Its last step signs in until the gateway answers 429. It also forwards a free local port to the `clickhouse` and `prometheus` Services, so the log, trace and scrape checks run as in Compose, and to `banking-service` and `money-service`, because the saga and Kafka top-ups that the smoke test drives are not on the customer site. It forwards `127.0.0.1:8092` to `keycloak` for the Keycloak admin API. With `SMOKE_STACK=kubernetes` the smoke test recreates the `dynamodb` pod instead of the container, and it counts the log lines of a service since its container in the pod started.
 - `make k8s-gitops-check` proves the GitOps loop on the running cluster. It commits `replicas: 2` for `frontend-web` to the repository that Argo CD reads and waits until the Deployment runs two pods, without applying anything. It commits the original file back and waits for one pod again. Then it scales `frontend-web` by hand and waits until Argo CD scales it back.
 - `make k8s-policy-check` proves the NetworkPolicies on the running cluster. It starts a pod labelled `policy-probe` in the namespace and a pod labelled `frontend-admin` in the namespace `jaypay-policy-probe`, and opens a TCP connection to every port of every Service in the namespace from those two pods, from one pod of every workload and dependency, from the ingress controller and from a proxy of the gateway. It expects a connection to open exactly when a rendered NetworkPolicy admits that caller on that port, and fails on any difference, so every workload but Prometheus must find every `management` port closed. A pod that has neither `nc` nor `bash`, such as the Collector or the Envoy proxy of the gateway, cannot run the check and is listed as skipped. The smoke test covers what the gateway may reach. The two probe pods, both sites and the ingress controller must run it. It deletes the probe pods when it ends.
 - `make k8s-down` deletes the profile, everything in it and the published repository.

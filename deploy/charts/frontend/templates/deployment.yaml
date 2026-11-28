@@ -30,11 +30,6 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          env:
-            {{- range $name, $service := .Values.upstreams }}
-            - name: {{ $name }}
-              value: {{ printf "http://%s.%s.svc.cluster.local:8080" $service $.Release.Namespace | quote }}
-            {{- end }}
           livenessProbe:
             httpGet:
               path: /

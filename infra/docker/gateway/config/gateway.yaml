@@ -2,6 +2,20 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
+  name: banking-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: banking-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
   name: event-flow-service
   labels:
     app.kubernetes.io/name: gateway
@@ -24,6 +38,20 @@ spec:
   endpoints:
     - fqdn:
         hostname: frontend-admin
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: frontend-web
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: frontend-web
         port: 8080
 
 ---
@@ -86,6 +114,20 @@ spec:
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
+  name: money-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: money-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
   name: payment-service
   labels:
     app.kubernetes.io/name: gateway
@@ -94,6 +136,20 @@ spec:
   endpoints:
     - fqdn:
         hostname: payment-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: remittance-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: remittance-service
         port: 8080
 
 ---
@@ -148,6 +204,35 @@ spec:
           inline: '{"error":"FORBIDDEN","message":"Your role does not allow this."}'
 
 ---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: web-api
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: web-api-banking
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: web-api-membership
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: web-api-money
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: web-api-payment
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: web-api-remittance
+  timeout:
+    tcp:
+      connectTimeout: 5s
+
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -161,6 +246,12 @@ spec:
     - name: admin
       protocol: HTTP
       port: 8091
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: web
+      protocol: HTTP
+      port: 8090
       allowedRoutes:
         namespaces:
           from: Same
@@ -407,6 +498,199 @@ spec:
           name: frontend-admin
 
 ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-banking
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: web
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/banking/banking/account/[0-9]+
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/banking/banking/account/register
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: web-api-banking
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: banking-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-membership
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: web
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/login
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/refresh-token
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/token-validate
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/[0-9]+
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: web-api-membership
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: membership-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-money
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: web
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/money/money/member-money
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/money/money/increase
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: web-api-money
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: money-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-payment
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: web
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/payment/payment/request
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: web-api-payment
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: payment-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-remittance
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: web
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/remittance/remittance/request
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: web-api-remittance
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: remittance-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-site
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: web
+  rules:
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: frontend-web
+
+---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
 metadata:
@@ -484,6 +768,86 @@ spec:
       type: ReplaceRegexMatch
       replaceRegexMatch:
         pattern: ^/api/payment/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: web-api-banking
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/banking/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: web-api-membership
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/membership/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: web-api-money
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/money/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: web-api-payment
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/payment/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: web-api-remittance
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/remittance/
         substitution: /
 
 ---

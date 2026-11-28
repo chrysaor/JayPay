@@ -220,5 +220,5 @@ flowchart LR
 
 Two things differ from Compose:
 
-- The customer site gets its upstreams as full names such as `http://money-service.jaypay.svc.cluster.local:8080`, because the nginx `resolver` ignores the search domains of the pod. The gateway names its backends the same way.
+- The gateway names its backends by their full names, such as `money-service.jaypay.svc.cluster.local`, and limits the request rate of the customer API, which it does not do in Compose.
 - Secret values come from the Secret `jaypay` instead of `infra/docker/.env`, under the same key names.
