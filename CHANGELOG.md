@@ -4,6 +4,8 @@ What each release adds and changes, newest first. Every PR into `develop` that c
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-28
+
 ### Added
 
 - CI starts the Compose stack and runs `make smoke` on every push to `develop` (`smoke.yml`, which can also be started by hand), and `release.yml` runs the same smoke on a release branch or a tag and publishes images only after it passed. A failed run uploads the service logs as the `stack-logs` artifact, with every value of `infra/docker/.env` and the Vault root token and unseal key redacted. Pull requests do not run it ([#143](https://github.com/chrysaor/JayPay/issues/143))
