@@ -236,7 +236,7 @@ Argo CD's repo server follows the links in `deploy/charts/dependency/files`, bec
 
 ### Order of the dependencies
 
-All Applications sync at once. Every Service exists from the first sync, so the workloads resolve the names of their dependencies, and a Spring Boot service that starts before PostgreSQL or Kafka accepts connections exits and is restarted by the kubelet. In the measured runs no service restarted more than once, and every Application was healthy in the same poll in which the last dependency was. An ApplicationSet with the `RollingSync` strategy could sync the dependencies first, but it turns off automatic sync and self-heal for every Application it generates, which is the loop this phase exists to prove.
+All Applications sync at once. Every Service exists from the first sync, so the workloads resolve the names of their dependencies, and a Spring Boot service that starts before PostgreSQL or Kafka accepts connections exits and is restarted by the kubelet. The Collector does the same while ClickHouse refuses connections. In the measured runs no service restarted more than once and the Collector twice, and every Application was healthy in the same poll in which the last dependency was. These restarts on a cold start are accepted and no workload waits for its dependency, see decision [0038](../docs/decisions/0038-cold-start-restarts-are-accepted.md). A restart count above zero right after `make k8s-up` is not a fault. One that keeps growing is. An ApplicationSet with the `RollingSync` strategy could sync the dependencies first, but it turns off automatic sync and self-heal for every Application it generates, which is the loop this phase exists to prove.
 
 ### Working tree images
 

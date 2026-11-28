@@ -109,4 +109,4 @@ From the JaCoCo report of all modules, 293 classes with code.
 - [#228](https://github.com/chrysaor/JayPay/issues/228) found that a top-up handled during an outage of membership-service never reached the region total. It is now asked again a fixed number of times.
 - Three gaps are filed: [#223](https://github.com/chrysaor/JayPay/issues/223), [#224](https://github.com/chrysaor/JayPay/issues/224) and [#225](https://github.com/chrysaor/JayPay/issues/225).
 
-Mutation testing would show which of the tested lines a test would notice changing. It needs a new build plugin, which waits for the owner's decision.
+Mutation testing would show which of the tested lines a test would notice changing. It needs a new build plugin, and the owner decided not to add it for now, see decision [0039](decisions/0039-no-mutation-testing-for-now.md).
