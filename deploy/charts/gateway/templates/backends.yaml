@@ -1,6 +1,7 @@
 {{- $console := .Values.adminConsole }}
 {{- $suffix := ternary "" (printf ".%s.svc.cluster.local" .Release.Namespace) .Values.standalone }}
-{{- range $index, $name := concat (values $console.services) (list $console.site $console.identity.backend) | uniq | sortAlpha }}
+{{- $site := .Values.customerSite }}
+{{- range $index, $name := concat (values $console.services) (values $site.services) (list $console.site $console.identity.backend $site.site) | uniq | sortAlpha }}
 {{- if $index }}
 ---
 {{- end }}

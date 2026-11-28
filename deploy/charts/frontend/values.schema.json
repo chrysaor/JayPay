@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["image", "replicas", "upstreams", "ingress", "resources"],
+  "required": ["image", "replicas", "ingress", "resources"],
   "properties": {
     "image": {
       "type": "object",
@@ -18,11 +18,6 @@
       "else": { "properties": { "tag": { "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+|[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9a-f]{7,40})$" } } }
     },
     "replicas": { "type": "integer", "minimum": 0 },
-    "upstreams": {
-      "type": "object",
-      "propertyNames": { "pattern": "^JAYPAY_[A-Z0-9_]+_URL$" },
-      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
-    },
     "ingress": {
       "type": "object",
       "additionalProperties": false,

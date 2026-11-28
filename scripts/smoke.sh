@@ -600,11 +600,14 @@ for refused in \
   "GET $web/api/money/v3/api-docs" \
   "GET $web/api/payment/swagger-ui/index.html" \
   "PUT $web/api/membership/memberships/$membership_id" \
-  "GET $web/api/membership/memberships/$membership_id/..%2F..%2Factuator/health" \
-  "GET $web/api/money/money/..%2Factuator/prometheus" \
   "GET $web/api/membership/memberships/$membership_id;jsessionid=x"; do
   read -r method url <<<"$refused"
   expect "$method ${url#"$web"} through the customer site" 404 "$method" "$url" "$(hex 16)" '{}'
+done
+for climbing in \
+  "$web/api/membership/memberships/$membership_id/..%2F..%2Factuator/health" \
+  "$web/api/money/money/..%2Factuator/prometheus"; do
+  expect "GET ${climbing#"$web"}, which the gateway redirects to the path without the climb, a path refused above," 307 GET "$climbing" "$(hex 16)"
 done
 
 log "staff sign in through Keycloak with the authorization code flow and PKCE"
@@ -834,5 +837,30 @@ running_as_root=$(root_containers)
 [ -z "$running_as_root" ] || fail "these containers run as root: $(echo $running_as_root)"
 wide=$(wide_ports)
 [ -z "$wide" ] || fail "these ports are reachable beyond the loopback address: $(echo $wide)"
+
+sign_in_limit=$(sed -n 's/^    signIn: { requests: \([0-9]*\), unit: Minute }$/\1/p' "$root/deploy/charts/gateway/values.yaml")
+[ -n "$sign_in_limit" ] || fail "deploy/charts/gateway/values.yaml has no signIn limit a minute"
+limited_after=
+for attempt in $(seq 1 $((sign_in_limit + 5))); do
+  call POST "$web/api/membership/memberships/login" "$(hex 16)" '{"membershipId":"999999999"}'
+  case "$http_status" in
+    404) ;;
+    429) limited_after=$((attempt - 1)) && break ;;
+    *) fail "sign in number $attempt of a member nobody registered returned HTTP $http_status: $(response)" ;;
+  esac
+done
+case "$stack" in
+  kubernetes)
+    log "the gateway answers 429 once one address signs in more than $sign_in_limit times a minute, and still serves the other requests"
+    [ -n "$limited_after" ] || fail "$((sign_in_limit + 5)) sign-ins in a row were all let through"
+    [ "$limited_after" -le "$sign_in_limit" ] || fail "the gateway let $limited_after sign-ins through, more than $sign_in_limit"
+    expect "token validation while sign-in is limited" 200 POST "$web/api/membership/memberships/token-validate" "$(hex 16)" '{"jwtToken":"none"}'
+    log "the gateway let $limited_after sign-ins through and refused the next"
+    ;;
+  *)
+    log "the gateway of the Compose stack has no rate limit"
+    [ -z "$limited_after" ] || fail "the gateway refused a sign-in after $limited_after, but Compose has no rate limit"
+    ;;
+esac
 
 log "PASSED"

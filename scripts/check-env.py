@@ -8,7 +8,6 @@ import sys
 INTERPOLATION = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)")
 PLACEHOLDER = re.compile(r"\$\{([A-Z][A-Z0-9_]*)(?::([^}]*))?\}")
 GETENV = re.compile(r"getenv\(\s*\"([A-Z][A-Z0-9_]*)\"")
-ENV_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(\S*)$")
 SOURCE_SUFFIXES = (".yml", ".yaml", ".properties", ".java")
 
 FRAMEWORK_VARIABLES = {
@@ -81,22 +80,8 @@ def backend_service(root, name):
     return referenced, defaults, required
 
 
-def frontend_app(root, app):
-    template = read(os.path.join(root, "frontend", "apps", app, "nginx.conf.template"))
-    referenced = set(INTERPOLATION.findall(template))
-    defaults, stage = {}, None
-    for line in read(os.path.join(root, "frontend", "Dockerfile")).splitlines():
-        words = line.split()
-        if words[:1] == ["FROM"]:
-            stage = words[-1] if "AS" in words else None
-            continue
-        if stage in ("runtime", app):
-            for word in words:
-                match = ENV_LINE.match(word)
-                if match:
-                    defaults[match.group(1)] = match.group(2)
-    referenced |= set(defaults)
-    return referenced, defaults, set()
+def frontend_site(root):
+    return set(INTERPOLATION.findall(read(os.path.join(root, "frontend", "site.conf.template")))), {}, set()
 
 
 def main():
@@ -119,7 +104,7 @@ def main():
         if os.path.isdir(os.path.join(root, "backend", "services", name)):
             referenced, defaults, required = backend_service(root, name)
         elif name.startswith("frontend-") and os.path.isdir(os.path.join(root, "frontend", "apps", name[9:])):
-            referenced, defaults, required = frontend_app(root, name[9:])
+            referenced, defaults, required = frontend_site(root)
         else:
             continue
         environment = service.get("environment") or {}

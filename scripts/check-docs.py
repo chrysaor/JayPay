@@ -33,6 +33,8 @@ TOPIC_PURPOSES = {
 }
 SITE_ROLES = {"frontend-web": "customer site", "frontend-admin": "admin console"}
 GATEWAY = "gateway"
+GATEWAY_VALUES = os.path.join("deploy", "charts", "gateway", "values.yaml")
+GATEWAY_SITES = {"web": "customerSite", "admin": "adminConsole"}
 STORE_PURPOSES = {"vault": "email encryption key"}
 
 STYLE = """
@@ -180,6 +182,21 @@ def read_calls(path):
     return calls
 
 
+def gateway_sites(root):
+    text = read(os.path.join(root, GATEWAY_VALUES))
+    listeners = dict(re.findall(r"^  ([a-z]+): (\d+)$", re.search(r"^listeners:\n((?:  .*\n)+)", text, re.MULTILINE).group(1), re.MULTILINE))
+    sites = {}
+    for listener, key in GATEWAY_SITES.items():
+        section = re.search(rf"^{key}:\n((?:  .*\n)+)", text, re.MULTILINE).group(1)
+        services = re.search(r"^  services:\n((?:    .*\n)+)", section, re.MULTILINE).group(1)
+        sites[listener] = {
+            "port": listeners[listener],
+            "site": re.search(r"^  site: (\S+)$", section, re.MULTILINE).group(1),
+            "services": sorted(re.findall(r"^    [a-z-]+: (\S+)$", services, re.MULTILINE)),
+        }
+    return sites
+
+
 def flatten_yaml(text):
     values, stack = {}, []
     for line in text.splitlines():
@@ -262,7 +279,7 @@ def model(root):
         env = entry.get("environment") or {}
         url = env.get("SPRING_DATASOURCE_URL", "")
         info[name] = {
-            "port": ports[0]["published"] if ports else None,
+            "port": ", ".join(port["published"] for port in ports) or None,
             "memory": entry.get("mem_limit"),
             "database": url.rsplit("/", 1)[1] if url.startswith("jdbc:postgresql:") else None,
             "calls": sorted(b for a, b in http if a == name),
@@ -283,7 +300,7 @@ def model(root):
     keycloak = compose.get("keycloak", {}).get("ports") or []
     if not keycloak:
         problems.append("compose.yaml: keycloak publishes no port")
-    return {"services": services, "sites": sites, "edge": [GATEWAY], "info": info, "http": http, "dynamodb_table": table,
+    return {"services": services, "sites": sites, "edge": [GATEWAY], "gateway": gateway_sites(root), "info": info, "http": http, "dynamodb_table": table,
             "keycloak_port": keycloak[0]["published"] if keycloak else None}, problems
 
 
@@ -293,9 +310,8 @@ def short(name):
 
 def request_path(m):
     info = m["info"]
-    web, admin = "frontend-web", "frontend-admin"
-    web_targets = set(info[web]["calls"])
-    admin_targets = set(info[GATEWAY]["calls"]) - {admin}
+    web, admin = m["gateway"]["web"], m["gateway"]["admin"]
+    web_targets, admin_targets = set(web["services"]), set(admin["services"])
     row = request_order(m)
     batches = [s for s in m["services"] if info[s]["batch"] and not info[s]["called_by"]]
     box_w, gap, x0, side_w = 140, 12, 16, 150
@@ -304,9 +320,10 @@ def request_path(m):
     cx = {name: x0 + i * (box_w + gap) + box_w / 2 for i, name in enumerate(row)}
     sy, sh, web_bus, admin_bus = 210, 48, 124, 156
     svg = Svg(width, height, "JayPay request path",
-              f"The customer site forwards /api/<service>/ to {', '.join(sorted(web_targets))}. "
-              f"The gateway serves the admin console from {admin}, passes the sign-in to Keycloak, checks the staff token "
-              f"and the role of every call against the realm keys, and then forwards to {', '.join(sorted(admin_targets))}. "
+              f"The gateway serves the customer site from {web['site']} on port {web['port']} and forwards /api/<service>/ to "
+              f"{', '.join(sorted(web_targets))}. On port {admin['port']} it serves the admin console from {admin['site']}, "
+              f"passes the sign-in to Keycloak, checks the staff token and the role of every call against the realm keys, "
+              f"and then forwards to {', '.join(sorted(admin_targets))}. "
               + " ".join(f"{b} runs a batch against {' and '.join(info[b]['calls'])}." for b in batches))
 
     def site_center(targets):
@@ -315,9 +332,12 @@ def request_path(m):
     web_c, admin_c = site_center(web_targets), site_center(admin_targets)
     site_x = row_width - 16 - side_w
     keycloak_x = width - 16 - side_w
-    svg.box(web_c - 100, 24, 200, 52, web, f"{SITE_ROLES[web]}, port {info[web]['port']}", "bluebox")
-    svg.box(admin_c - 100, 24, 200, 52, GATEWAY, f"{SITE_ROLES[admin]}, port {info[GATEWAY]['port']}", "orangebox")
-    svg.box(site_x, 24, side_w, 52, admin, "static files")
+    svg.box(web_c - 100, 24, 200, 52, GATEWAY, f"{SITE_ROLES[web['site']]}, port {web['port']}", "bluebox")
+    svg.box(admin_c - 100, 24, 200, 52, GATEWAY, f"{SITE_ROLES[admin['site']]}, port {admin['port']}", "orangebox")
+    svg.box(x0, 24, side_w, 52, web["site"], "static files")
+    svg.arrow([(web_c - 100, 50), (x0 + side_w, 50)], "blue", "bluef")
+    svg.label((web_c - 100 + x0 + side_w) / 2, 42, "site", "bluef", "middle")
+    svg.box(site_x, 24, side_w, 52, admin["site"], "static files")
     svg.box(keycloak_x, 24, side_w, 52, "keycloak", f"staff realm, port {m['keycloak_port']}", "orangebox")
     svg.arrow([(admin_c + 100, 50), (site_x, 50)], "orange", "orangef")
     svg.label((admin_c + 100 + site_x) / 2, 42, "site", "orangef", "middle")
@@ -328,10 +348,10 @@ def request_path(m):
 
     def drop_x(name, site):
         both = name in web_targets and name in admin_targets
-        return cx[name] + (0 if not both else (-14 if site == web else 14))
+        return cx[name] + (0 if not both else (-14 if site == "web" else 14))
 
-    web_drops = sorted(drop_x(n, web) for n in web_targets)
-    admin_drops = sorted(drop_x(n, admin) for n in admin_targets)
+    web_drops = sorted(drop_x(n, "web") for n in web_targets)
+    admin_drops = sorted(drop_x(n, "admin") for n in admin_targets)
     svg.path([(web_c, 76), (web_c, web_bus)], "blue")
     svg.path([(web_drops[0], web_bus), (web_drops[-1], web_bus)], "blue")
     for x in web_drops:
@@ -401,7 +421,7 @@ def service_calls(m):
 
 def request_order(m):
     info = m["info"]
-    web, admin = set(info["frontend-web"]["calls"]), set(info[GATEWAY]["calls"]) - {"frontend-admin"}
+    web, admin = set(m["gateway"]["web"]["services"]), set(m["gateway"]["admin"]["services"])
     return sorted(web - admin) + sorted(web & admin) + sorted(admin - web)
 
 
@@ -554,7 +574,7 @@ def check_services_doc(root, m):
         rows = table_rows(sections[name])
         info = m["info"][name]
         checks = {
-            "Host port": (lambda cell: re.findall(r"`(\d+)`", cell)[:1] or (["none"] if cell.startswith("none") else []), [expected_port(info["port"])] if info["port"] else ["none"]),
+            "Host port": (lambda cell: [", ".join(re.findall(r"`(\d+)`", cell)[:len((info["port"] or "x").split(", "))])] if not cell.startswith("none") else ["none"], [expected_port(info["port"])]),
             "Memory limit": (lambda cell: re.findall(r"`([0-9]+[a-z]*)`", cell)[:1], [info["memory"]]),
             "Calls": (lambda cell: names_in(cell, workloads), info["calls"]),
             "Called by": (lambda cell: names_in(cell, workloads), info["called_by"]),

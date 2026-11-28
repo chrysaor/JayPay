@@ -12,7 +12,6 @@ repo_path=$(setting repoURL)
 repo_path=${repo_path#file://}
 rendered=build/charts/local
 kubernetes_version=v1.32.0
-ingress_port=${K8S_INGRESS_PORT:-8480}
 timeout=${K8S_TIMEOUT:-1200}
 host_git=$root/build/k8s/git
 mirror=$host_git/$(basename "$repo_path")
@@ -248,11 +247,10 @@ forward() {
 }
 
 smoke() {
-  local web admin_port clickhouse prometheus banking money grafana vault
-  web=$(kube get ingress frontend-web --output jsonpath='{.spec.rules[0].host}')
+  local web_port admin_port clickhouse prometheus banking money grafana vault
+  web_port=$(kube get gateway gateway --output jsonpath='{.spec.listeners[?(@.name=="web")].port}')
   admin_port=$(kube get gateway gateway --output jsonpath='{.spec.listeners[?(@.name=="admin")].port}')
   trap stop_forwards EXIT
-  forward ingress ingress-nginx service/ingress-nginx-controller "$ingress_port:80"
   forward clickhouse "$namespace" service/clickhouse :8123
   clickhouse=$forwarded_port
   forward prometheus "$namespace" service/prometheus :9090
@@ -266,10 +264,11 @@ smoke() {
   grafana=$forwarded_port
   forward vault "$namespace" service/vault :8200
   vault=$forwarded_port
-  until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
   forward gateway envoy-gateway-system "$(gateway_service)" "$admin_port:$admin_port"
+  forward gateway-web envoy-gateway-system "$(gateway_service)" "$web_port:$web_port"
   until_true "the gateway answers through the port-forward" curl -s -o /dev/null "http://localhost:$admin_port/"
-  SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://localhost:$admin_port" \
+  until_true "the gateway answers for the customer site" curl -s -o /dev/null "http://localhost:$web_port/"
+  SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://localhost:$web_port" SMOKE_ADMIN_URL="http://localhost:$admin_port" \
     SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$prometheus" \
     SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_KEYCLOAK_URL=http://localhost:8092 SMOKE_MONEY_URL="http://127.0.0.1:$money" \
     SMOKE_GRAFANA_URL="http://127.0.0.1:$grafana" SMOKE_VAULT_URL="http://127.0.0.1:$vault" \

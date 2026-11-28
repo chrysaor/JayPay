@@ -31,7 +31,7 @@ Members of the customer site: sign up, look-up, edits and the customer tokens.
 | Memory limit | `512m` |
 | Database | PostgreSQL `membership`, table `membership` |
 | Calls | none |
-| Called by | `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `frontend-web`, `gateway` |
+| Called by | `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Command handler `CheckMembershipHandler` for `CheckMembershipCommand`, publishing `CheckedMembershipEvent` |
 | Other stores | Vault, KV version 2 mount `kv-v1/data/encrypt`, secret `dbkey`, field `key`, read once at startup |
@@ -76,7 +76,7 @@ Registered bank accounts and firm banking requests against a fake bank.
 | Memory limit | `512m` |
 | Database | PostgreSQL `banking`, tables `registered_bank_account` and `bank_transfer` |
 | Calls | `membership-service` |
-| Called by | `money-service`, `remittance-service`, `settlement-service`, `frontend-web` |
+| Called by | `money-service`, `remittance-service`, `settlement-service`, `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Aggregates `RegisteredBankAccountAggregate` and `FirmBankingRequestAggregate`. Command handlers for `CreateRegisteredBankAccountCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`. Applies `CreateRegisteredBankAccountEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent`, `RollbackFirmBankingFinishedEvent`, `RollbackFirmBankingUnconfirmedEvent` and `RollbackFirmBankingRefusedEvent`. |
 | Other stores | none |
@@ -122,7 +122,7 @@ Wallet balances and the two ways to top a wallet up.
 | Memory limit | `512m` |
 | Database | PostgreSQL `money`, tables `wallet` and `wallet_change` |
 | Calls | `membership-service`, `banking-service` |
-| Called by | `remittance-service`, `payment-service`, `money-aggregation-service`, `frontend-web` |
+| Called by | `remittance-service`, `payment-service`, `money-aggregation-service`, `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a saga top-up |
 | Axon | Aggregate `MemberMoneyAggregate`, with command handlers for `MemberMoneyCreatedCommand` and `RechargingMoneyRequestCreateCommand`, applying `MemberMoneyCreatedEvent` and `RechargingRequestCreatedEvent`. Saga `MoneyRechargeSaga`, which handles `RechargingRequestCreatedEvent`, `CheckedMembershipEvent`, `CheckedRegisteredBankAccountEvent`, `RequestFirmBankingFinishedEvent`, `RollbackFirmBankingFinishedEvent`, `RollbackFirmBankingUnconfirmedEvent` and `RollbackFirmBankingRefusedEvent`, sends `CheckMembershipCommand`, `CheckRegisteredBankAccountCommand`, `RequestFirmBankingCommand` and `RollbackFirmBankingRequestCommand`, and publishes `WalletRechargedEvent`. |
 | Other stores | none |
@@ -177,7 +177,7 @@ Sends money from one member's wallet to another member or to a bank account.
 | Memory limit | `512m` |
 | Database | PostgreSQL `remittance`, table `remittance` |
 | Calls | `membership-service`, `banking-service`, `money-service` |
-| Called by | `frontend-web` |
+| Called by | `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a remittance |
 | Axon | none |
 | Other stores | none |
@@ -250,7 +250,7 @@ Takes payments from member wallets to merchants and tracks which ones are settle
 | Memory limit | `512m` |
 | Database | PostgreSQL `payment`, table `payment` |
 | Calls | `membership-service`, `money-service` |
-| Called by | `settlement-service`, `frontend-web`, `gateway` |
+| Called by | `settlement-service`, `gateway` |
 | Kafka | Produces `jaypay.logging.out.stdout`, one record for each controller call, and `jaypay.flow.events`, one record for each step of a payment |
 | Axon | none |
 | Other stores | none |
@@ -526,23 +526,23 @@ The record value is logged at level INFO, so it reaches ClickHouse like any othe
 
 ## frontend-web
 
-The customer site, served by nginx, with a proxy to five services.
+The customer site, a React app that nginx serves as static files. The browser reaches it and the services through the [gateway](#gateway).
 
 | | |
 | --- | --- |
-| Host port | `8090` |
+| Host port | none |
 | Memory limit | `64m` |
 | Database | none |
-| Calls | `membership-service`, `banking-service`, `money-service`, `remittance-service`, `payment-service` |
-| Called by | the browser, through the nginx server on port 8080 of the container |
+| Calls | none |
+| Called by | `gateway` |
 | Kafka | none |
 | Axon | none |
 | Other stores | The session in the browser's `localStorage` under `jaypay.session` |
-| Configuration | `JAYPAY_MEMBERSHIP_URL`, `JAYPAY_BANKING_URL`, `JAYPAY_MONEY_URL`, `JAYPAY_REMITTANCE_URL`, `JAYPAY_PAYMENT_URL`, `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` |
+| Configuration | none |
 
 ### What it does
 
-`frontend/apps/web/nginx.conf.template` forwards only the method and path pairs that the screens send, each to a fixed path on the matching `JAYPAY_*_URL` with `/api/<service>` stripped. nginx matches the path after it decodes and normalizes it, a member id must be digits, and the forwarded path is built from the table, not copied from the request. Any other `/api/` request answers 404, internal endpoints, Actuator and the OpenAPI pages included, and every other path serves the single-page app. `src/api/nginx.test.ts` runs every API call of the screens and fails when one has no entry in the table, when an entry forwards to another path, or when an entry is not used. `frontend/Dockerfile` sets the `JAYPAY_*_URL` defaults to the Compose service names. `deploy/envs/local/frontend/frontend-web.yaml` sets them for the local cluster.
+`frontend/site.conf.template`, which both sites share, serves the single-page app and answers 404 under `/api/`, which is what a request gets when the gateway has no route for its method and path, internal endpoints, Actuator and the OpenAPI pages included. The routes are `customerSite.routes` of the gateway. `src/api/gateway-routes.test.ts` runs every API call of the screens and fails when one has no route, when more than one route matches it, or when a route is not used.
 
 The site has these pages:
 
@@ -557,7 +557,7 @@ The site checks the stored access token on load with `POST /memberships/token-va
 
 ### Known limitations
 
-- nginx forwards the screens' requests without checking a token. A member id is enough to sign in, and the top-up, remittance and payment requests name the member in the body.
+- The gateway forwards the screens' requests without checking a token until [#91](https://github.com/chrysaor/JayPay/issues/91). A member id is enough to sign in, and the top-up, remittance and payment requests name the member in the body.
 
 ## frontend-admin
 
@@ -577,7 +577,7 @@ The admin console, a React app that nginx serves as static files. The browser re
 
 ### What it does
 
-`frontend/apps/admin/nginx.conf.template` serves the app and answers 404 to `/api/` and `/realms/`, which is what a request gets when the gateway has no route for its path and method, including the old `/api/auth/staff/` sign-in.
+`frontend/site.conf.template` serves the app and answers 404 to `/api/` and `/realms/`, which is what a request gets when the gateway has no route for its path and method, including the old `/api/auth/staff/` sign-in.
 
 The console has these pages:
 
@@ -594,14 +594,14 @@ Staff accounts are managed in the Keycloak admin console, which replaced the sta
 
 ## gateway
 
-Envoy Gateway, the one entry of the admin console. It holds the route table, checks the staff token and the role each route needs, and forwards. Decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md).
+Envoy Gateway, the one entry of both sites. It holds the route tables, checks the staff token and the role each route of the admin console needs, limits the request rate of the customer API in the cluster, and forwards. Decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md).
 
 | | |
 | --- | --- |
-| Host port | `8091` |
+| Host port | `8090`, `8091` |
 | Memory limit | `384m` |
 | Database | none |
-| Calls | `frontend-admin`, `membership-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `event-flow-service`, and Keycloak |
+| Calls | `frontend-web`, `frontend-admin`, `membership-service`, `banking-service`, `money-service`, `remittance-service`, `payment-service`, `money-aggregation-service`, `money-query-service`, `event-flow-service`, and Keycloak |
 | Called by | the browser |
 | Kafka | none |
 | Axon | none |
@@ -610,7 +610,27 @@ Envoy Gateway, the one entry of the admin console. It holds the route table, che
 
 ### What it does
 
-The routes, the staff realm and the roles are values of the chart `deploy/charts/gateway`. `make gateway-config` renders them into `infra/docker/gateway/config/gateway.yaml` for Compose, where Envoy Gateway runs in its standalone mode and reads that file, and Argo CD applies the same chart to the cluster. `make verify` fails when the file and the chart differ.
+The routes, the rate limits, the staff realm and the roles are values of the chart `deploy/charts/gateway`. `make gateway-config` renders them into `infra/docker/gateway/config/gateway.yaml` for Compose, where Envoy Gateway runs in its standalone mode and reads that file, and Argo CD applies the same chart to the cluster. `make verify` fails when the file and the chart differ.
+
+On the listener `web`, port 8090:
+
+- A method and path of the table below go to the service, without the `/api/<service>` prefix. A member id is digits only.
+- Everything else goes to frontend-web.
+- In the cluster, one client address may send 300 requests a minute to these routes together, and 30 a minute to the three routes marked sign-in. The gateway answers 429 above a limit. The counts live in Valkey, so the limit holds across proxies, and a request passes when Valkey does not answer. The Compose stack has no rate limit. Decision [0042](decisions/0042-rate-limits-of-the-customer-api.md).
+
+| Method and path | Limit |
+| --- | --- |
+| `POST /api/membership/memberships` | sign-in |
+| `POST /api/membership/memberships/login` | sign-in |
+| `POST /api/membership/memberships/refresh-token` | sign-in |
+| `POST /api/membership/memberships/token-validate` | |
+| `GET /api/membership/memberships/{id}` | |
+| `GET /api/banking/banking/account/{id}` | |
+| `POST /api/banking/banking/account/register` | |
+| `POST /api/money/money/member-money` | |
+| `POST /api/money/money/increase` | |
+| `POST /api/remittance/remittance/request` | |
+| `POST /api/payment/payment/request` | |
 
 On the listener `admin`, port 8091:
 

@@ -40,13 +40,13 @@ One maintainer develops JayPay with coding agents. The agents follow the rules i
 
 ## Architecture
 
-Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console. The customer site proxies `/api/<service>/...` to the services. The admin console is reached through the gateway, Envoy Gateway: staff sign in through Keycloak, and the gateway forwards a request only when the staff token carries the role its route needs.
+Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console. Both are reached through the gateway, Envoy Gateway, which forwards `/api/<service>/...` to the services. For the admin console, staff sign in through Keycloak, and the gateway forwards a request only when the staff token carries the role its route needs.
 
 ### Request path
 
-The browser calls only its own site. For the customer site, nginx strips `/api/<service>` and forwards the rest of the path to that service. For the admin console, the gateway on port 8091 does the same for the methods and paths in its route table, after it checked the Keycloak token: it answers 401 without a valid token and 403 when the role is not enough, and a path without a route gets the 404 of the site. The gateway also passes the sign-in pages of the Keycloak realm `staff`, so the browser and the tokens see one origin. Nothing calls auth-service any more, and [#240](https://github.com/chrysaor/JayPay/issues/240) removes it. settlement-service starts its own requests from a batch job.
+The browser calls only its own site, and each site is a port of the gateway: 8090 for the customer site and 8091 for the admin console. The gateway strips `/api/<service>` and forwards the rest of the path to that service, for the methods and paths in the route table of the site, and a path without a route gets the 404 of the site. For the admin console it first checks the Keycloak token: it answers 401 without a valid token and 403 when the role is not enough. It also passes the sign-in pages of the Keycloak realm `staff`, so the browser and the tokens see one origin. In the cluster it limits how many requests one address may send to the customer API. Nothing calls auth-service any more, and [#240](https://github.com/chrysaor/JayPay/issues/240) removes it. settlement-service starts its own requests from a batch job.
 
-![frontend-web forwards to banking, money, remittance, membership and payment. The gateway serves the admin console from frontend-admin, passes the staff sign-in to Keycloak, checks the token and the role against the realm keys and forwards to membership, payment, money-aggregation, money-query and event-flow. settlement-service calls banking and payment from its batch job.](docs/diagrams/request-path.svg)
+![The gateway serves the customer site from frontend-web and forwards to banking, money, remittance, membership and payment. It serves the admin console from frontend-admin, passes the staff sign-in to Keycloak, checks the token and the role against the realm keys and forwards to membership, payment, money-aggregation, money-query and event-flow. settlement-service calls banking and payment from its batch job.](docs/diagrams/request-path.svg)
 
 The services then call each other over HTTP. Each row is a caller, each column the service it calls, and each cell what the caller asks for.
 
@@ -128,9 +128,9 @@ Every service and site has a section in [docs/services.md](docs/services.md) wit
 | [event-flow-service](docs/services.md#event-flow-service) | Collects the steps of each saga top-up and serves the flows and their timelines to the admin console | 8093 | PostgreSQL `event_flow` | Kafka `jaypay.flow.events` in, writes the log topic |
 | [auth-service](docs/services.md#auth-service) | Unused since the gateway checks the staff token. Removed in [#240](https://github.com/chrysaor/JayPay/issues/240) | 8089 | none | none |
 | [logging-consumer](docs/services.md#logging-consumer) | Writes each record of the log topic to its own log | none | none | Kafka `jaypay.logging.out.stdout` in |
-| [frontend-web](docs/services.md#frontend-web) | Customer site: nginx serves the React app and proxies `/api/<service>/` to five services | 8090 | The session in the browser | none |
+| [frontend-web](docs/services.md#frontend-web) | Customer site: nginx serves the React app | none | The session in the browser | none |
 | [frontend-admin](docs/services.md#frontend-admin) | Admin console: nginx serves the React app | none | The staff tokens in the tab's memory | none |
-| [gateway](docs/services.md#gateway) | Envoy Gateway: the entry of the admin console. Routes, the staff token check and the role of each route | 8091 | none | none |
+| [gateway](docs/services.md#gateway) | Envoy Gateway: the entry of both sites. Routes, the staff token check and the role of each admin route, and the rate limits of the customer API in the cluster | 8090, 8091 | none | none |
 
 Inside Compose every service listens on port 8080 and is reached by its service name, for example `http://membership-service:8080`.
 
@@ -179,7 +179,7 @@ Every command runs from the repository root. Run `make` to list them.
 | `make up`, `make down` | Starts the local stack and waits until it is healthy, or stops it |
 | `make smoke` | Drives the running stack end to end |
 | `make e2e` | Drives the customer site and the admin console of the running stack in a browser: sign up, link a bank account, add money, pay, sign in, and as staff sign in through Keycloak and follow the payment in the event flow |
-| `make k8s-up`, `make k8s-smoke`, `make k8s-down` | Runs the same stack on a local minikube cluster, drives it through its ingress, or deletes the cluster, see [deploy/README.md](deploy/README.md#local-cluster) |
+| `make k8s-up`, `make k8s-smoke`, `make k8s-down` | Runs the same stack on a local minikube cluster, drives it through its gateway, or deletes the cluster, see [deploy/README.md](deploy/README.md#local-cluster) |
 | `make scan`, `make scan-images` | Runs the Trivy and gitleaks scans, or the Trivy image scan |
 | `make lock` | Refreshes every `gradle.lockfile` and `frontend/package-lock.json` after a version change |
 | `make dependencies` | Downloads the backend dependencies and retries when the repository refuses, which CI runs before the build |

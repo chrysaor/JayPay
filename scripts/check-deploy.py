@@ -8,8 +8,6 @@ import sys
 import network_policy
 
 SECRET_REFERENCE = re.compile(r"^\$\{([A-Z][A-Z0-9_]*)")
-UPSTREAM = re.compile(r"\$\{(JAYPAY_[A-Z0-9_]+_URL)\}")
-UPSTREAM_SERVICE = re.compile(r"^http://([a-z0-9-]+)\.")
 QUANTITY = re.compile(r"^(\d+)([a-zA-Z]*)$")
 UNITS = {"": 1, "b": 1, "k": 1024, "m": 1024**2, "g": 1024**3, "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3}
 
@@ -36,11 +34,10 @@ def to_bytes(quantity):
 
 def workloads(root, services):
     for name, service in sorted(services.items()):
-        if os.path.isdir(os.path.join(root, "backend", "services", name)):
-            yield name, service, set()
-        elif name.startswith("frontend-") and os.path.isdir(os.path.join(root, "frontend", "apps", name[9:])):
-            template = read(os.path.join(root, "frontend", "apps", name[9:], "nginx.conf.template"))
-            yield name, service, set(UPSTREAM.findall(template))
+        if os.path.isdir(os.path.join(root, "backend", "services", name)) or (
+            name.startswith("frontend-") and os.path.isdir(os.path.join(root, "frontend", "apps", name[9:]))
+        ):
+            yield name, service
 
 
 def rendered_pods(manifests_path, kind):
@@ -151,7 +148,7 @@ def repo_server_mount(rendered_dir):
     return ["argocd: argocd-repo-server does not mount jaypay-git, the repository that deploy/envs/local/gitops.yaml points at"]
 
 
-def compare(name, service, upstreams, container, secret_keys, services_in_cluster):
+def compare(name, service, container, secret_keys):
     problems = []
     compose_env = service.get("environment") or {}
     deployed_env = {}
@@ -160,7 +157,7 @@ def compare(name, service, upstreams, container, secret_keys, services_in_cluste
             problems.append(f"{name}: deploy/envs/local sets {entry['name']} twice")
         deployed_env[entry["name"]] = entry
 
-    expected = set(compose_env) | upstreams
+    expected = set(compose_env)
     for key in sorted(expected - set(deployed_env)):
         problems.append(f"{name}: compose.yaml passes {key} but deploy/envs/local does not")
     for key in sorted(set(deployed_env) - expected):
@@ -175,10 +172,6 @@ def compare(name, service, upstreams, container, secret_keys, services_in_cluste
             problems.append(f"{name}: {key} comes from the Secret but compose.yaml sets it in plain text")
         if secret_key and secret_key not in secret_keys:
             problems.append(f"{name}: {key} reads the Secret key {secret_key}, which infra/docker/.env.example does not have")
-        if key in upstreams:
-            target = UPSTREAM_SERVICE.match(entry.get("value", ""))
-            if not target or target.group(1) not in services_in_cluster:
-                problems.append(f"{name}: {key} points at {entry.get('value')}, which is no Service in deploy/envs/local")
 
     limit = container.get("resources", {}).get("limits", {}).get("memory")
     if to_bytes(limit) != to_bytes(service.get("mem_limit")):
@@ -251,12 +244,12 @@ def main():
 
     problems = []
     expected = set()
-    for name, service, upstreams in workloads(root, services):
+    for name, service in workloads(root, services):
         expected.add(name)
         if name not in deployed:
             problems.append(f"{name}: compose.yaml runs it but deploy/envs/local has no workload {name}")
             continue
-        problems += compare(name, service, upstreams, deployed[name], secret_keys, set(deployed) | set(dependencies))
+        problems += compare(name, service, deployed[name], secret_keys)
         problems += compare_security(name, service, deployed_pods[name])
     for name in sorted(set(deployed) - expected):
         problems.append(f"{name}: deploy/envs/local has it but compose.yaml does not run it")

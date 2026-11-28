@@ -3,7 +3,6 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 replicas: 1
-upstreams: {}
 ingress:
   enabled: false
   className: ""

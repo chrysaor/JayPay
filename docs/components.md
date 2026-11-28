@@ -57,11 +57,11 @@ The local cluster mounts the same configuration files as compose, and `make veri
 | Component | Role | Runs in | Version pinned in |
 | --- | --- | --- | --- |
 | minikube | Local cluster, profile `jaypay` | developer machine | installed by the developer, Kubernetes version in `scripts/k8s.sh` |
-| ingress-nginx | Ingress of the two sites | local cluster, minikube addon | minikube |
+| ingress-nginx | Ingress of the customer site, which nothing uses since the gateway serves it. [#240](https://github.com/chrysaor/JayPay/issues/240) removes it | local cluster, minikube addon | minikube |
 | kindnet | Pod network that enforces NetworkPolicy, started with `--cni kindnet` | local cluster | minikube |
 | Helm | Renders the charts in `deploy/charts` | gate, Argo CD | `scripts/verify.sh` |
 | Argo CD, core install | Syncs the cluster from `deploy/envs/<env>` | local cluster | `scripts/verify.sh`, with the checksum of the install manifest |
-| Envoy Gateway | Controller of the Kubernetes Gateway API. It holds the routes of the admin console, checks the staff token and the role of each route, and runs Envoy: as the proxies of the Gateway in `deploy/envs/<env>/gateway` with a rate limit service in the cluster, and in its standalone mode in Compose. Decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md) | local cluster, Compose | `scripts/verify.sh`, with the checksum of the install manifest, and `infra/docker/gateway/Dockerfile` |
+| Envoy Gateway | Controller of the Kubernetes Gateway API. It holds the routes of both sites, checks the staff token and the role of each admin route, limits the request rate of the customer API in the cluster, and runs Envoy: as the proxies of the Gateway in `deploy/envs/<env>/gateway` with a rate limit service in the cluster, and in its standalone mode in Compose. Decision [0040](decisions/0040-gateway-api-with-envoy-gateway.md) | local cluster, Compose | `scripts/verify.sh`, with the checksum of the install manifest, and `infra/docker/gateway/Dockerfile` |
 | Envoy | The proxy that Envoy Gateway configures. The Compose image copies its binary from the Envoy image, the cluster install pulls it | local cluster, Compose | `infra/docker/gateway/Dockerfile`, the Envoy Gateway install |
 | Valkey | Holds the request counts of the gateway's rate limit service, in memory only | local cluster | `deploy/envoy-gateway/local/valkey.yaml` |
 | kubectl | Applies the bootstrap manifests and builds the Argo CD and Envoy Gateway overlays | developer machine, gate | installed by the developer, `scripts/verify.sh` |

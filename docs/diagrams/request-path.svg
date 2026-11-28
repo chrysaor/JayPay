@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1446 400" width="1446" height="400" role="img" aria-labelledby="title desc" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
 <title id="title">JayPay request path</title>
-<desc id="desc">The customer site forwards /api/&lt;service&gt;/ to banking-service, membership-service, money-service, payment-service, remittance-service. The gateway serves the admin console from frontend-admin, passes the sign-in to Keycloak, checks the staff token and the role of every call against the realm keys, and then forwards to event-flow-service, membership-service, money-aggregation-service, money-query-service, payment-service. settlement-service runs a batch against banking-service and payment-service.</desc>
+<desc id="desc">The gateway serves the customer site from frontend-web on port 8090 and forwards /api/&lt;service&gt;/ to banking-service, membership-service, money-service, payment-service, remittance-service. On port 8091 it serves the admin console from frontend-admin, passes the sign-in to Keycloak, checks the staff token and the role of every call against the realm keys, and then forwards to event-flow-service, membership-service, money-aggregation-service, money-query-service, payment-service. settlement-service runs a batch against banking-service and payment-service.</desc>
 <style>
 .bg{fill:#ffffff}
 .box{fill:#f6f8fa;stroke:#8c959f;stroke-width:1.2}
@@ -27,11 +27,17 @@
 </style>
 <rect class="bg" x="0" y="0" width="1446" height="400" rx="12"/>
 <rect class="bluebox" x="290" y="24" width="200" height="52" rx="8"/>
-<text class="t" x="390" y="47">frontend-web</text>
+<text class="t" x="390" y="47">gateway</text>
 <text class="s" x="390" y="63">customer site, port 8090</text>
 <rect class="orangebox" x="746" y="24" width="200" height="52" rx="8"/>
 <text class="t" x="846" y="47">gateway</text>
 <text class="s" x="846" y="63">admin console, port 8091</text>
+<rect class="box" x="16" y="24" width="150" height="52" rx="8"/>
+<text class="t" x="91" y="47">frontend-web</text>
+<text class="s" x="91" y="63">static files</text>
+<path class="blue" d="M290 50 H166"/>
+<path class="bluef" d="M174 55 L174 45 L166 50 Z"/>
+<text class="l bluef" text-anchor="middle" x="228" y="42">site</text>
 <rect class="box" x="1070" y="24" width="150" height="52" rx="8"/>
 <text class="t" x="1145" y="47">frontend-admin</text>
 <text class="s" x="1145" y="63">static files</text>

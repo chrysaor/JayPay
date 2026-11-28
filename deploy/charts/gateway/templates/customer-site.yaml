@@ -1,0 +1,113 @@
+{{- $site := .Values.customerSite }}
+{{- $parent := dict "name" .Release.Name "sectionName" "web" }}
+{{- range $site.routes }}
+{{- if not (hasKey $site.services .service) }}{{ fail (printf "the route %s %s goes to %s, which customerSite.services does not list" .method .path .service) }}{{ end }}
+{{- if and .limit (or (eq .limit "all") (not (hasKey $site.limits .limit))) }}{{ fail (printf "the route %s %s names the limit %s, which is not a limit of its own in customerSite.limits" .method .path .limit) }}{{ end }}
+{{- end }}
+{{- range $prefix, $backend := $site.services }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: web-api-{{ $prefix }}
+  labels:
+    {{- include "gateway.labels" $ | nindent 4 }}
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/{{ $prefix }}/
+        substitution: /
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-api-{{ $prefix }}
+  labels:
+    {{- include "gateway.labels" $ | nindent 4 }}
+spec:
+  parentRefs:
+    - {{- toYaml $parent | nindent 6 }}
+  rules:
+    - matches:
+        {{- range $site.routes }}
+        {{- if eq .service $prefix }}
+        - method: {{ .method }}
+          path:
+            type: RegularExpression
+            value: /api/{{ .service }}{{ .path }}
+        {{- end }}
+        {{- end }}
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: web-api-{{ $prefix }}
+      backendRefs:
+        {{- include "gateway.backendRef" $backend | nindent 8 }}
+---
+{{- end }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: web-api
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    {{- range $prefix, $backend := $site.services }}
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: web-api-{{ $prefix }}
+    {{- end }}
+  timeout:
+    tcp:
+      connectTimeout: {{ .Values.connectTimeout }}
+  {{- if not .Values.standalone }}
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        {{- range $name, $limit := $site.limits }}
+        {{- $paths := list }}
+        {{- $methods := list }}
+        {{- range $site.routes }}
+        {{- if eq (default "" .limit) $name }}
+        {{- $paths = append $paths (printf "/api/%s%s" .service .path) }}
+        {{- $methods = append $methods .method }}
+        {{- end }}
+        {{- end }}
+        {{- if and (ne $name "all") (not $paths) }}{{ fail (printf "no route of customerSite.routes names the limit %s" $name) }}{{ end }}
+        - clientSelectors:
+            - sourceCIDR:
+                type: Distinct
+                value: 0.0.0.0/0
+              {{- if $paths }}
+              path:
+                type: RegularExpression
+                value: {{ join "|" $paths }}
+              methods:
+                {{- range $methods | uniq | sortAlpha }}
+                - value: {{ . }}
+                {{- end }}
+              {{- end }}
+          limit:
+            requests: {{ $limit.requests }}
+            unit: {{ $limit.unit }}
+          shared: true
+        {{- end }}
+  {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-site
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - {{- toYaml $parent | nindent 6 }}
+  rules:
+    - backendRefs:
+        {{- include "gateway.backendRef" $site.site | nindent 8 }}
