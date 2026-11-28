@@ -1,0 +1,572 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: event-flow-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: event-flow-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: frontend-admin
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: frontend-admin
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: keycloak
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: membership-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: membership-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: money-aggregation-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: money-aggregation-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: money-query-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: money-query-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: payment-service
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: payment-service
+        port: 8080
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: admin-api
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-operator-membership
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-event-flow
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-membership
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-money-aggregation
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-money-query
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-payment
+  timeout:
+    tcp:
+      connectTimeout: 5s
+  responseOverride:
+    - match:
+        statusCodes:
+          - type: Value
+            value: 401
+      response:
+        contentType: application/json
+        body:
+          type: Inline
+          inline: '{"error":"UNAUTHENTICATED","message":"Sign in again."}'
+    - match:
+        statusCodes:
+          - type: Value
+            value: 403
+      response:
+        contentType: application/json
+        body:
+          type: Inline
+          inline: '{"error":"FORBIDDEN","message":"Your role does not allow this."}'
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+    - name: admin
+      protocol: HTTP
+      port: 8091
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-operator-membership
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - method: PUT
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/[^/]+
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: admin-api-membership
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: membership-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-viewer-event-flow
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/event-flow/flows
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/event-flow/flows/[^/]+/[^/]+
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: admin-api-event-flow
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: event-flow-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-viewer-membership
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/[^/]+
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/membership/memberships/address/[^/]+
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: admin-api-membership
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: membership-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-viewer-money-aggregation
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: RegularExpression
+            value: /api/money-aggregation/money/aggregation/get-money-sum-by-address
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: admin-api-money-aggregation
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: money-aggregation-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-viewer-money-query
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/money-query/money/query/get-money-sum-by-address/[^/]+
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: admin-api-money-query
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: money-query-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-viewer-payment
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: /api/payment/payment/normal-status
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: admin-api-payment
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: payment-service
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-identity
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /realms/staff/
+        - path:
+            type: PathPrefix
+            value: /resources/
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: keycloak
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-site
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  parentRefs:
+    -
+      name: gateway
+      sectionName: admin
+  rules:
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: frontend-admin
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: admin-api-event-flow
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/event-flow/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: admin-api-membership
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/membership/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: admin-api-money-aggregation
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/money-aggregation/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: admin-api-money-query
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/money-query/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: admin-api-payment
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: ^/api/payment/
+        substitution: /
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: admin-operator
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-operator-membership
+  jwt:
+    providers:
+      - name: staff
+        issuer: http://localhost:8091/realms/staff
+        audiences:
+          - jaypay-admin-console
+        remoteJWKS:
+          uri: http://keycloak:8080/realms/staff/protocol/openid-connect/certs
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: operator-or-above
+        action: Allow
+        principal:
+          jwt:
+            provider: staff
+            claims:
+              - name: realm_access.roles
+                valueType: StringArray
+                values:
+                  - operator
+                  - admin
+
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: admin-viewer
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: jaypay
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-event-flow
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-membership
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-money-aggregation
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-money-query
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: admin-viewer-payment
+  jwt:
+    providers:
+      - name: staff
+        issuer: http://localhost:8091/realms/staff
+        audiences:
+          - jaypay-admin-console
+        remoteJWKS:
+          uri: http://keycloak:8080/realms/staff/protocol/openid-connect/certs
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: viewer-or-above
+        action: Allow
+        principal:
+          jwt:
+            provider: staff
+            claims:
+              - name: realm_access.roles
+                valueType: StringArray
+                values:
+                  - viewer
+                  - operator
+                  - admin

@@ -2,6 +2,9 @@ import json
 import re
 
 INGRESS = "the ingress controller"
+GATEWAY = "the gateway"
+GATEWAY_POD_LABEL = "gateway.envoyproxy.io/owning-gateway-name"
+OUTSIDE = {INGRESS: "ingress", GATEWAY: "gateway"}
 NAME = "app.kubernetes.io/name"
 MANAGEMENT_PORT = "management"
 SCRAPER = "prometheus"
@@ -87,6 +90,17 @@ def derived_calls(manifests, config_files, namespace):
                 if backend["name"] in known:
                     port = backend["port"].get("name", backend["port"].get("number"))
                     add(INGRESS, backend["name"], port, f"the Ingress {manifest['metadata']['name']}")
+    for manifest in manifests:
+        source = f"the {manifest.get('kind')} {manifest.get('metadata', {}).get('name')}"
+        if manifest.get("kind") == "Backend":
+            addresses = [f"{endpoint['fqdn']['hostname']}:{endpoint['fqdn']['port']}" for endpoint in manifest["spec"].get("endpoints", []) if "fqdn" in endpoint]
+        elif manifest.get("kind") == "SecurityPolicy":
+            addresses = [provider["remoteJWKS"]["uri"] for provider in manifest["spec"].get("jwt", {}).get("providers", []) if "remoteJWKS" in provider]
+        else:
+            continue
+        for address in addresses:
+            for callee, port in targets(address, known, namespace, bare=False):
+                add(GATEWAY, callee, port, source)
     return edges, problems
 
 
@@ -123,9 +137,9 @@ def allowed_calls(manifests):
             for peer in rule["from"]:
                 caller = peer.get("podSelector", {}).get("matchLabels", {}).get(NAME)
                 if "namespaceSelector" in peer and "podSelector" in peer:
-                    caller = INGRESS
+                    caller = GATEWAY if GATEWAY_POD_LABEL in peer["podSelector"].get("matchLabels", {}) else INGRESS
                 elif set(peer) != {"podSelector"} or not caller:
-                    problems.append(f"NetworkPolicy {name}: the peer {peer} is neither a workload nor the ingress controller")
+                    problems.append(f"NetworkPolicy {name}: the peer {peer} is neither a workload, the ingress controller nor the gateway")
                     continue
                 for port in rule["ports"]:
                     if port["port"] == MANAGEMENT_PORT and caller != SCRAPER:
@@ -137,15 +151,17 @@ def allowed_calls(manifests):
 
 
 def values_yaml(edges):
-    lines = ["ingress:"]
-    ingress = {}
+    outside = {key: {} for key in OUTSIDE.values()}
     calls = {}
     for callee, port, caller in sorted(edges, key=str):
-        if caller == INGRESS:
-            ingress.setdefault(callee, []).append(port)
+        if caller in OUTSIDE:
+            outside[OUTSIDE[caller]].setdefault(callee, []).append(port)
         else:
             calls.setdefault(callee, {}).setdefault(port, []).append(caller)
-    lines += [f"  {callee}: [{', '.join(str(port) for port in sorted(ports, key=str))}]" for callee, ports in sorted(ingress.items())]
+    lines = []
+    for key, callees in sorted(outside.items(), key=lambda item: item[0] != "ingress"):
+        lines.append(f"{key}:" if callees else f"{key}: {{}}")
+        lines += [f"  {callee}: [{', '.join(str(port) for port in sorted(ports, key=str))}]" for callee, ports in sorted(callees.items())]
     lines.append("calls:")
     for callee, ports in sorted(calls.items()):
         lines.append(f"  {callee}:")

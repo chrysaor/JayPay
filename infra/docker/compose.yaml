@@ -559,10 +559,43 @@ services:
     restart: unless-stopped
     mem_limit: 64m
     logging: *logging
+
+  gateway-certificates:
+    image: jaypay/gateway
+    <<: *hardened
+    user: "65532:65532"
+    command: ["certgen", "--local"]
+    pull_policy: never
+    restart: "no"
+    mem_limit: 128m
+    logging: *logging
+    volumes:
+      - gateway-state:/home/nonroot
+
+  gateway:
+    image: jaypay/gateway
+    <<: *hardened
+    user: "65532:65532"
+    command: ["server", "--config-path", "/etc/envoy-gateway/envoy-gateway.yaml"]
+    tmpfs: [/tmp]
+    build:
+      context: ./gateway
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 384m
+    logging: *logging
     ports:
-      - "127.0.0.1:8091:8080"
+      - "127.0.0.1:8091:8091"
+    volumes:
+      - gateway-state:/home/nonroot
+    depends_on:
+      gateway-certificates:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
 
 volumes:
+  gateway-state:
   kafka-data:
   axon-data:
   axon-events:

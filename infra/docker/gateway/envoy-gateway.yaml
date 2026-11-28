@@ -1,0 +1,21 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyGateway
+gateway:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+provider:
+  type: Custom
+  custom:
+    resource:
+      type: File
+      file:
+        paths: [/etc/envoy-gateway/config]
+    infrastructure:
+      type: Host
+      host:
+        configHome: /home/nonroot/.config/envoy-gateway
+        dataHome: /opt/envoy-gateway
+logging:
+  level:
+    default: info
+extensionApis:
+  enableBackend: true

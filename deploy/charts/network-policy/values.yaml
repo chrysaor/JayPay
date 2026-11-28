@@ -1,5 +1,9 @@
 ingressController:
   namespace: ""
   podLabels: {}
+gatewayProxy:
+  namespace: ""
+  podLabels: {}
 ingress: {}
+gateway: {}
 calls: {}

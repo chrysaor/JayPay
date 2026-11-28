@@ -14,7 +14,7 @@ BACKEND_VERSION_FILE := backend/build-logic/src/main/kotlin/jaypay.java.gradle.k
 GIT_COMMON_DIR :=$(shell git rev-parse --path-format=absolute --git-common-dir)
 
 .DEFAULT_GOAL := help
-.PHONY: help build test coverage scorecard verify verify-selftest images scan scan-images push up smoke e2e down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy diagrams lock dependencies contract release-branch
+.PHONY: help build test coverage scorecard verify verify-selftest images scan scan-images push up smoke e2e down k8s-up k8s-smoke k8s-gitops-check k8s-policy-check k8s-down network-policy gateway-config diagrams lock dependencies contract release-branch
 
 help:
 	@echo "make build                     compile the backend and build the frontend"
@@ -35,6 +35,7 @@ help:
 	@echo "make k8s-gitops-check          prove that Argo CD follows a commit and reverts a manual change"
 	@echo "make k8s-policy-check          prove that NetworkPolicy lets through the allowed calls and refuses the rest"
 	@echo "make network-policy            regenerate deploy/envs/*/network-policy/calls.yaml from the calls the workloads make"
+	@echo "make gateway-config            regenerate infra/docker/gateway/config/gateway.yaml from the gateway chart"
 	@echo "make diagrams                  redraw docs/diagrams/*.svg from the calls, compose.yaml and the code"
 	@echo "make lock                      refresh gradle.lockfile and package-lock.json"
 	@echo "make dependencies              download the backend dependencies, retrying when the repository refuses"
@@ -72,6 +73,7 @@ images:
 	@for app in $(FRONTEND_APPS); do \
 	  docker build --pull --build-arg APP=$$app --tag jaypay/frontend-$$app frontend || exit 1; \
 	done
+	docker build --pull --tag jaypay/gateway infra/docker/gateway
 
 scan:
 	docker run --rm $(TRIVY_CACHE) -v "$(CURDIR):/repo" -w /repo $(TRIVY_IMAGE) fs --scanners vuln,misconfig .
@@ -124,6 +126,10 @@ k8s-down:
 network-policy:
 	scripts/verify.sh render
 	python3 scripts/check-deploy.py . build/charts --write-network-policy
+
+gateway-config:
+	scripts/verify.sh render
+	python3 scripts/check-deploy.py . build/charts --write-gateway-config
 
 diagrams:
 	python3 scripts/check-docs.py . --write-diagrams

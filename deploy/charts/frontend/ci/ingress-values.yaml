@@ -1,7 +1,7 @@
 image:
   tag: v0.2.0
 upstreams:
-  JAYPAY_AUTH_URL: auth-service
+  JAYPAY_MONEY_URL: money-service
 ingress:
   enabled: true
   className: selftest

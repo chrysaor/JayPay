@@ -40,13 +40,13 @@ One maintainer develops JayPay with coding agents. The agents follow the rules i
 
 ## Architecture
 
-Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console and proxy `/api/<service>/...` to the services. Staff sign in to the admin console through Keycloak, and before the admin console forwards a request, nginx asks auth-service whether the staff token's role may make it.
+Eleven Spring Boot services run in Docker Compose. Ten of them have a host port, and nine of those ten have their own PostgreSQL database. Nine of the ten serve HTTP endpoints, and settlement-service runs a batch job instead. logging-consumer only consumes a Kafka topic. Two nginx containers serve the customer site and the admin console. The customer site proxies `/api/<service>/...` to the services. The admin console is reached through the gateway, Envoy Gateway: staff sign in through Keycloak, and the gateway forwards a request only when the staff token carries the role its route needs.
 
 ### Request path
 
-The browser calls only its own site. nginx strips `/api/<service>` and forwards the rest of the path to that service. On the admin console, an `auth_request` to auth-service comes first: it answers 204 to let the request through, 401 without a valid Keycloak token, and 403 when the role is not enough. The admin site also proxies the sign-in pages of the Keycloak realm `staff`, so the browser and the tokens see one origin. No other service calls auth-service. settlement-service starts its own requests from a batch job.
+The browser calls only its own site. For the customer site, nginx strips `/api/<service>` and forwards the rest of the path to that service. For the admin console, the gateway on port 8091 does the same for the methods and paths in its route table, after it checked the Keycloak token: it answers 401 without a valid token and 403 when the role is not enough, and a path without a route gets the 404 of the site. The gateway also passes the sign-in pages of the Keycloak realm `staff`, so the browser and the tokens see one origin. Nothing calls auth-service any more, and [#240](https://github.com/chrysaor/JayPay/issues/240) removes it. settlement-service starts its own requests from a batch job.
 
-![frontend-web forwards to banking, money, remittance, membership and payment. frontend-admin signs staff in through Keycloak, asks auth-service first and forwards to membership, payment, money-aggregation and money-query. auth-service checks the token against the Keycloak realm keys. settlement-service calls banking and payment from its batch job.](docs/diagrams/request-path.svg)
+![frontend-web forwards to banking, money, remittance, membership and payment. The gateway serves the admin console from frontend-admin, passes the staff sign-in to Keycloak, checks the token and the role against the realm keys and forwards to membership, payment, money-aggregation, money-query and event-flow. settlement-service calls banking and payment from its batch job.](docs/diagrams/request-path.svg)
 
 The services then call each other over HTTP. Each row is a caller, each column the service it calls, and each cell what the caller asks for.
 
@@ -83,7 +83,7 @@ Axon Server routes the commands and events of the money top-up saga and stores t
 
 ## Local stack
 
-1. `make images` builds `jaypay/<service>` for every backend service, and `jaypay/frontend-web` and `jaypay/frontend-admin`.
+1. `make images` builds `jaypay/<service>` for every backend service, `jaypay/frontend-web` and `jaypay/frontend-admin`, and `jaypay/gateway`.
 2. `make up` writes `infra/docker/.env` with random secrets the first time, starts the Compose project `jaypay`, and waits until every container is healthy. The first start also builds the OpenTelemetry Collector image.
 3. `make smoke` signs a member up through the customer site, registers a bank account, tops the wallet up through the saga, checks that a saga top-up of a member membership-service does not know fails, checks that the admin console shows each top-up as an event flow with its steps and the step that failed, pays, signs the three staff roles in to the admin console through the Keycloak Authorization Code flow and checks what each may do, checks that a disabled or locked Keycloak account cannot sign in, and checks that logs, traces and metrics arrived. It prints the cause and exits non-zero on the first failure.
 
@@ -126,10 +126,11 @@ Every service and site has a section in [docs/services.md](docs/services.md) wit
 | [money-query-service](docs/services.md#money-query-service) | Read model of saga top-ups per address, read over HTTP | 8087 | DynamoDB `MoneyIncreaseEventByRegion`, PostgreSQL `money_query` with no tables | Axon event handler, writes the log topic |
 | [settlement-service](docs/services.md#settlement-service) | Spring Batch job every 30 seconds that settles each paid payment once and pays its payout through firm banking | 8088 | PostgreSQL `settlement` for the batch tables | none |
 | [event-flow-service](docs/services.md#event-flow-service) | Collects the steps of each saga top-up and serves the flows and their timelines to the admin console | 8093 | PostgreSQL `event_flow` | Kafka `jaypay.flow.events` in, writes the log topic |
-| [auth-service](docs/services.md#auth-service) | The decision for every admin console request from the Keycloak token's realm role: viewer, operator or admin | 8089 | none | none |
+| [auth-service](docs/services.md#auth-service) | Unused since the gateway checks the staff token. Removed in [#240](https://github.com/chrysaor/JayPay/issues/240) | 8089 | none | none |
 | [logging-consumer](docs/services.md#logging-consumer) | Writes each record of the log topic to its own log | none | none | Kafka `jaypay.logging.out.stdout` in |
 | [frontend-web](docs/services.md#frontend-web) | Customer site: nginx serves the React app and proxies `/api/<service>/` to five services | 8090 | The session in the browser | none |
-| [frontend-admin](docs/services.md#frontend-admin) | Admin console: nginx serves the React app, proxies the Keycloak sign-in, asks auth-service, and proxies to five services | 8091 | The staff tokens in the tab's memory | none |
+| [frontend-admin](docs/services.md#frontend-admin) | Admin console: nginx serves the React app | none | The staff tokens in the tab's memory | none |
+| [gateway](docs/services.md#gateway) | Envoy Gateway: the entry of the admin console. Routes, the staff token check and the role of each route | 8091 | none | none |
 
 Inside Compose every service listens on port 8080 and is reached by its service name, for example `http://membership-service:8080`.
 

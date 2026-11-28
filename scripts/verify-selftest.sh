@@ -72,7 +72,7 @@ echo '| banking-service | GET | /banking/not-in-code |' >>"$dir/docs/api-contrac
 expect contract fail "$dir" not-in-code
 
 dir=$(copy_repo docs-diagram)
-perl -pi -e 's/forwarded once auth-service allows it/forwarded at once/' "$dir/docs/diagrams/request-path.svg"
+perl -pi -e 's/forwarded when the staff token carries the role/forwarded at once/' "$dir/docs/diagrams/request-path.svg"
 expect docs fail "$dir" "request-path.svg differs from what scripts/check-docs.py draws"
 
 dir=$(copy_repo docs-call)
@@ -203,20 +203,36 @@ perl -ni -e 'print unless /SERVICE_PAYMENT_URL/' "$dir/deploy/envs/local/spring-
 expect charts fail "$dir" "passes SERVICE_PAYMENT_URL but deploy/envs/local does not"
 
 dir=$(copy_repo charts-upstream)
-perl -pi -e 's/(JAYPAY_AUTH_URL:).*/$1 auth-svc/' "$dir/deploy/envs/local/frontend/frontend-admin.yaml"
-expect charts fail "$dir" "auth-svc.jaypay.svc.cluster.local:8080, which is no Service"
+perl -pi -e 's/(JAYPAY_MONEY_URL:).*/$1 money-svc/' "$dir/deploy/envs/local/frontend/frontend-web.yaml"
+expect charts fail "$dir" "money-svc.jaypay.svc.cluster.local:8080, which is no Service"
 
 dir=$(copy_repo charts-policy-extra)
-perl -0pi -e 's/(\n  auth-service:\n    http: \[)/$1frontend-web, /' "$dir/deploy/envs/local/network-policy/calls.yaml"
-expect charts fail "$dir" "lets frontend-web reach auth-service on port http, but nothing"
+perl -0pi -e 's/(\n  banking-service:\n    http: \[)/$1event-flow-service, /' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets event-flow-service reach banking-service on port http, but nothing"
 
 dir=$(copy_repo charts-policy-missing)
-perl -0pi -e 's/(\n  membership-service:\n    http: \[[^\]]*)frontend-admin, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
-expect charts fail "$dir" "frontend-admin calls membership-service on port http, but no NetworkPolicy allows it"
+perl -0pi -e 's/(\n  membership-service:\n    http: \[[^\]]*)frontend-web, /$1/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "frontend-web calls membership-service on port http, but no NetworkPolicy allows it"
+
+dir=$(copy_repo charts-policy-gateway-missing)
+perl -ni -e 'print unless /^  payment-service: \[http\]$/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "the gateway calls payment-service on port http, but no NetworkPolicy allows it"
+
+dir=$(copy_repo charts-policy-gateway-extra)
+perl -pi -e 's/^(  payment-service: \[http\])$/$1\n  remittance-service: [http]/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets the gateway reach remittance-service on port http, but nothing"
+
+dir=$(copy_repo charts-gateway-config)
+perl -pi -e 's/^gatewayClassName: .*/$&\nconnectTimeout: 9s/' "$dir/infra/docker/gateway/values.yaml"
+expect charts fail "$dir" "infra/docker/gateway/config/gateway.yaml differs from deploy/charts/gateway"
+
+dir=$(copy_repo charts-gateway-role)
+perl -pi -e 's/role: operator/role: owner/' "$dir/deploy/charts/gateway/values.yaml"
+expect charts fail "$dir" "role"
 
 dir=$(copy_repo charts-policy-management)
-perl -0pi -e 's/(\n  auth-service:\n(?:    .*\n)*?    management: \[)prometheus/$1frontend-admin, prometheus/' "$dir/deploy/envs/local/network-policy/calls.yaml"
-expect charts fail "$dir" "lets frontend-admin reach the management port of auth-service, which only prometheus may reach"
+perl -0pi -e 's/(\n  auth-service:\n(?:    .*\n)*?    management: \[)prometheus/$1frontend-web, prometheus/' "$dir/deploy/envs/local/network-policy/calls.yaml"
+expect charts fail "$dir" "lets frontend-web reach the management port of auth-service, which only prometheus may reach"
 
 dir=$(copy_repo charts-policy-default)
 perl -pi -e 's/^  podSelector: \{\}$/  podSelector: {matchLabels: {app.kubernetes.io\/name: nothing}}/' "$dir/deploy/charts/network-policy/templates/network-policy.yaml"

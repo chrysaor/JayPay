@@ -32,6 +32,7 @@ TOPIC_PURPOSES = {
     "jaypay.logging.out.stdout": "one record for each web request",
 }
 SITE_ROLES = {"frontend-web": "customer site", "frontend-admin": "admin console"}
+GATEWAY = "gateway"
 STORE_PURPOSES = {"vault": "email encryption key"}
 
 STYLE = """
@@ -173,6 +174,9 @@ def read_calls(path):
         elif (match := re.match(r"^    ([a-z0-9-]+): \[(.*)\]$", line)) and section == "calls":
             for caller in match.group(2).split(", "):
                 calls.add((caller, callee, match.group(1)))
+        elif (match := re.match(r"^  ([a-z0-9-]+): \[(.*)\]$", line)) and section == GATEWAY:
+            for port in match.group(2).split(", "):
+                calls.add((GATEWAY, match.group(1), port))
     return calls
 
 
@@ -246,7 +250,7 @@ def model(root):
     compose = compose_services(root)
     services = sorted(os.listdir(os.path.join(root, "backend", "services")))
     sites = [f"frontend-{app}" for app in sorted(os.listdir(os.path.join(root, "frontend", "apps")))]
-    workloads = services + sites
+    workloads = services + sites + [GATEWAY]
     calls = read_calls(os.path.join(root, CALLS_FILE))
     http = {(a, b) for a, b, port in calls if port == "http" and a in workloads and b in workloads}
     common = read(os.path.join(root, COMMON_LIB, "src", "main", "java", "com", "jaypay", "common", "LoggingAspect.java"))
@@ -272,14 +276,14 @@ def model(root):
         if name not in compose:
             problems.append(f"{name}: compose.yaml has no service {name}")
     table = compose.get("money-query-service", {}).get("environment", {}).get("DYNAMODB_TABLE_NAME")
-    missing = sorted(http - set(CALL_PURPOSES) - {(a, b) for a, b in http if a in sites})
+    missing = sorted(http - set(CALL_PURPOSES) - {(a, b) for a, b in http if a in sites + [GATEWAY]})
     stale = sorted(set(CALL_PURPOSES) - http)
     problems += [f"scripts/check-docs.py: {a} calls {b} in {CALLS_FILE}, add its purpose to CALL_PURPOSES" for a, b in missing]
     problems += [f"scripts/check-docs.py: CALL_PURPOSES lists {a} calling {b}, which {CALLS_FILE} does not" for a, b in stale]
     keycloak = compose.get("keycloak", {}).get("ports") or []
     if not keycloak:
         problems.append("compose.yaml: keycloak publishes no port")
-    return {"services": services, "sites": sites, "info": info, "http": http, "dynamodb_table": table,
+    return {"services": services, "sites": sites, "edge": [GATEWAY], "info": info, "http": http, "dynamodb_table": table,
             "keycloak_port": keycloak[0]["published"] if keycloak else None}, problems
 
 
@@ -291,7 +295,7 @@ def request_path(m):
     info = m["info"]
     web, admin = "frontend-web", "frontend-admin"
     web_targets = set(info[web]["calls"])
-    admin_targets = set(info[admin]["calls"]) - {"auth-service"}
+    admin_targets = set(info[GATEWAY]["calls"]) - {admin}
     row = request_order(m)
     batches = [s for s in m["services"] if info[s]["batch"] and not info[s]["called_by"]]
     box_w, gap, x0, side_w = 140, 12, 16, 150
@@ -301,28 +305,26 @@ def request_path(m):
     sy, sh, web_bus, admin_bus = 210, 48, 124, 156
     svg = Svg(width, height, "JayPay request path",
               f"The customer site forwards /api/<service>/ to {', '.join(sorted(web_targets))}. "
-              f"The admin console signs staff in through Keycloak, asks auth-service before every call, "
-              f"and then forwards to {', '.join(sorted(admin_targets))}. auth-service checks the Keycloak token against the realm keys. "
+              f"The gateway serves the admin console from {admin}, passes the sign-in to Keycloak, checks the staff token "
+              f"and the role of every call against the realm keys, and then forwards to {', '.join(sorted(admin_targets))}. "
               + " ".join(f"{b} runs a batch against {' and '.join(info[b]['calls'])}." for b in batches))
 
     def site_center(targets):
         return cx[row[round(sum(row.index(t) for t in targets) / len(targets) - 0.01)]]
 
     web_c, admin_c = site_center(web_targets), site_center(admin_targets)
-    auth_x = row_width - 16 - side_w
+    site_x = row_width - 16 - side_w
     keycloak_x = width - 16 - side_w
     svg.box(web_c - 100, 24, 200, 52, web, f"{SITE_ROLES[web]}, port {info[web]['port']}", "bluebox")
-    svg.box(admin_c - 100, 24, 200, 52, admin, f"{SITE_ROLES[admin]}, port {info[admin]['port']}", "orangebox")
-    svg.box(auth_x, 24, side_w, 52, "auth-service", f"staff gate, port {info['auth-service']['port']}")
+    svg.box(admin_c - 100, 24, 200, 52, GATEWAY, f"{SITE_ROLES[admin]}, port {info[GATEWAY]['port']}", "orangebox")
+    svg.box(site_x, 24, side_w, 52, admin, "static files")
     svg.box(keycloak_x, 24, side_w, 52, "keycloak", f"staff realm, port {m['keycloak_port']}", "orangebox")
-    svg.arrow([(admin_c + 100, 50), (auth_x, 50)], "orange", "orangef")
-    svg.label((admin_c + 100 + auth_x) / 2, 42, "auth_request", "orangef", "middle")
-    svg.arrow([(auth_x + side_w, 50), (keycloak_x, 50)], "gray dashed", "grayf")
-    svg.label((auth_x + side_w + keycloak_x) / 2, 42, "keys", "s", "middle")
+    svg.arrow([(admin_c + 100, 50), (site_x, 50)], "orange", "orangef")
+    svg.label((admin_c + 100 + site_x) / 2, 42, "site", "orangef", "middle")
     sign_in_y = 96
     svg.path([(admin_c + 80, 76), (admin_c + 80, sign_in_y), (keycloak_x + side_w / 2, sign_in_y)], "orange")
     svg.arrow([(keycloak_x + side_w / 2, sign_in_y), (keycloak_x + side_w / 2, 76)], "orange", "orangef")
-    svg.label(keycloak_x + side_w / 2 - 8, sign_in_y - 6, "sign-in, /realms/staff/", "orangef", "end")
+    svg.label(keycloak_x + side_w / 2 - 8, sign_in_y - 6, "sign-in and keys, /realms/staff/", "orangef", "end")
 
     def drop_x(name, site):
         both = name in web_targets and name in admin_targets
@@ -344,7 +346,7 @@ def request_path(m):
     for x in admin_drops:
         svg.arrow([(x, admin_bus), (x, sy)], "orange", "orangef")
     svg.label(web_drops[0] + 8, web_bus - 8, "/api/<service>/", "bluef")
-    svg.label(admin_drops[-1] - 8, admin_bus - 8, "forwarded once auth-service allows it", "orangef", "end")
+    svg.label(admin_drops[-1] - 8, admin_bus - 8, "forwarded when the staff token carries the role", "orangef", "end")
     for name in row:
         svg.box(cx[name] - box_w / 2, sy, box_w, sh, short(name), f"port {info[name]['port']}")
     bus_y = sy + sh + 40
@@ -399,7 +401,7 @@ def service_calls(m):
 
 def request_order(m):
     info = m["info"]
-    web, admin = set(info["frontend-web"]["calls"]), set(info["frontend-admin"]["calls"]) - {"auth-service"}
+    web, admin = set(info["frontend-web"]["calls"]), set(info[GATEWAY]["calls"]) - {"frontend-admin"}
     return sorted(web - admin) + sorted(web & admin) + sorted(admin - web)
 
 
@@ -542,7 +544,7 @@ def check_services_doc(root, m):
     path = os.path.join(root, SERVICES_DOC)
     if not os.path.exists(path):
         return [f"{SERVICES_DOC} is missing"]
-    workloads = m["services"] + m["sites"]
+    workloads = m["services"] + m["sites"] + m["edge"]
     sections = dict(re.findall(r"^## ([a-z0-9-]+)\n(.*?)(?=^## |\Z)", read(path), re.MULTILINE | re.DOTALL))
     problems = []
     for name in workloads:
@@ -579,7 +581,7 @@ def check_readme(root, m):
     index = columns.index("Host port")
     rows = table_rows(text[header.start():])
     problems = []
-    for name in m["services"] + m["sites"]:
+    for name in m["services"] + m["sites"] + m["edge"]:
         row = rows.get(f"[{name}](docs/services.md#{name})") or rows.get(name)
         if row is None:
             problems.append(f"README.md: the Service table has no row {name}")

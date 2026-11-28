@@ -248,9 +248,9 @@ forward() {
 }
 
 smoke() {
-  local web admin clickhouse prometheus banking money grafana vault
+  local web admin_port clickhouse prometheus banking money grafana vault
   web=$(kube get ingress frontend-web --output jsonpath='{.spec.rules[0].host}')
-  admin=$(kube get ingress frontend-admin --output jsonpath='{.spec.rules[0].host}')
+  admin_port=$(kube get gateway gateway --output jsonpath='{.spec.listeners[?(@.name=="admin")].port}')
   trap stop_forwards EXIT
   forward ingress ingress-nginx service/ingress-nginx-controller "$ingress_port:80"
   forward clickhouse "$namespace" service/clickhouse :8123
@@ -267,11 +267,9 @@ smoke() {
   forward vault "$namespace" service/vault :8200
   vault=$forwarded_port
   until_true "the ingress answers through the port-forward" curl -s -o /dev/null "http://$web:$ingress_port/"
-  forward gateway envoy-gateway-system "$(gateway_service)" :80
-  [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:$forwarded_port/")" = 404 ] ||
-    fail "the gateway did not answer 404 to a path that no route lists"
-  log "the gateway answers 404 to a path that no route lists"
-  SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://$admin:$ingress_port" \
+  forward gateway envoy-gateway-system "$(gateway_service)" "$admin_port:$admin_port"
+  until_true "the gateway answers through the port-forward" curl -s -o /dev/null "http://localhost:$admin_port/"
+  SMOKE_STACK=kubernetes SMOKE_NAMESPACE=$namespace SMOKE_WEB_URL="http://$web:$ingress_port" SMOKE_ADMIN_URL="http://localhost:$admin_port" \
     SMOKE_CLICKHOUSE_URL="http://127.0.0.1:$clickhouse" SMOKE_PROMETHEUS_URL="http://127.0.0.1:$prometheus" \
     SMOKE_BANKING_URL="http://127.0.0.1:$banking" SMOKE_KEYCLOAK_URL=http://localhost:8092 SMOKE_MONEY_URL="http://127.0.0.1:$money" \
     SMOKE_GRAFANA_URL="http://127.0.0.1:$grafana" SMOKE_VAULT_URL="http://127.0.0.1:$vault" \

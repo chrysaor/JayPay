@@ -1,5 +1,5 @@
 gatewayClassName: ""
-port: 80
+standalone: false
 replicas: 1
 resources:
   requests:
@@ -7,3 +7,34 @@ resources:
     memory: 128Mi
   limits:
     memory: 128Mi
+listeners:
+  admin: 8091
+backendPort: 8080
+connectTimeout: 5s
+staff:
+  issuer: ""
+  jwksUri: ""
+  audience: jaypay-admin-console
+  roles:
+    viewer: [viewer, operator, admin]
+    operator: [operator, admin]
+adminConsole:
+  site: frontend-admin
+  identity:
+    backend: keycloak
+    paths: [/realms/staff/, /resources/]
+  services:
+    membership: membership-service
+    payment: payment-service
+    money-aggregation: money-aggregation-service
+    money-query: money-query-service
+    event-flow: event-flow-service
+  routes:
+    - { role: viewer, service: membership, method: GET, path: "/memberships/[^/]+" }
+    - { role: viewer, service: membership, method: GET, path: "/memberships/address/[^/]+" }
+    - { role: operator, service: membership, method: PUT, path: "/memberships/[^/]+" }
+    - { role: viewer, service: money-aggregation, method: POST, path: /money/aggregation/get-money-sum-by-address }
+    - { role: viewer, service: money-query, method: GET, path: "/money/query/get-money-sum-by-address/[^/]+" }
+    - { role: viewer, service: payment, method: GET, path: /payment/normal-status }
+    - { role: viewer, service: event-flow, method: GET, path: /flows }
+    - { role: viewer, service: event-flow, method: GET, path: "/flows/[^/]+/[^/]+" }

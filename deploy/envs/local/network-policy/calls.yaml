@@ -1,9 +1,15 @@
 ingress:
-  frontend-admin: [http]
   frontend-web: [http]
+gateway:
+  event-flow-service: [http]
+  frontend-admin: [http]
+  keycloak: [http]
+  membership-service: [http]
+  money-aggregation-service: [http]
+  money-query-service: [http]
+  payment-service: [http]
 calls:
   auth-service:
-    http: [frontend-admin]
     management: [prometheus]
   axon-server:
     grpc: [auth-service, axon-server, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
@@ -16,22 +22,19 @@ calls:
   dynamodb:
     http: [money-query-service]
   event-flow-service:
-    http: [frontend-admin]
     management: [prometheus]
   kafka:
     kafka: [auth-service, banking-service, event-flow-service, kafka, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   keycloak:
-    http: [auth-service, frontend-admin]
+    http: [auth-service]
   logging-consumer:
     management: [prometheus]
   membership-service:
-    http: [banking-service, frontend-admin, frontend-web, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service]
+    http: [banking-service, frontend-web, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service]
     management: [prometheus]
   money-aggregation-service:
-    http: [frontend-admin]
     management: [prometheus]
   money-query-service:
-    http: [frontend-admin]
     management: [prometheus]
   money-service:
     http: [frontend-web, money-aggregation-service, payment-service, remittance-service]
@@ -39,7 +42,7 @@ calls:
   otel-collector:
     otlp-http: [auth-service, banking-service, event-flow-service, logging-consumer, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
   payment-service:
-    http: [frontend-admin, frontend-web, settlement-service]
+    http: [frontend-web, settlement-service]
     management: [prometheus]
   postgres:
     postgres: [banking-service, event-flow-service, keycloak, membership-service, money-aggregation-service, money-query-service, money-service, payment-service, remittance-service, settlement-service]
