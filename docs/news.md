@@ -6,9 +6,54 @@ What each release was about, newest first: the theme, the changes that matter, t
 
 | Milestone | Theme | Issues |
 | --- | --- | --- |
-| 0.6.0 | Confidence: the smoke in CI, browser tests, the audit of missing tests, and the faults the 0.5.0 checks found | [#143](https://github.com/chrysaor/JayPay/issues/143), [#144](https://github.com/chrysaor/JayPay/issues/144), [#149](https://github.com/chrysaor/JayPay/issues/149), [#200](https://github.com/chrysaor/JayPay/issues/200), [#205](https://github.com/chrysaor/JayPay/issues/205), [#209](https://github.com/chrysaor/JayPay/issues/209), [#211](https://github.com/chrysaor/JayPay/issues/211) |
+| 0.7.0 | API gateway: the Kubernetes Gateway API with Envoy Gateway in front of the services, which checks tokens, routes, limits request rates and logs, and authentication for the customer site | [#115](https://github.com/chrysaor/JayPay/issues/115), [#91](https://github.com/chrysaor/JayPay/issues/91) |
+| 0.8.0 | Payment domain: merchant, ledger and settlement record, option B of [#135](https://github.com/chrysaor/JayPay/issues/135), steps 1 to 3 | [#135](https://github.com/chrysaor/JayPay/issues/135), [#161](https://github.com/chrysaor/JayPay/issues/161), [#162](https://github.com/chrysaor/JayPay/issues/162), [#163](https://github.com/chrysaor/JayPay/issues/163) |
 
 The decisions that wait for the owner are listed under [Open decisions](decisions/README.md#open-decisions).
+
+## 0.6.0 (2026-11-28)
+
+Confidence in what is there. CI starts the whole stack and runs the smoke and browser tests on every push to `develop`, an audit lists which behaviour of each use case has a test, and the faults that the audit and the 0.5.0 checks found are fixed.
+
+### What changed
+
+- CI runs `make smoke` and `make e2e` against the Compose stack on every push to `develop`, and a release publishes images only after the same smoke passed.
+- `make e2e` drives the customer site and the admin console in Chromium with Playwright.
+- `docs/test-audit.md` lists every use case against the normal path, the refusals, a repeated request, a lost answer and an outage, with the test that covers each or none.
+- An outage of membership-service or banking-service answers 503 for a payment, a remittance, a bank account registration and the sum of balances too, and changes nothing, so the same request works once the service is back.
+- A top-up handled while membership-service fails is counted in the region total when the service answers within 15 seconds, and an `ERROR` names the top-up that was left out when it does not.
+- The sign-in endpoints of membership-service refuse with 401 or 404 and an `error` in place of 500 or an empty 200, and `POST /memberships/auth` answers the member of an access token.
+- `GET /banking/account/{membershipId}` answers the account the member registered last.
+- PostgreSQL has a memory limit of 512 MiB and each service keeps three connections, and the local cluster node starts with 14 GiB.
+
+### Upgrading from 0.5.0
+
+- A caller that read an empty 200 from `POST /memberships/login`, `/memberships/refresh-token` or `/memberships/auth` as a refusal now gets 401 `MEMBERSHIP_NOT_VALID` or `TOKEN_REFUSED`. The customer site handles both answers, so it works next to a membership-service of either release.
+- A payment, a remittance and a bank account registration can now answer 503 `MEMBERSHIP_NOT_CONFIRMED` or `BANK_ACCOUNT_NOT_CONFIRMED`. Send the same request again later.
+- Each service opens three PostgreSQL connections in place of ten. `SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE` raises it for a service.
+- `make k8s-up` needs a Docker VM with at least 14 GiB of memory.
+
+### Decisions
+
+- [0032](decisions/0032-smoke-in-ci-on-pushes-not-pull-requests.md) CI runs the smoke against the Compose stack on pushes to `develop` and releases, not on pull requests
+- [0033](decisions/0033-three-postgres-connections-per-service.md) Each service keeps three PostgreSQL connections, and the memory limit of PostgreSQL stays
+- [0034](decisions/0034-postgres-memory-limit-of-512-mib.md) PostgreSQL gets a memory limit of 512 MiB
+- [0035](decisions/0035-an-outage-of-a-checked-service-answers-503.md) A request whose member or bank account cannot be checked answers 503 and leaves no flow step
+- [0036](decisions/0036-region-total-asks-for-the-address-for-a-fixed-time.md) The region total asks for a member's address for a fixed time, then leaves the top-up out
+- [0037](decisions/0037-sign-in-refusals-answer-401.md) The sign-in endpoints refuse with 401, and an access token names its member
+- [0038](decisions/0038-cold-start-restarts-are-accepted.md) Restarts on a cold start of the cluster are accepted
+- [0039](decisions/0039-no-mutation-testing-for-now.md) No mutation testing for now
+
+### Retrospectives
+
+- [A member who registered another bank account kept the first one](retrospectives/2026-11-28-account-lookup-kept-the-first-registered-account.md)
+- [The other callers still read an outage as a refusal](retrospectives/2026-11-28-other-callers-read-an-outage-as-a-refusal.md)
+- [A top-up handled during an outage was left out of the region total](retrospectives/2026-11-28-top-up-during-an-outage-left-out-of-the-region-total.md)
+
+### Documents
+
+- Added: [docs/test-audit.md](test-audit.md)
+- Updated: [README.md](../README.md), [CONTRIBUTING.md](../CONTRIBUTING.md), [deploy/README.md](../deploy/README.md), [docs/architecture.md](architecture.md), [docs/components.md](components.md), [docs/services.md](services.md)
 
 ## 0.5.0 (2026-11-27)
 

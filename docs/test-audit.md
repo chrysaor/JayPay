@@ -106,7 +106,7 @@ From the JaCoCo report of all modules, 293 classes with code.
 - remittance-service had no test for the remittances of a member. It now has one.
 - [#225](https://github.com/chrysaor/JayPay/issues/225) found that a member who registered another bank account kept the first one, and fixed it.
 - [#223](https://github.com/chrysaor/JayPay/issues/223) found that a payment, a remittance, a bank account registration and the sum of balances read an outage of a service they call as a refusal or failed on it, and decision [0035](decisions/0035-an-outage-of-a-checked-service-answers-503.md) fixed the answer.
-- [#228](https://github.com/chrysaor/JayPay/issues/228) found that a top-up handled during an outage of membership-service never reached the region total. It is now asked again a fixed number of times.
+- [#228](https://github.com/chrysaor/JayPay/issues/228) found that a top-up handled during an outage of membership-service never reached the region total. money-query-service now asks again for a fixed time, see decision [0036](decisions/0036-region-total-asks-for-the-address-for-a-fixed-time.md).
 - Three gaps are filed: [#223](https://github.com/chrysaor/JayPay/issues/223), [#224](https://github.com/chrysaor/JayPay/issues/224) and [#225](https://github.com/chrysaor/JayPay/issues/225).
 
 Mutation testing would show which of the tested lines a test would notice changing. It needs a new build plugin, and the owner decided not to add it for now, see decision [0039](decisions/0039-no-mutation-testing-for-now.md).
